@@ -58,6 +58,9 @@ class GhDbService {
     ]);
   }
 
+  static const String _blobBase =
+      'https://api.github.com/repos/${GhConfig.owner}/${GhConfig.dataRepo}/git/blobs';
+
   Future<void> _loadFile(String fileName) async {
     final res = await http.get(
       Uri.parse('$_base/$fileName'),
@@ -69,12 +72,32 @@ class GhDbService {
     );
     if (res.statusCode == 200) {
       final j = jsonDecode(res.body) as Map<String, dynamic>;
-      final content = utf8.decode(
-        base64.decode((j['content'] as String).replaceAll('\n', '')),
-      );
+      final sha = j['sha'] as String;
+      String content;
+
+      final inlineContent = j['content'] as String?;
+      if (inlineContent != null && inlineContent.trim().isNotEmpty) {
+        // File ≤1MB: content is inline base64 in the metadata response
+        content = utf8.decode(base64.decode(inlineContent.replaceAll('\n', '')));
+      } else {
+        // File >1MB: fetch raw via Git Blobs API
+        final blobRes = await http.get(
+          Uri.parse('$_blobBase/$sha'),
+          headers: {
+            'Authorization': 'Bearer ${GhConfig.readPat}',
+            'Accept': 'application/vnd.github.raw+json',
+            'X-GitHub-Api-Version': '2022-11-28',
+          },
+        );
+        if (blobRes.statusCode != 200) {
+          throw Exception('GitHub blob ${blobRes.statusCode} loading $fileName');
+        }
+        content = blobRes.body;
+      }
+
       _cache[fileName] = {
         'data': _normalizeLoaded(fileName, jsonDecode(content)),
-        'sha': j['sha'] as String,
+        'sha': sha,
       };
       return;
     }
