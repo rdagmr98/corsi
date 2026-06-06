@@ -55,7 +55,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Icon(Icons.school_outlined, size: 56, color: kPrimary),
+                Image.asset(
+                  'assets/images/smam_logo.png',
+                  width: 140,
+                  height: 140,
+                ),
                 const SizedBox(height: 16),
                 Text(
                   'Gestione Corsi',
