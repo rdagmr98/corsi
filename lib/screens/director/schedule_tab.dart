@@ -1,0 +1,418 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
+import '../../models/course_models.dart';
+import '../../models/reference_models.dart';
+import '../../models/schedule_models.dart';
+import '../../providers/auth_provider.dart';
+import '../../services/course_service.dart';
+import '../../services/reference_service.dart';
+import '../../services/schedule_service.dart';
+import '../../services/user_service.dart';
+import '../../theme.dart';
+
+class DirectorScheduleTab extends ConsumerStatefulWidget {
+  final String userId;
+  const DirectorScheduleTab({super.key, required this.userId});
+
+  @override
+  ConsumerState<DirectorScheduleTab> createState() => _DirectorScheduleTabState();
+}
+
+class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
+  final _courseService = CourseService();
+  final _refService = ReferenceService();
+  final _scheduleService = ScheduleService();
+  final _userService = UserService();
+
+  List<Course> _courses = [];
+  Course? _selected;
+  DateTime _weekStart = _mondayOf(DateTime.now());
+  List<ScheduledLesson> _weekLessons = [];
+  CourseTypeInfo? _typeInfo;
+
+  static DateTime _mondayOf(DateTime d) {
+    final diff = d.weekday - DateTime.monday;
+    return DateTime(d.year, d.month, d.day - diff);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  void _load() {
+    _courses = _courseService.getCoursesForDirector(widget.userId);
+    if (_selected == null && _courses.isNotEmpty) _selected = _courses.first;
+    _refreshWeek();
+  }
+
+  void _refreshWeek() {
+    if (_selected == null) return;
+    setState(() {
+      _weekLessons = _scheduleService.getLessonsForWeek(_selected!.id, _weekStart);
+      _typeInfo = _refService.getCourseType(_selected!.courseTypeId);
+    });
+  }
+
+  Future<void> _reload() async {
+    await ref.read(authProvider).reloadDb();
+    _load();
+  }
+
+  void _prevWeek() {
+    setState(() {
+      _weekStart = _weekStart.subtract(const Duration(days: 7));
+      _refreshWeek();
+    });
+  }
+
+  void _nextWeek() {
+    setState(() {
+      _weekStart = _weekStart.add(const Duration(days: 7));
+      _refreshWeek();
+    });
+  }
+
+  Future<void> _autoGenerate() async {
+    if (_selected == null || _typeInfo == null) return;
+    final start = _selected!.startDate ?? DateTime.now();
+    await _scheduleService.generateSchedule(
+      courseId: _selected!.id,
+      courseTypeId: _selected!.courseTypeId,
+      startDate: start,
+      typeInfo: _typeInfo!,
+    );
+    _reload();
+  }
+
+  Future<void> _addLesson(DateTime date, int slot) async {
+    if (_selected == null || _typeInfo == null) return;
+    final instructors = _userService.getInstructors()
+        .where((u) => _selected!.instructorIds.contains(u.id))
+        .toList();
+
+    int? selectedModule = _typeInfo!.modules.isNotEmpty ? _typeInfo!.modules.first.number : null;
+    String? selectedSubmodule;
+    String type = 'teoria';
+    String? selectedInstructor;
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlg) {
+          final module = selectedModule != null
+              ? _typeInfo!.modules.firstWhere((m) => m.number == selectedModule, orElse: () => _typeInfo!.modules.first)
+              : null;
+          if (selectedSubmodule == null && module != null && module.submodules.isNotEmpty) {
+            selectedSubmodule = module.submodules.first.code;
+          }
+          return AlertDialog(
+            backgroundColor: kCard,
+            title: const Text('Aggiungi lezione', style: TextStyle(color: kText)),
+            content: SizedBox(
+              width: 380,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(DateFormat('EEEE dd/MM/yyyy', 'it').format(date),
+                      style: const TextStyle(color: kTextDim)),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<int>(
+                    value: selectedModule,
+                    dropdownColor: kSurface,
+                    style: const TextStyle(color: kText),
+                    decoration: const InputDecoration(labelText: 'Modulo', isDense: true),
+                    items: _typeInfo!.modules
+                        .map((m) => DropdownMenuItem(
+                              value: m.number,
+                              child: Text('M${m.number} - ${m.name}', overflow: TextOverflow.ellipsis),
+                            ))
+                        .toList(),
+                    onChanged: (v) => setDlg(() {
+                      selectedModule = v;
+                      selectedSubmodule = null;
+                    }),
+                  ),
+                  const SizedBox(height: 12),
+                  if (module != null && module.submodules.isNotEmpty)
+                    DropdownButtonFormField<String>(
+                      value: selectedSubmodule,
+                      dropdownColor: kSurface,
+                      style: const TextStyle(color: kText),
+                      decoration: const InputDecoration(labelText: 'Sottomodulo', isDense: true),
+                      items: module.submodules
+                          .map((s) => DropdownMenuItem(
+                                value: s.code,
+                                child: Text('${s.code} - ${s.name}', overflow: TextOverflow.ellipsis),
+                              ))
+                          .toList(),
+                      onChanged: (v) => setDlg(() => selectedSubmodule = v),
+                    ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    value: type,
+                    dropdownColor: kSurface,
+                    style: const TextStyle(color: kText),
+                    decoration: const InputDecoration(labelText: 'Tipo', isDense: true),
+                    items: const [
+                      DropdownMenuItem(value: 'teoria', child: Text('Teoria')),
+                      DropdownMenuItem(value: 'pratica', child: Text('Pratica')),
+                    ],
+                    onChanged: (v) => setDlg(() => type = v ?? type),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String?>(
+                    value: selectedInstructor,
+                    dropdownColor: kSurface,
+                    style: const TextStyle(color: kText),
+                    decoration: const InputDecoration(labelText: 'Istruttore', isDense: true),
+                    items: [
+                      const DropdownMenuItem(value: null, child: Text('— Da assegnare —')),
+                      ...instructors.map((i) => DropdownMenuItem(value: i.id, child: Text(i.fullName))),
+                    ],
+                    onChanged: (v) => setDlg(() => selectedInstructor = v),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Annulla', style: TextStyle(color: kTextDim)),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  Navigator.pop(ctx);
+                  if (selectedModule == null) return;
+                  final sub = module?.submodules
+                      .firstWhere((s) => s.code == selectedSubmodule, orElse: () => module.submodules.first);
+                  await _scheduleService.addLesson(
+                    courseId: _selected!.id,
+                    moduleNumber: selectedModule!,
+                    submoduleCode: selectedSubmodule ?? '',
+                    topic: sub?.name ?? '',
+                    type: type,
+                    date: date,
+                    timeSlot: slot,
+                    instructorId: selectedInstructor,
+                  );
+                  _reload();
+                },
+                child: const Text('Aggiungi'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _deleteLesson(ScheduledLesson lesson) async {
+    await _scheduleService.deleteLesson(lesson.id);
+    _reload();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_courses.isEmpty) {
+      return const Center(child: Text('Nessun corso assegnato', style: TextStyle(color: kTextDim)));
+    }
+
+    final weekDays = List.generate(5, (i) => _weekStart.add(Duration(days: i)));
+    final allSlots = _typeInfo?.schedule.mondayThursday ?? [];
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
+          child: Row(
+            children: [
+              if (_courses.length > 1)
+                DropdownButton<String>(
+                  value: _selected?.id,
+                  dropdownColor: kSurface,
+                  style: const TextStyle(color: kText),
+                  underline: const SizedBox(),
+                  items: _courses
+                      .map((c) => DropdownMenuItem(value: c.id, child: Text(c.title)))
+                      .toList(),
+                  onChanged: (id) {
+                    setState(() => _selected = _courses.firstWhere((c) => c.id == id));
+                    _refreshWeek();
+                  },
+                )
+              else
+                Text(_selected?.title ?? '', style: Theme.of(context).textTheme.titleLarge),
+              const Spacer(),
+              IconButton(icon: const Icon(Icons.chevron_left), onPressed: _prevWeek, color: kText),
+              Text(
+                '${DateFormat('dd/MM').format(_weekStart)} – ${DateFormat('dd/MM/yyyy').format(_weekStart.add(const Duration(days: 4)))}',
+                style: const TextStyle(color: kText, fontSize: 13),
+              ),
+              IconButton(icon: const Icon(Icons.chevron_right), onPressed: _nextWeek, color: kText),
+              const SizedBox(width: 8),
+              if (_weekLessons.isEmpty && _selected != null)
+                OutlinedButton.icon(
+                  onPressed: _autoGenerate,
+                  icon: const Icon(Icons.auto_fix_high, size: 16),
+                  label: const Text('Genera automaticamente', style: TextStyle(fontSize: 12)),
+                ),
+              IconButton(icon: const Icon(Icons.refresh, color: kTextDim), onPressed: _reload),
+            ],
+          ),
+        ),
+        Expanded(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Table(
+                  border: TableBorder.all(color: kBorder, width: 0.5),
+                  defaultColumnWidth: const FixedColumnWidth(160),
+                  columnWidths: const {0: FixedColumnWidth(80)},
+                  children: [
+                    TableRow(
+                      decoration: const BoxDecoration(color: kSurface),
+                      children: [
+                        _headerCell('Ora'),
+                        ...weekDays.map((d) => _headerCell(
+                          DateFormat('EEE\ndd/MM', 'it').format(d),
+                          highlight: _isToday(d),
+                        )),
+                      ],
+                    ),
+                    ...allSlots.map((slot) {
+                      final slotStr = '${slot.start}–${slot.end}';
+                      return TableRow(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(6),
+                            child: Column(
+                              children: [
+                                Text('${slot.slot}ª', style: const TextStyle(color: kPrimary, fontSize: 11, fontWeight: FontWeight.bold)),
+                                Text(slotStr, style: const TextStyle(color: kTextDim, fontSize: 9)),
+                              ],
+                            ),
+                          ),
+                          ...weekDays.map((day) {
+                            if (day.weekday == DateTime.friday && slot.slot > 3) {
+                              return const TableCell(
+                                child: SizedBox(height: 70, child: Center(
+                                  child: Text('—', style: TextStyle(color: kBorder)),
+                                )),
+                              );
+                            }
+                            final lesson = _weekLessons
+                                .where((l) => _sameDay(l.date, day) && l.timeSlot == slot.slot)
+                                .firstOrNull;
+                            return TableCell(
+                              child: lesson == null
+                                  ? InkWell(
+                                      onTap: () => _addLesson(day, slot.slot),
+                                      child: Container(
+                                        height: 70,
+                                        alignment: Alignment.center,
+                                        child: const Icon(Icons.add, color: kBorder, size: 16),
+                                      ),
+                                    )
+                                  : _lessonCell(lesson),
+                            );
+                          }),
+                        ],
+                      );
+                    }),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _headerCell(String text, {bool highlight = false}) => Container(
+    padding: const EdgeInsets.all(8),
+    alignment: Alignment.center,
+    decoration: BoxDecoration(
+      color: highlight ? kPrimary.withOpacity(0.15) : null,
+    ),
+    child: Text(text,
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          color: highlight ? kPrimary : kText,
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+        )),
+  );
+
+  Widget _lessonCell(ScheduledLesson lesson) {
+    final isTheory = lesson.isTheory;
+    final color = isTheory ? kPrimary : kAccent;
+    return GestureDetector(
+      onSecondaryTap: () => _deleteLesson(lesson),
+      child: Container(
+        height: 70,
+        margin: const EdgeInsets.all(2),
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: color.withOpacity(0.4)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                  child: Text(
+                    isTheory ? 'T' : 'P',
+                    style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  'M${lesson.moduleNumber}',
+                  style: const TextStyle(color: kTextDim, fontSize: 9),
+                ),
+                const Spacer(),
+                if (lesson.confirmed)
+                  const Icon(Icons.check_circle, color: kAccent, size: 10),
+                GestureDetector(
+                  onTap: () => _deleteLesson(lesson),
+                  child: const Icon(Icons.close, color: kError, size: 10),
+                ),
+              ],
+            ),
+            const SizedBox(height: 2),
+            Expanded(
+              child: Text(
+                lesson.topic,
+                style: TextStyle(color: color, fontSize: 10),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  bool _sameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
+  bool _isToday(DateTime d) {
+    final now = DateTime.now();
+    return _sameDay(d, now);
+  }
+}
