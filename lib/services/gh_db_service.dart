@@ -176,6 +176,15 @@ class GhDbService {
   Future<void> saveUpdates(List<Map<String, dynamic>> data) =>
       _writeFile('updates.json', data, 'aggiornamento ore istruttore');
 
+  Future<void> updateUserPassword(String userId, String newHash) async {
+    final all = users;
+    final idx = all.indexWhere((u) => u['id'] == userId);
+    if (idx == -1) throw Exception('Utente non trovato');
+    all[idx] = {...all[idx], 'password_hash': newHash,
+      'updated_at': DateTime.now().toUtc().toIso8601String()};
+    await saveUsers(all);
+  }
+
   Future<void> reloadAll() => init();
 }
 

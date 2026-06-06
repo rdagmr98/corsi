@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../providers/auth_provider.dart';
 import '../../theme.dart';
+import '../../widgets/change_password_dialog.dart';
 import 'attendee_schedule_screen.dart';
 import 'attendee_grades_screen.dart';
 import 'attendee_attendance_screen.dart';
@@ -34,6 +35,14 @@ class _AttendeeShellState extends ConsumerState<AttendeeShell> {
           ],
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.lock_reset, color: kTextDim),
+            tooltip: 'Cambia password',
+            onPressed: () => showDialog(
+              context: context,
+              builder: (_) => const ChangePasswordDialog(),
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.logout, color: kTextDim),
             onPressed: () async {

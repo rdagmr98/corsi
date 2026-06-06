@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../providers/auth_provider.dart';
 import '../../theme.dart';
+import '../../widgets/change_password_dialog.dart';
 import 'courses_tab.dart';
 import 'users_tab.dart';
 import 'currency_tab.dart';
@@ -62,13 +63,26 @@ class _MasterShellState extends ConsumerState<MasterShell> {
             ),
             trailing: Padding(
               padding: const EdgeInsets.only(bottom: 16),
-              child: IconButton(
-                icon: const Icon(Icons.logout, color: kTextDim),
-                tooltip: 'Esci',
-                onPressed: () async {
-                  await ref.read(authProvider).signOut();
-                  if (mounted) context.go('/login');
-                },
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.lock_reset, color: kTextDim),
+                    tooltip: 'Cambia password',
+                    onPressed: () => showDialog(
+                      context: context,
+                      builder: (_) => const ChangePasswordDialog(),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.logout, color: kTextDim),
+                    tooltip: 'Esci',
+                    onPressed: () async {
+                      await ref.read(authProvider).signOut();
+                      if (mounted) context.go('/login');
+                    },
+                  ),
+                ],
               ),
             ),
             destinations: _tabs
