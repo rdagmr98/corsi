@@ -52,26 +52,32 @@ class _CoursesTabState extends ConsumerState<CoursesTab> {
   Future<void> _showCourseDialog({Course? course}) async {
     final courseTypes = _refService.getCourseTypes();
     final users = _userService.getAllUsers();
-    final directors = users.where((u) => u.userRole == UserRole.courseDirector).toList();
+    final existingDirectors = users.where((u) => u.userRole == UserRole.courseDirector).toList();
     final instructors = users.where((u) => u.userRole == UserRole.instructor).toList();
     final attendees = users.where((u) => u.userRole == UserRole.attendee).toList();
+    final isNew = course == null;
 
     String? selectedType = course?.courseTypeId ?? (courseTypes.isNotEmpty ? courseTypes.first.id : null);
-    final titleCtrl = TextEditingController(text: course?.title ?? '');
+    final titleCtrl     = TextEditingController(text: course?.title ?? '');
+    final dirNomeCtrl   = TextEditingController();
+    final dirCognCtrl   = TextEditingController();
+    final dirUserCtrl   = TextEditingController();
+    final dirPwdCtrl    = TextEditingController();
     DateTime? startDate = course?.startDate;
-    Set<String> selectedDirectors = Set.from(course?.directorIds ?? []);
+    Set<String> selectedDirectors  = Set.from(course?.directorIds ?? []);
     Set<String> selectedInstructors = Set.from(course?.instructorIds ?? []);
-    Set<String> selectedAttendees = Set.from(course?.attendeeIds ?? []);
+    Set<String> selectedAttendees  = Set.from(course?.attendeeIds ?? []);
+    String? dirError;
 
     await showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDlg) => AlertDialog(
           backgroundColor: kCard,
-          title: Text(course == null ? 'Nuovo Corso' : 'Modifica Corso',
+          title: Text(isNew ? 'Nuovo Corso' : 'Modifica Corso',
               style: const TextStyle(color: kText)),
           content: SizedBox(
-            width: 600,
+            width: 620,
             child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -93,7 +99,7 @@ class _CoursesTabState extends ConsumerState<CoursesTab> {
                   TextField(
                     controller: titleCtrl,
                     style: const TextStyle(color: kText),
-                    decoration: const InputDecoration(isDense: true, hintText: 'es. B1 MIL 2024-01'),
+                    decoration: const InputDecoration(isDense: true, hintText: 'es. 4° BTC'),
                   ),
                   const SizedBox(height: 12),
                   _label('Data inizio'),
@@ -112,7 +118,7 @@ class _CoursesTabState extends ConsumerState<CoursesTab> {
                             context: ctx,
                             initialDate: startDate ?? DateTime.now(),
                             firstDate: DateTime(2020),
-                            lastDate: DateTime(2030),
+                            lastDate: DateTime(2035),
                           );
                           if (d != null) setDlg(() => startDate = d);
                         },
@@ -120,10 +126,52 @@ class _CoursesTabState extends ConsumerState<CoursesTab> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  _label('Direttori'),
-                  _multiSelect(directors, selectedDirectors, setDlg),
-                  const SizedBox(height: 12),
+                  const Divider(color: kBorder, height: 28),
+                  // ── DIRETTORE ───────────────────────────────────────────
+                  if (isNew) ...[
+                    _label('Direttore del corso — crea account'),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Expanded(child: TextField(
+                          controller: dirCognCtrl,
+                          style: const TextStyle(color: kText),
+                          decoration: const InputDecoration(labelText: 'Cognome', isDense: true),
+                        )),
+                        const SizedBox(width: 8),
+                        Expanded(child: TextField(
+                          controller: dirNomeCtrl,
+                          style: const TextStyle(color: kText),
+                          decoration: const InputDecoration(labelText: 'Nome', isDense: true),
+                        )),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(child: TextField(
+                          controller: dirUserCtrl,
+                          style: const TextStyle(color: kText),
+                          decoration: const InputDecoration(labelText: 'Username', isDense: true),
+                        )),
+                        const SizedBox(width: 8),
+                        Expanded(child: TextField(
+                          controller: dirPwdCtrl,
+                          obscureText: true,
+                          style: const TextStyle(color: kText),
+                          decoration: const InputDecoration(labelText: 'Password iniziale', isDense: true),
+                        )),
+                      ],
+                    ),
+                    if (dirError != null) ...[
+                      const SizedBox(height: 6),
+                      Text(dirError!, style: const TextStyle(color: kError, fontSize: 11)),
+                    ],
+                  ] else ...[
+                    _label('Direttori'),
+                    _multiSelect(existingDirectors, selectedDirectors, setDlg),
+                  ],
+                  const Divider(color: kBorder, height: 28),
                   _label('Istruttori'),
                   _multiSelect(instructors, selectedInstructors, setDlg),
                   const SizedBox(height: 12),
@@ -140,22 +188,42 @@ class _CoursesTabState extends ConsumerState<CoursesTab> {
             ),
             ElevatedButton(
               onPressed: () async {
-                Navigator.pop(ctx);
                 final title = titleCtrl.text.trim();
                 if (title.isEmpty || selectedType == null) return;
                 final masterId = ref.read(authProvider).currentUser?.id ?? '';
-                if (course == null) {
+
+                if (isNew) {
+                  // Valida e crea direttore
+                  final dUser = dirUserCtrl.text.trim();
+                  final dPwd  = dirPwdCtrl.text.trim();
+                  final dNome = dirNomeCtrl.text.trim();
+                  final dCogn = dirCognCtrl.text.trim();
+                  if (dUser.isEmpty || dPwd.isEmpty || dNome.isEmpty || dCogn.isEmpty) {
+                    setDlg(() => dirError = 'Completa tutti i campi del direttore.');
+                    return;
+                  }
+                  if (_userService.usernameExists(dUser)) {
+                    setDlg(() => dirError = 'Username "$dUser" già in uso.');
+                    return;
+                  }
+                  Navigator.pop(ctx);
+                  final dirUser = await _userService.createUser(
+                    nome: dNome, cognome: dCogn,
+                    username: dUser, password: dPwd,
+                    role: UserRole.courseDirector,
+                  );
                   await _courseService.createCourse(
                     courseTypeId: selectedType!,
                     title: title,
                     createdBy: masterId,
                     startDate: startDate,
-                    directorIds: selectedDirectors.toList(),
+                    directorIds: [dirUser.id],
                     instructorIds: selectedInstructors.toList(),
                     attendeeIds: selectedAttendees.toList(),
                   );
                 } else {
-                  await _courseService.updateCourse(course.copyWith(
+                  Navigator.pop(ctx);
+                  await _courseService.updateCourse(course!.copyWith(
                     courseTypeId: selectedType,
                     title: title,
                     startDate: startDate,
