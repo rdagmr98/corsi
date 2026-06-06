@@ -82,11 +82,10 @@ class GradeService {
           .toList()
         ..sort((a, b) => a.date.compareTo(b.date));
 
-  double getTeachingHoursThisYear(String instructorId) {
-    final now = DateTime.now();
-    final yearStart = DateTime(now.year, 1, 1);
+  double getTeachingHoursRollingYear(String instructorId) {
+    final cutoff = DateTime.now().subtract(const Duration(days: 365));
     return getUpdatesForInstructor(instructorId)
-        .where((u) => u.isTeaching && !u.date.isBefore(yearStart))
+        .where((u) => u.isTeaching && u.date.isAfter(cutoff))
         .fold(0.0, (s, u) => s + u.hours);
   }
 

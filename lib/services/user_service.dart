@@ -103,4 +103,16 @@ class UserService {
     };
     await _db.saveUsers(users);
   }
+
+  Future<void> setGoOverride(String userId, bool value) async {
+    final users = _db.users.toList();
+    final idx = users.indexWhere((u) => u['id'] == userId);
+    if (idx < 0) return;
+    users[idx] = {
+      ...users[idx],
+      'go_override': value,
+      'updated_at': DateTime.now().toIso8601String(),
+    };
+    await _db.saveUsers(users);
+  }
 }

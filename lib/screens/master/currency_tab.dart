@@ -39,21 +39,15 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
   }
 
   // ── AMC helpers ───────────────────────────────────────────────────────────
-  Map<String, dynamic> _amcFor(String uid) {
-    final ia = _db.amcData['instructorAmc'] as Map<String, dynamic>? ?? {};
-    return Map<String, dynamic>.from(ia[uid] as Map<String, dynamic>? ?? {});
-  }
+  List<String> _theoryMods(String uid) => List<String>.from(
+      (_db.amcData['instructorAmc'] as Map? ?? {})[uid]
+          ?['theory_submodules'] as List? ?? []);
 
-  List<String> _quals(String uid) =>
-      List<String>.from(_amcFor(uid)['qualifications'] as List? ?? []);
+  List<String> _practiceMods(String uid) => List<String>.from(
+      (_db.amcData['instructorAmc'] as Map? ?? {})[uid]
+          ?['practice_submodules'] as List? ?? []);
 
-  List<String> _theoryMods(String uid) =>
-      List<String>.from(_amcFor(uid)['theory_submodules'] as List? ?? []);
-
-  List<String> _practiceMods(String uid) =>
-      List<String>.from(_amcFor(uid)['practice_submodules'] as List? ?? []);
-
-  // ── Ore insegnamento per anno ─────────────────────────────────────────────
+  // ── Ore insegnamento per anno (rolling) ───────────────────────────────────
   List<Map<String, dynamic>> _teachingByYear(String uid) {
     final byYear = <int, double>{};
     for (final u in _db.updates
@@ -79,7 +73,7 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDlg) => AlertDialog(
           backgroundColor: kCard,
-          title: Text('Aggiorna ore – ${instr.fullName}',
+          title: Text('Aggiorna ore – ${instr.cognome}',
               style: const TextStyle(color: kText)),
           content: SizedBox(
             width: 380,
@@ -155,11 +149,44 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
     );
   }
 
+  // ── GO override dialog ────────────────────────────────────────────────────
+  Future<void> _toggleGoOverride(AppUser instr) async {
+    final newVal = !instr.goOverride;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: kCard,
+        title: Text(newVal ? 'Imposta GO manuale' : 'Rimuovi GO manuale',
+            style: const TextStyle(color: kText)),
+        content: Text(
+          newVal
+              ? '${instr.cognome} sarà marcato GO indipendentemente dalle ore di lezione (OJT / ripristino currency).\n\nConfirmi?'
+              : 'Rimuovere il GO manuale per ${instr.cognome}? La valutazione tornerà automatica.',
+          style: const TextStyle(color: kTextDim),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annulla', style: TextStyle(color: kTextDim)),
+          ),
+          ElevatedButton(
+            style: newVal ? null : ElevatedButton.styleFrom(backgroundColor: kError),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(newVal ? 'Imposta GO' : 'Rimuovi'),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true) {
+      await _userService.setGoOverride(instr.id, newVal);
+      _reload();
+    }
+  }
+
   // ── Detail dialog ─────────────────────────────────────────────────────────
   void _showDetail(AppUser instr) {
-    final teachH   = _gradeService.getTeachingHoursThisYear(instr.id);
+    final teachH   = _gradeService.getTeachingHoursRollingYear(instr.id);
     final profH    = _gradeService.getProfessionalUpdateHoursLast2Years(instr.id);
-    final quals    = _quals(instr.id);
     final theoryM  = _theoryMods(instr.id);
     final practM   = _practiceMods(instr.id);
     final byYear   = _teachingByYear(instr.id);
@@ -167,143 +194,175 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
         .where((u) => u.isProfessional)
         .toList()
       ..sort((a, b) => b.date.compareTo(a.date));
-    final goTeach  = teachH >= 6;
+    final goTeach  = instr.goOverride || teachH >= 6;
     final goProf   = profH >= 35;
     final go       = goTeach && goProf;
 
     showDialog(
       context: context,
-      builder: (_) => Dialog(
-        backgroundColor: kCard,
-        insetPadding: const EdgeInsets.all(24),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 760, maxHeight: 720),
-          child: Column(children: [
-            // Header
-            Container(
-              color: kSurface,
-              padding: const EdgeInsets.fromLTRB(20, 16, 12, 16),
-              child: Row(children: [
-                Expanded(child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(instr.fullName,
-                        style: const TextStyle(color: kText, fontSize: 18,
-                            fontWeight: FontWeight.bold)),
-                    if (quals.isNotEmpty)
-                      Text(quals.join(' · '),
-                          style: const TextStyle(color: kPrimary, fontSize: 12)),
-                  ],
-                )),
-                _goBadge(go),
-                const SizedBox(width: 8),
-                IconButton(
-                  icon: const Icon(Icons.add_circle_outline, color: kPrimary),
-                  tooltip: 'Aggiungi ore',
-                  onPressed: () {
-                    Navigator.pop(context);
-                    _addUpdate(instr);
-                  },
-                ),
-                IconButton(
-                  icon: const Icon(Icons.close, color: kTextDim),
-                  onPressed: () => Navigator.pop(context),
-                ),
-              ]),
-            ),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // ── Currency ────────────────────────────────────────────
-                    _sectionTitle('Idoneità (Currency)'),
-                    const SizedBox(height: 8),
-                    Row(children: [
-                      Expanded(child: _currencyCard(
-                        'Ore lezione anno ${DateTime.now().year}',
-                        teachH, 6, goTeach,
-                      )),
-                      const SizedBox(width: 12),
-                      Expanded(child: _currencyCard(
-                        'Ore aggiornamento (2 anni)',
-                        profH, 35, goProf,
-                      )),
-                    ]),
-                    const SizedBox(height: 20),
+      builder: (_) => StatefulBuilder(
+        builder: (ctx, setDlg) => Dialog(
+          backgroundColor: kCard,
+          insetPadding: const EdgeInsets.all(24),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 760, maxHeight: 720),
+            child: Column(children: [
+              // Header
+              Container(
+                color: kSurface,
+                padding: const EdgeInsets.fromLTRB(20, 16, 12, 16),
+                child: Row(children: [
+                  Expanded(child: Text(instr.fullName,
+                      style: const TextStyle(color: kText, fontSize: 18,
+                          fontWeight: FontWeight.bold))),
+                  if (instr.goOverride)
+                    Container(
+                      margin: const EdgeInsets.only(right: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: kWarning.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: kWarning),
+                      ),
+                      child: const Text('OJT', style: TextStyle(color: kWarning,
+                          fontSize: 10, fontWeight: FontWeight.bold)),
+                    ),
+                  _goBadge(go),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    icon: const Icon(Icons.add_circle_outline, color: kPrimary),
+                    tooltip: 'Aggiungi ore',
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _addUpdate(instr);
+                    },
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: kTextDim),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ]),
+              ),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // ── Currency ─────────────────────────────────────────
+                      _sectionTitle('Idoneità (Currency)'),
+                      const SizedBox(height: 8),
+                      Row(children: [
+                        Expanded(child: _currencyCard(
+                          'Ore lezione (ultimi 365 giorni)',
+                          teachH, 6, goTeach,
+                          override: instr.goOverride,
+                        )),
+                        const SizedBox(width: 12),
+                        Expanded(child: _currencyCard(
+                          'Ore aggiornamento professionale (2 anni)',
+                          profH, 35, goProf,
+                        )),
+                      ]),
+                      const SizedBox(height: 8),
+                      // Override toggle
+                      OutlinedButton.icon(
+                        onPressed: () async {
+                          Navigator.pop(context);
+                          await _toggleGoOverride(instr);
+                        },
+                        icon: Icon(
+                          instr.goOverride ? Icons.lock_open : Icons.how_to_reg,
+                          size: 16,
+                          color: instr.goOverride ? kError : kWarning,
+                        ),
+                        label: Text(
+                          instr.goOverride
+                              ? 'Rimuovi GO manuale (OJT)'
+                              : 'Imposta GO manuale per OJT / ripristino',
+                          style: TextStyle(
+                              color: instr.goOverride ? kError : kWarning,
+                              fontSize: 12),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          side: BorderSide(
+                              color: instr.goOverride ? kError : kWarning),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 6),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
 
-                    // ── Ore insegnamento per anno ────────────────────────────
-                    _sectionTitle('Ore insegnamento per anno'),
-                    const SizedBox(height: 8),
-                    if (byYear.isEmpty)
-                      const Text('Nessun dato',
-                          style: TextStyle(color: kTextDim, fontSize: 12))
-                    else
-                      ...byYear.map((e) => Padding(
-                        padding: const EdgeInsets.only(bottom: 6),
-                        child: Row(children: [
-                          SizedBox(
-                            width: 40,
-                            child: Text('${e['year']}',
-                                style: const TextStyle(color: kTextDim,
-                                    fontSize: 12, fontWeight: FontWeight.bold)),
-                          ),
-                          Expanded(child: LinearProgressIndicator(
-                            value: ((e['hours'] as double) / 200).clamp(0.0, 1.0),
-                            color: kPrimary,
-                            backgroundColor: kSurface,
-                            minHeight: 6,
-                            borderRadius: BorderRadius.circular(3),
-                          )),
-                          const SizedBox(width: 8),
-                          Text('${(e['hours'] as double).toStringAsFixed(0)}h',
-                              style: const TextStyle(color: kText, fontSize: 12)),
-                        ]),
-                      )),
-                    const SizedBox(height: 20),
-
-                    // ── Aggiornamenti professionali ──────────────────────────
-                    _sectionTitle(
-                        'Aggiornamenti professionali (ultimi 2 anni: ${profH.toStringAsFixed(0)}h / 35h)'),
-                    const SizedBox(height: 8),
-                    if (profList.isEmpty)
-                      const Text('Nessun aggiornamento registrato',
-                          style: TextStyle(color: kTextDim, fontSize: 12))
-                    else
-                      ...profList.map((u) => Padding(
-                        padding: const EdgeInsets.only(bottom: 4),
-                        child: Row(children: [
-                          SizedBox(
-                            width: 72,
-                            child: Text(
-                              DateFormat('MM/yyyy').format(u.date),
-                              style: const TextStyle(color: kTextDim, fontSize: 11),
+                      // ── Ore insegnamento per anno ────────────────────────
+                      _sectionTitle('Storico ore insegnamento per anno'),
+                      const SizedBox(height: 8),
+                      if (byYear.isEmpty)
+                        const Text('Nessun dato',
+                            style: TextStyle(color: kTextDim, fontSize: 12))
+                      else
+                        ...byYear.map((e) => Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: Row(children: [
+                            SizedBox(
+                              width: 44,
+                              child: Text('${e['year']}',
+                                  style: const TextStyle(color: kTextDim,
+                                      fontSize: 12, fontWeight: FontWeight.bold)),
                             ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: kAccent.withOpacity(0.15),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text('${u.hours.toStringAsFixed(0)}h',
-                                style: const TextStyle(color: kAccent,
-                                    fontSize: 11, fontWeight: FontWeight.bold)),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(child: Text(u.description,
-                              style: const TextStyle(color: kTextDim, fontSize: 11),
-                              overflow: TextOverflow.ellipsis)),
-                        ]),
-                      )),
-                    const SizedBox(height: 20),
+                            Expanded(child: LinearProgressIndicator(
+                              value: ((e['hours'] as double) / 100).clamp(0.0, 1.0),
+                              color: kPrimary,
+                              backgroundColor: kSurface,
+                              minHeight: 6,
+                              borderRadius: BorderRadius.circular(3),
+                            )),
+                            const SizedBox(width: 8),
+                            Text('${(e['hours'] as double).toStringAsFixed(0)}h',
+                                style: const TextStyle(color: kText, fontSize: 12)),
+                          ]),
+                        )),
+                      const SizedBox(height: 20),
 
-                    // ── Sottomoduli abilitati ──────────────────────────────────
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
+                      // ── Aggiornamenti professionali ──────────────────────
+                      _sectionTitle(
+                          'Aggiornamenti professionali (ultimi 2 anni: '
+                          '${profH.toStringAsFixed(0)}h / 35h)'),
+                      const SizedBox(height: 8),
+                      if (profList.isEmpty)
+                        const Text('Nessun aggiornamento registrato',
+                            style: TextStyle(color: kTextDim, fontSize: 12))
+                      else
+                        ...profList.map((u) => Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: Row(children: [
+                            SizedBox(
+                              width: 72,
+                              child: Text(
+                                DateFormat('MM/yyyy').format(u.date),
+                                style: const TextStyle(color: kTextDim, fontSize: 11),
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: kAccent.withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text('${u.hours.toStringAsFixed(0)}h',
+                                  style: const TextStyle(color: kAccent,
+                                      fontSize: 11, fontWeight: FontWeight.bold)),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(child: Text(u.description,
+                                style: const TextStyle(color: kTextDim, fontSize: 11),
+                                overflow: TextOverflow.ellipsis)),
+                          ]),
+                        )),
+                      const SizedBox(height: 20),
+
+                      // ── Sottomoduli abilitati ────────────────────────────
+                      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Expanded(child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -337,13 +396,13 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
                                   ),
                           ],
                         )),
-                      ],
-                    ),
-                  ],
+                      ]),
+                    ],
+                  ),
                 ),
               ),
-            ),
-          ]),
+            ]),
+          ),
         ),
       ),
     );
@@ -364,31 +423,38 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
             fontSize: 12)),
   );
 
-  Widget _currencyCard(String label, double val, double req, bool ok) =>
+  Widget _currencyCard(String label, double val, double req, bool ok,
+      {bool override = false}) =>
       Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: kSurface,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-              color: ok ? kAccent.withOpacity(0.3) : kError.withOpacity(0.3)),
+              color: ok
+                  ? (override ? kWarning.withOpacity(0.4) : kAccent.withOpacity(0.3))
+                  : kError.withOpacity(0.3)),
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(label, style: const TextStyle(color: kTextDim, fontSize: 11)),
           const SizedBox(height: 6),
           Row(children: [
-            Text(val.toStringAsFixed(0),
-                style: TextStyle(
-                    color: ok ? kAccent : kError,
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold)),
-            Text(' / ${req.toStringAsFixed(0)}h',
+            if (override)
+              const Text('OJT', style: TextStyle(color: kWarning,
+                  fontSize: 22, fontWeight: FontWeight.bold))
+            else
+              Text(val.toStringAsFixed(0),
+                  style: TextStyle(
+                      color: ok ? kAccent : kError,
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold)),
+            Text(override ? '' : ' / ${req.toStringAsFixed(0)}h',
                 style: const TextStyle(color: kTextDim, fontSize: 13)),
           ]),
           const SizedBox(height: 6),
           LinearProgressIndicator(
-            value: (val / req).clamp(0.0, 1.0),
-            color: ok ? kAccent : kError,
+            value: override ? 1.0 : (val / req).clamp(0.0, 1.0),
+            color: override ? kWarning : (ok ? kAccent : kError),
             backgroundColor: kBg,
             minHeight: 5,
             borderRadius: BorderRadius.circular(3),
@@ -427,7 +493,7 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
       Padding(
         padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
         child: const Text(
-          'GO se: ≥6h insegnamento nell\'anno corrente E ≥35h aggiornamento professionale negli ultimi 2 anni',
+          'GO se: ≥6h insegnamento (ultimi 365 giorni) E ≥35h aggiornamento professionale (ultimi 2 anni)',
           style: TextStyle(color: kTextDim, fontSize: 11),
         ),
       ),
@@ -437,12 +503,11 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
           itemCount: _instructors.length,
           itemBuilder: (_, i) {
             final instr  = _instructors[i];
-            final teachH = _gradeService.getTeachingHoursThisYear(instr.id);
+            final teachH = _gradeService.getTeachingHoursRollingYear(instr.id);
             final profH  = _gradeService.getProfessionalUpdateHoursLast2Years(instr.id);
-            final quals  = _quals(instr.id);
             final tMods  = _theoryMods(instr.id);
             final pMods  = _practiceMods(instr.id);
-            final goT    = teachH >= 6;
+            final goT    = instr.goOverride || teachH >= 6;
             final goP    = profH >= 35;
             final go     = goT && goP;
 
@@ -460,46 +525,34 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
                 borderRadius: BorderRadius.circular(8),
                 onTap: () => _showDetail(instr),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                   child: Row(children: [
                     _goBadge(go),
                     const SizedBox(width: 14),
-                    // Nome e qualifiche
+                    // Nome
                     SizedBox(
                       width: 200,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(instr.fullName,
-                              style: const TextStyle(
-                                  color: kText,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600)),
-                          if (quals.isNotEmpty)
-                            Text(quals.join(' · '),
-                                style: const TextStyle(
-                                    color: kPrimary, fontSize: 10),
-                                overflow: TextOverflow.ellipsis),
+                              style: const TextStyle(color: kText,
+                                  fontSize: 13, fontWeight: FontWeight.w600)),
+                          if (instr.goOverride)
+                            const Text('GO manuale (OJT)',
+                                style: TextStyle(color: kWarning, fontSize: 10)),
                         ],
                       ),
                     ),
                     const SizedBox(width: 12),
-                    // Ore lezione
-                    _miniStat(
-                      'Lez. ${DateTime.now().year}',
-                      '${teachH.toStringAsFixed(0)}h / 6h',
-                      goT,
-                    ),
+                    _miniStat('Lez. 365gg',
+                        instr.goOverride ? 'OJT' : '${teachH.toStringAsFixed(0)}h / 6h',
+                        goT),
                     const SizedBox(width: 16),
-                    // Ore aggiornamento
-                    _miniStat(
-                      'Aggiorn. 2 anni',
-                      '${profH.toStringAsFixed(0)}h / 35h',
-                      goP,
-                    ),
+                    _miniStat('Aggiorn. 2 anni',
+                        '${profH.toStringAsFixed(0)}h / 35h',
+                        goP),
                     const SizedBox(width: 12),
-                    // Abilitazioni
                     Expanded(
                       child: Row(children: [
                         _chip('T: ${tMods.length}', kPrimary),
@@ -513,8 +566,7 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
                       tooltip: 'Aggiungi ore',
                       onPressed: () => _addUpdate(instr),
                     ),
-                    const Icon(Icons.chevron_right,
-                        color: kTextDim, size: 18),
+                    const Icon(Icons.chevron_right, color: kTextDim, size: 18),
                   ]),
                 ),
               ),
@@ -528,8 +580,7 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
   Widget _miniStat(String label, String val, bool ok) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      Text(label,
-          style: const TextStyle(color: kTextDim, fontSize: 10)),
+      Text(label, style: const TextStyle(color: kTextDim, fontSize: 10)),
       Text(val,
           style: TextStyle(
               color: ok ? kAccent : kError,

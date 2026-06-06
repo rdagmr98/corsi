@@ -34,6 +34,7 @@ class AppUser {
   final String? username;
   final String role;
   final bool isActive;
+  final bool goOverride;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -45,6 +46,7 @@ class AppUser {
     this.username,
     required this.role,
     this.isActive = true,
+    this.goOverride = false,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -62,6 +64,7 @@ class AppUser {
     username: j['username'] as String?,
     role: j['role'] as String? ?? 'attendee',
     isActive: j['is_active'] as bool? ?? true,
+    goOverride: j['go_override'] as bool? ?? false,
     createdAt: DateTime.parse(
       j['created_at'] as String? ?? DateTime.now().toIso8601String(),
     ),
@@ -78,6 +81,7 @@ class AppUser {
     'username': username,
     'role': role,
     'is_active': isActive,
+    'go_override': goOverride,
     'created_at': createdAt.toIso8601String(),
     'updated_at': updatedAt.toIso8601String(),
   };
@@ -91,6 +95,7 @@ class AppUser {
     Object? username = _s,
     String? role,
     bool? isActive,
+    bool? goOverride,
   }) => AppUser(
     id: id,
     nome: nome ?? this.nome,
@@ -99,6 +104,7 @@ class AppUser {
     username: identical(username, _s) ? this.username : username as String?,
     role: role ?? this.role,
     isActive: isActive ?? this.isActive,
+    goOverride: goOverride ?? this.goOverride,
     createdAt: createdAt,
     updatedAt: DateTime.now(),
   );

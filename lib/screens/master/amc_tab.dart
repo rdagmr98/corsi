@@ -4,7 +4,6 @@ import '../../models/user_models.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/course_service.dart';
 import '../../services/gh_db_service.dart';
-import '../../services/reference_service.dart';
 import '../../services/user_service.dart';
 import '../../theme.dart';
 
@@ -16,7 +15,6 @@ class AmcTab extends ConsumerStatefulWidget {
 
 class _AmcTabState extends ConsumerState<AmcTab>
     with SingleTickerProviderStateMixin {
-  final _refService    = ReferenceService();
   final _userService   = UserService();
   final _courseService = CourseService();
   final _db            = GhDbService();
@@ -29,8 +27,8 @@ class _AmcTabState extends ConsumerState<AmcTab>
   @override
   void initState() {
     super.initState();
-    _searchCtrl.addListener(() => setState(() => _search = _searchCtrl.text.trim().toLowerCase()));
-    // seleziona il primo corso attivo
+    _searchCtrl.addListener(
+        () => setState(() => _search = _searchCtrl.text.trim().toLowerCase()));
     final active = _courseService.getAllCourses().where((c) => c.isActive).toList();
     if (active.isNotEmpty) _selectedCourseId = active.first.id;
   }
@@ -47,31 +45,19 @@ class _AmcTabState extends ConsumerState<AmcTab>
     setState(() {});
   }
 
-  // ── Dati da amc.json ───────────────────────────────────────────────────────
+  // ── Dati AMC ──────────────────────────────────────────────────────────────
   Map<String, List<String>> _grid(bool theory) {
     final key = theory ? 'theoryGrid' : 'practiceGrid';
     final raw = _db.amcData[key] as Map<String, dynamic>? ?? {};
     return raw.map((k, v) => MapEntry(k, List<String>.from(v as List)));
   }
 
-  Map<String, AppUser> _uidToUser() {
-    return {for (final u in _userService.getInstructors()) u.id: u};
-  }
+  Map<String, String> _submoduleNames() =>
+      Map<String, String>.from(_db.amcData['submoduleNames'] as Map? ?? {});
 
-  // ── Mappa codice sottomodulo → nome da reference.json ─────────────────────
-  Map<String, String> _submoduleNames() {
-    final map = <String, String>{};
-    for (final ct in _refService.getCourseTypes()) {
-      for (final m in ct.modules) {
-        for (final s in m.submodules) {
-          map[s.code] = s.name;
-        }
-      }
-    }
-    return map;
-  }
+  Map<String, AppUser> _uidToUser() =>
+      {for (final u in _userService.getInstructors()) u.id: u};
 
-  // ── Set di UID istruttori nel corso selezionato ───────────────────────────
   Set<String> _courseInstructors() {
     if (_selectedCourseId == null) return {};
     final c = _courseService.getAllCourses()
@@ -80,36 +66,44 @@ class _AmcTabState extends ConsumerState<AmcTab>
     return c?.instructorIds.toSet() ?? {};
   }
 
-  // ── Ordina codici sottomodulo numericamente ────────────────────────────────
+  // ── Sorting numerico corretto: 1.1 < 1.2 < ... < 3.1 < 3.11 < 11A.1 < 11B.1 < 12.1 ──
+  int _compareCode(String a, String b) {
+    final pa = _parseCode(a);
+    final pb = _parseCode(b);
+    if (pa[0] != pb[0]) return (pa[0] as int).compareTo(pb[0] as int);
+    final la = pa[1] as String, lb = pb[1] as String;
+    if (la != lb) return la.compareTo(lb);
+    return (pa[2] as int).compareTo(pb[2] as int);
+  }
+
+  List _parseCode(String code) {
+    final parts = code.split('.');
+    final m = RegExp(r'^(\d+)([A-Za-z]?)$').firstMatch(parts[0]);
+    return [
+      m != null ? (int.tryParse(m.group(1)!) ?? 0) : 0,
+      m?.group(2)?.toUpperCase() ?? '',
+      parts.length > 1 ? (int.tryParse(parts[1]) ?? 0) : 0,
+    ];
+  }
+
   List<String> _sortedCodes(Map<String, List<String>> grid) {
-    final keys = grid.keys.toList();
-    keys.sort((a, b) {
-      final pa = a.split('.').map(int.tryParse).toList();
-      final pb = b.split('.').map(int.tryParse).toList();
-      for (var i = 0; i < pa.length && i < pb.length; i++) {
-        final ca = pa[i] ?? 0, cb = pb[i] ?? 0;
-        if (ca != cb) return ca.compareTo(cb);
-      }
-      return pa.length.compareTo(pb.length);
-    });
-    return keys;
+    return grid.keys.toList()..sort(_compareCode);
   }
 
   @override
   Widget build(BuildContext context) {
-    final allCourses  = _courseService.getAllCourses();
-    final uidToUser   = _uidToUser();
-    final subNames    = _submoduleNames();
-    final courseUids  = _courseInstructors();
+    final allCourses = _courseService.getAllCourses();
+    final uidToUser  = _uidToUser();
+    final subNames   = _submoduleNames();
+    final courseUids = _courseInstructors();
 
     return Column(children: [
-      // ── Toolbar ─────────────────────────────────────────────────────────
+      // ── Toolbar ──────────────────────────────────────────────────────────
       Padding(
         padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
         child: Row(children: [
           Text('Tabella AMC', style: Theme.of(context).textTheme.titleLarge),
           const Spacer(),
-          // Filtro corso
           DropdownButton<String?>(
             value: _selectedCourseId,
             dropdownColor: kSurface,
@@ -141,15 +135,12 @@ class _AmcTabState extends ConsumerState<AmcTab>
       Padding(
         padding: const EdgeInsets.fromLTRB(24, 6, 24, 0),
         child: Row(children: [
-          _legendDot(kPrimary), const SizedBox(width: 4),
-          const Text('Abilitato AMC', style: TextStyle(color: kTextDim, fontSize: 11)),
-          const SizedBox(width: 16),
-          _legendDot(kAccent), const SizedBox(width: 4),
-          const Text('Abilitato AMC + nel corso selezionato',
+          _dot(kAccent), const SizedBox(width: 4),
+          const Text('Nel corso selezionato + abilitato AMC',
               style: TextStyle(color: kTextDim, fontSize: 11)),
           const SizedBox(width: 16),
-          _legendDot(kBorder), const SizedBox(width: 4),
-          const Text('Nel corso ma non abilitato AMC (da verificare)',
+          _dot(kPrimary), const SizedBox(width: 4),
+          const Text('Solo abilitato AMC',
               style: TextStyle(color: kTextDim, fontSize: 11)),
         ]),
       ),
@@ -167,14 +158,16 @@ class _AmcTabState extends ConsumerState<AmcTab>
             suffixIcon: _search.isNotEmpty
                 ? IconButton(
                     icon: const Icon(Icons.clear, size: 16, color: kTextDim),
-                    onPressed: () { _searchCtrl.clear(); setState(() => _search = ''); },
+                    onPressed: () {
+                      _searchCtrl.clear();
+                      setState(() => _search = '');
+                    },
                   )
                 : null,
           ),
         ),
       ),
       const SizedBox(height: 8),
-      // Tabs
       TabBar(
         controller: _tabs,
         labelColor: kPrimary,
@@ -205,10 +198,9 @@ class _AmcTabState extends ConsumerState<AmcTab>
     required Map<String, String> subNames,
     required Set<String> courseUids,
   }) {
-    final grid   = _grid(theory);
-    var   codes  = _sortedCodes(grid);
+    final grid = _grid(theory);
+    var codes = _sortedCodes(grid);
 
-    // Applica filtro ricerca
     if (_search.isNotEmpty) {
       codes = codes.where((c) {
         final name = subNames[c]?.toLowerCase() ?? '';
@@ -216,106 +208,114 @@ class _AmcTabState extends ConsumerState<AmcTab>
       }).toList();
     }
 
-    // Se è selezionato un corso, filtra solo i sottomoduli dove almeno un
-    // istruttore del corso è abilitato (o tutti se nessun corso selezionato)
-    final filteredCodes = _selectedCourseId != null
-        ? codes.where((c) =>
-            grid[c]!.any((uid) => courseUids.contains(uid))).toList()
-        : codes;
-
-    if (filteredCodes.isEmpty) {
+    if (codes.isEmpty) {
       return Center(
         child: Text(
           _search.isNotEmpty
-              ? 'Nessun sottomodulo trovato per "$_search"'
+              ? 'Nessun sottomodulo per "$_search"'
               : 'Nessun dato AMC',
           style: const TextStyle(color: kTextDim),
         ),
       );
     }
 
+    // Raggruppa per modulo (es. "3" = modulo 3, "11A" = 11A)
+    String _moduleKey(String code) {
+      final m = RegExp(r'^(\d+[A-Za-z]?)').firstMatch(code);
+      return m?.group(1) ?? code;
+    }
+
+    String? currentModule;
+
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-      itemCount: filteredCodes.length,
+      itemCount: codes.length,
       itemBuilder: (_, i) {
-        final code    = filteredCodes[i];
+        final code    = codes[i];
         final uids    = grid[code] ?? [];
         final subName = subNames[code] ?? '';
+        final modKey  = _moduleKey(code);
 
-        // Istruttori abilitati AMC nel corso selezionato
-        final inCourse = uids.where((uid) => courseUids.contains(uid)).toList();
-        // Istruttori abilitati AMC ma non nel corso
+        final showHeader = modKey != currentModule;
+        if (showHeader) currentModule = modKey;
+
+        final inCourse    = uids.where((uid) => courseUids.contains(uid)).toList();
         final notInCourse = _selectedCourseId != null
             ? uids.where((uid) => !courseUids.contains(uid)).toList()
             : uids;
 
-        return Container(
-          margin: const EdgeInsets.only(bottom: 4),
-          decoration: BoxDecoration(
-            color: kCard,
-            borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: kBorder),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              // Codice
-              SizedBox(
-                width: 52,
-                child: Text(code,
-                    style: const TextStyle(
-                        color: kText,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold)),
-              ),
-              // Nome sottomodulo
-              SizedBox(
-                width: 280,
-                child: Text(subName,
-                    style: const TextStyle(color: kTextDim, fontSize: 11)),
-              ),
-              const SizedBox(width: 8),
-              // Istruttori
-              Expanded(
-                child: Wrap(
-                  spacing: 4, runSpacing: 4,
-                  children: [
-                    // Nel corso + abilitati AMC → verde
-                    ...inCourse.map((uid) {
-                      final u = uidToUser[uid];
-                      return _instrChip(
-                          u?.cognome ?? uid, kAccent, filled: true);
-                    }),
-                    // Solo abilitati AMC → blu
-                    ...notInCourse.map((uid) {
-                      final u = uidToUser[uid];
-                      return _instrChip(u?.cognome ?? uid, kPrimary);
-                    }),
-                  ],
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (showHeader)
+              Padding(
+                padding: const EdgeInsets.only(top: 12, bottom: 4),
+                child: Text(
+                  'Modulo $modKey',
+                  style: const TextStyle(color: kTextDim, fontSize: 11,
+                      fontWeight: FontWeight.bold, letterSpacing: 0.5),
                 ),
               ),
-              // Totale abilitati
-              Container(
-                margin: const EdgeInsets.only(left: 8),
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: kSurface,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text('${uids.length}',
-                    style: const TextStyle(
-                        color: kTextDim,
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold)),
+            Container(
+              margin: const EdgeInsets.only(bottom: 3),
+              decoration: BoxDecoration(
+                color: kCard,
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: kBorder),
               ),
-            ]),
-          ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                  // Codice
+                  SizedBox(
+                    width: 54,
+                    child: Text(code,
+                        style: const TextStyle(color: kText, fontSize: 12,
+                            fontWeight: FontWeight.bold)),
+                  ),
+                  // Nome sottomodulo
+                  SizedBox(
+                    width: 260,
+                    child: Text(
+                      subName.isNotEmpty ? subName : '—',
+                      style: TextStyle(
+                          color: subName.isNotEmpty ? kTextDim : kBorder,
+                          fontSize: 11),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // Istruttori
+                  Expanded(
+                    child: Wrap(
+                      spacing: 4, runSpacing: 4,
+                      children: [
+                        ...inCourse.map((uid) => _chip(
+                            uidToUser[uid]?.cognome ?? uid, kAccent,
+                            filled: true)),
+                        ...notInCourse.map((uid) => _chip(
+                            uidToUser[uid]?.cognome ?? uid, kPrimary)),
+                      ],
+                    ),
+                  ),
+                  // Totale
+                  Padding(
+                    padding: const EdgeInsets.only(left: 6),
+                    child: Text('${uids.length}',
+                        style: const TextStyle(color: kTextDim,
+                            fontSize: 11, fontWeight: FontWeight.bold)),
+                  ),
+                ]),
+              ),
+            ),
+          ],
         );
       },
     );
   }
 
-  Widget _instrChip(String name, Color color, {bool filled = false}) => Container(
+  Widget _chip(String name, Color color, {bool filled = false}) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
     decoration: BoxDecoration(
       color: filled ? color.withOpacity(0.2) : color.withOpacity(0.08),
@@ -327,9 +327,10 @@ class _AmcTabState extends ConsumerState<AmcTab>
             fontWeight: filled ? FontWeight.bold : FontWeight.normal)),
   );
 
-  Widget _legendDot(Color color) => Container(
+  Widget _dot(Color color) => Container(
     width: 10, height: 10,
-    decoration: BoxDecoration(color: color.withOpacity(0.5),
+    decoration: BoxDecoration(
+        color: color.withOpacity(0.5),
         shape: BoxShape.circle,
         border: Border.all(color: color)),
   );
