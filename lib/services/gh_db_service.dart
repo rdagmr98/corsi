@@ -54,6 +54,7 @@ class GhDbService {
       _loadFile('records.json'),
       _loadFile('grades.json'),
       _loadFile('updates.json'),
+      _loadFile('amc.json'),
     ]);
   }
 
@@ -136,6 +137,9 @@ class GhDbService {
 
   Map<String, dynamic> get referenceData =>
       (_getData('reference.json') as Map<String, dynamic>?) ?? {};
+
+  Map<String, dynamic> get amcData =>
+      (_getData('amc.json') as Map<String, dynamic>?) ?? {};
 
   List<Map<String, dynamic>> get users =>
       List<Map<String, dynamic>>.from(_getData('users.json') as List? ?? []);
