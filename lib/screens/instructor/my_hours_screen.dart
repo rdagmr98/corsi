@@ -28,7 +28,7 @@ class _InstructorHoursScreenState extends ConsumerState<InstructorHoursScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final teachH = _gradeService.getTeachingHoursThisYear(widget.userId);
+    final teachH = _gradeService.getTeachingHoursRollingYear(widget.userId);
     final profH = _gradeService.getProfessionalUpdateHoursLast2Years(widget.userId);
     final updates = _gradeService.getUpdatesForInstructor(widget.userId);
     final teachOk = teachH >= 6;

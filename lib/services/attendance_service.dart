@@ -82,4 +82,20 @@ class AttendanceService {
     }
     return {'absent': absent, 'unjustified': unjustified, 'total': records.length};
   }
+
+  /// Returns true if at least one attendee in the course has >10% absence rate
+  /// (excluding recoveries) relative to total confirmed lessons.
+  bool courseHasAttendeesInRecovery(String courseId, List<String> attendeeIds, int totalLessons) {
+    if (totalLessons == 0) return false;
+    for (final id in attendeeIds) {
+      final stats = computeAbsences(courseId, id);
+      final absences = stats['absent'] ?? 0;
+      final recoveries = getAllRecords()
+          .where((r) => r.courseId == courseId && r.attendeeId == id && r.justification == 'recupero')
+          .length;
+      final unrecoveredAbsences = absences - recoveries;
+      if (unrecoveredAbsences / totalLessons > 0.10) return true;
+    }
+    return false;
+  }
 }

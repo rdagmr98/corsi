@@ -30,12 +30,60 @@ class ScheduleService {
       getAllLessons().where((l) => l.instructorId == instructorId).toList()
         ..sort((a, b) => a.date.compareTo(b.date));
 
+  /// All lessons relevant for an instructor: assigned lessons + unconfirmed
+  /// lessons where they are AMC-authorized and no instructor is assigned yet.
+  List<ScheduledLesson> getAllRelevantLessonsForInstructor(String instructorId) {
+    final amc = _db.amcData;
+    final theoryGrid = (amc['theoryGrid'] as Map? ?? {})
+        .map((k, v) => MapEntry(k as String, List<String>.from(v as List)));
+    final practiceGrid = (amc['practiceGrid'] as Map? ?? {})
+        .map((k, v) => MapEntry(k as String, List<String>.from(v as List)));
+
+    bool isAmcAuthorized(ScheduledLesson l) {
+      final grid = l.isTheory ? theoryGrid : practiceGrid;
+      return grid[l.submoduleCode]?.contains(instructorId) ?? false;
+    }
+
+    return getAllLessons().where((l) {
+      if (l.instructorId == instructorId) return true;
+      if (l.instructorId == null && !l.confirmed && isAmcAuthorized(l)) return true;
+      return false;
+    }).toList()
+      ..sort((a, b) => a.date.compareTo(b.date));
+  }
+
   List<ScheduledLesson> getLessonsForInstructorToday(String instructorId) {
     final today = DateTime.now();
     final d = DateTime(today.year, today.month, today.day);
     return getLessonsForInstructor(instructorId).where((l) {
       final ld = DateTime(l.date.year, l.date.month, l.date.day);
       return ld == d;
+    }).toList()
+      ..sort((a, b) => a.timeSlot.compareTo(b.timeSlot));
+  }
+
+  /// Lessons today that are either assigned to [instructorId] OR are unconfirmed
+  /// and the instructor is AMC-authorized for that submodule.
+  List<ScheduledLesson> getLessonsRelevantForInstructorToday(String instructorId) {
+    final today = DateTime.now();
+    final d = DateTime(today.year, today.month, today.day);
+    final amc = _db.amcData;
+    final theoryGrid = (amc['theoryGrid'] as Map? ?? {})
+        .map((k, v) => MapEntry(k as String, List<String>.from(v as List)));
+    final practiceGrid = (amc['practiceGrid'] as Map? ?? {})
+        .map((k, v) => MapEntry(k as String, List<String>.from(v as List)));
+
+    bool isAmcAuthorized(ScheduledLesson l) {
+      final grid = l.isTheory ? theoryGrid : practiceGrid;
+      return grid[l.submoduleCode]?.contains(instructorId) ?? false;
+    }
+
+    return getAllLessons().where((l) {
+      final ld = DateTime(l.date.year, l.date.month, l.date.day);
+      if (ld != d) return false;
+      if (l.instructorId == instructorId) return true;
+      if (l.instructorId == null && !l.confirmed && isAmcAuthorized(l)) return true;
+      return false;
     }).toList()
       ..sort((a, b) => a.timeSlot.compareTo(b.timeSlot));
   }
@@ -205,5 +253,112 @@ class ScheduleService {
       map[l.moduleNumber] = (map[l.moduleNumber] ?? 0) + 1;
     }
     return map;
+  }
+
+  /// Generate unconfirmed lessons for remaining hours not yet taught.
+  /// Skips submodules already fully covered by confirmed lessons.
+  /// Adds a 'recupero' lesson at slot 0 on each day if [hasAttendeesInRecovery] is true.
+  Future<void> generateRemainingSchedule({
+    required String courseId,
+    required CourseTypeInfo typeInfo,
+    required bool hasAttendeesInRecovery,
+  }) async {
+    final allLessons = getLessonsForCourse(courseId);
+    // Count confirmed hours per (submoduleCode, type)
+    final doneT = <String, int>{};
+    final doneP = <String, int>{};
+    for (final l in allLessons.where((l) => l.confirmed)) {
+      if (l.isTheory) {
+        doneT[l.submoduleCode] = (doneT[l.submoduleCode] ?? 0) + 1;
+      } else {
+        doneP[l.submoduleCode] = (doneP[l.submoduleCode] ?? 0) + 1;
+      }
+    }
+
+    // Build queue of (code, module, type, hours_remaining)
+    final queue = <(String, int, String)>[];
+    for (final m in typeInfo.modules) {
+      for (final sub in m.submodules) {
+        final remT = sub.theoryHours - (doneT[sub.code] ?? 0);
+        final remP = sub.practicalHours - (doneP[sub.code] ?? 0);
+        for (var i = 0; i < remT; i++) { queue.add((sub.code, m.number, 'teoria')); }
+        for (var i = 0; i < remP; i++) { queue.add((sub.code, m.number, 'pratica')); }
+      }
+    }
+
+    if (queue.isEmpty) return;
+
+    // Start date: day after last confirmed lesson (or tomorrow, whichever is later)
+    DateTime startDate;
+    final confirmedDates = allLessons
+        .where((l) => l.confirmed)
+        .map((l) => l.date)
+        .toList()
+      ..sort();
+    final lastDone = confirmedDates.isNotEmpty ? confirmedDates.last : DateTime.now();
+    final tomorrow = DateTime.now().add(const Duration(days: 1));
+    startDate = lastDone.isAfter(tomorrow) ? lastDone : tomorrow;
+    startDate = _nextWorkday(DateTime(startDate.year, startDate.month, startDate.day));
+
+    // Remove any existing unconfirmed lessons (regenerate)
+    final existing = _db.schedules.toList();
+    final cleaned = existing.where((s) {
+      if (s['course_id'] != courseId) return true;
+      return s['confirmed'] == true;
+    }).toList();
+
+    final newLessons = <Map<String, dynamic>>[];
+    final now = DateTime.now().toIso8601String();
+    var qi = 0;
+    var date = startDate;
+
+    while (qi < queue.length) {
+      final slots = typeInfo.schedule.slotsForWeekday(date.weekday);
+      final dateStr = date.toIso8601String().split('T').first;
+
+      // Recovery slot (slot 0) if needed
+      if (hasAttendeesInRecovery) {
+        final id = '${DateTime.now().microsecondsSinceEpoch.toRadixString(16)}r$qi';
+        newLessons.add({
+          'id': id,
+          'course_id': courseId,
+          'module_number': 0,
+          'submodule_code': 'RECUPERO',
+          'topic': 'Ora di recupero',
+          'type': 'recupero',
+          'date': dateStr,
+          'time_slot': 0,
+          'instructor_id': null,
+          'confirmed': false,
+          'created_at': now,
+          'updated_at': now,
+        });
+      }
+
+      for (final slot in slots) {
+        if (qi >= queue.length) break;
+        final (code, modNum, type) = queue[qi++];
+        final id = '${DateTime.now().microsecondsSinceEpoch.toRadixString(16)}f$qi';
+        newLessons.add({
+          'id': id,
+          'course_id': courseId,
+          'module_number': modNum,
+          'submodule_code': code,
+          'topic': code,
+          'type': type,
+          'date': dateStr,
+          'time_slot': slot.slot,
+          'instructor_id': null,
+          'confirmed': false,
+          'created_at': now,
+          'updated_at': now,
+        });
+      }
+
+      date = _nextWorkday(date.add(const Duration(days: 1)));
+    }
+
+    cleaned.addAll(newLessons);
+    await _db.saveSchedules(cleaned);
   }
 }

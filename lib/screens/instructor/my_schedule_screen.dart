@@ -25,7 +25,7 @@ class _InstructorScheduleScreenState extends ConsumerState<InstructorScheduleScr
   }
 
   void _load() => setState(() {
-    _lessons = _scheduleService.getLessonsForInstructor(widget.userId)
+    _lessons = _scheduleService.getAllRelevantLessonsForInstructor(widget.userId)
         .where((l) => !l.date.isBefore(DateTime.now().subtract(const Duration(days: 7))))
         .toList();
   });

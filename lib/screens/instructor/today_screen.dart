@@ -32,7 +32,7 @@ class _InstructorTodayScreenState extends ConsumerState<InstructorTodayScreen> {
 
   void _load() {
     setState(() {
-      _todayLessons = _scheduleService.getLessonsForInstructorToday(widget.userId);
+      _todayLessons = _scheduleService.getLessonsRelevantForInstructorToday(widget.userId);
     });
   }
 

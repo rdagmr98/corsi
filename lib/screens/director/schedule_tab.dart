@@ -5,6 +5,7 @@ import '../../models/course_models.dart';
 import '../../models/reference_models.dart';
 import '../../models/schedule_models.dart';
 import '../../providers/auth_provider.dart';
+import '../../services/attendance_service.dart';
 import '../../services/course_service.dart';
 import '../../services/reference_service.dart';
 import '../../services/schedule_service.dart';
@@ -23,6 +24,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
   final _courseService = CourseService();
   final _refService = ReferenceService();
   final _scheduleService = ScheduleService();
+  final _attendanceService = AttendanceService();
   final _userService = UserService();
 
   List<Course> _courses = [];
@@ -75,14 +77,21 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
     });
   }
 
-  Future<void> _autoGenerate() async {
+  Future<void> _generateRemaining() async {
     if (_selected == null || _typeInfo == null) return;
-    final start = _selected!.startDate ?? DateTime.now();
-    await _scheduleService.generateSchedule(
+    final totalConfirmed = _scheduleService
+        .getLessonsForCourse(_selected!.id)
+        .where((l) => l.confirmed)
+        .length;
+    final hasRecovery = _attendanceService.courseHasAttendeesInRecovery(
+      _selected!.id,
+      _selected!.attendeeIds,
+      totalConfirmed,
+    );
+    await _scheduleService.generateRemainingSchedule(
       courseId: _selected!.id,
-      courseTypeId: _selected!.courseTypeId,
-      startDate: start,
       typeInfo: _typeInfo!,
+      hasAttendeesInRecovery: hasRecovery,
     );
     _reload();
   }
@@ -222,6 +231,9 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
 
     final weekDays = List.generate(5, (i) => _weekStart.add(Duration(days: i)));
     final allSlots = _typeInfo?.schedule.mondayThursday ?? [];
+    // Controlla se ci sono lezioni di recupero nella settimana (slot 0)
+    final recoveryLessons = _weekLessons.where((l) => l.timeSlot == 0).toList();
+    final regularLessons = _weekLessons.where((l) => l.timeSlot > 0).toList();
 
     return Column(
       children: [
@@ -253,11 +265,11 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
               ),
               IconButton(icon: const Icon(Icons.chevron_right), onPressed: _nextWeek, color: kText),
               const SizedBox(width: 8),
-              if (_weekLessons.isEmpty && _selected != null)
+              if (_selected != null)
                 OutlinedButton.icon(
-                  onPressed: _autoGenerate,
+                  onPressed: _generateRemaining,
                   icon: const Icon(Icons.auto_fix_high, size: 16),
-                  label: const Text('Genera automaticamente', style: TextStyle(fontSize: 12)),
+                  label: const Text('Genera lezioni rimanenti', style: TextStyle(fontSize: 12)),
                 ),
               IconButton(icon: const Icon(Icons.refresh, color: kTextDim), onPressed: _reload),
             ],
@@ -284,6 +296,42 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                         )),
                       ],
                     ),
+                    // Riga recupero (slot 0) — mostrata solo se esiste almeno un giorno con recupero
+                    if (recoveryLessons.isNotEmpty)
+                      TableRow(
+                        decoration: BoxDecoration(color: kWarning.withOpacity(0.06)),
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(6),
+                            child: const Column(
+                              children: [
+                                Icon(Icons.restore, color: kWarning, size: 12),
+                                Text('Rec.', style: TextStyle(color: kWarning, fontSize: 9, fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                          ),
+                          ...weekDays.map((day) {
+                            final rec = recoveryLessons
+                                .where((l) => _sameDay(l.date, day))
+                                .firstOrNull;
+                            return TableCell(
+                              child: rec != null
+                                  ? Container(
+                                      height: 50,
+                                      margin: const EdgeInsets.all(2),
+                                      padding: const EdgeInsets.all(6),
+                                      decoration: BoxDecoration(
+                                        color: kWarning.withOpacity(0.12),
+                                        borderRadius: BorderRadius.circular(4),
+                                        border: Border.all(color: kWarning.withOpacity(0.4)),
+                                      ),
+                                      child: const Text('Recupero', style: TextStyle(color: kWarning, fontSize: 10, fontWeight: FontWeight.bold)),
+                                    )
+                                  : const SizedBox(height: 50),
+                            );
+                          }),
+                        ],
+                      ),
                     ...allSlots.map((slot) {
                       final slotStr = '${slot.start}–${slot.end}';
                       return TableRow(
@@ -305,7 +353,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                                 )),
                               );
                             }
-                            final lesson = _weekLessons
+                            final lesson = regularLessons
                                 .where((l) => _sameDay(l.date, day) && l.timeSlot == slot.slot)
                                 .firstOrNull;
                             return TableCell(
@@ -350,8 +398,10 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
   );
 
   Widget _lessonCell(ScheduledLesson lesson) {
-    final isTheory = lesson.isTheory;
-    final color = isTheory ? kPrimary : kAccent;
+    final isTheory = lesson.type != 'pratica';
+    final color = lesson.confirmed
+        ? (isTheory ? kPrimary : kAccent)
+        : (isTheory ? kPrimary.withOpacity(0.6) : kAccent.withOpacity(0.6));
     return GestureDetector(
       onSecondaryTap: () => _deleteLesson(lesson),
       child: Container(
