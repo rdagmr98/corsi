@@ -22,11 +22,11 @@ ThemeData buildTheme() => ThemeData.dark().copyWith(
   cardColor: kCard,
   dividerColor: kBorder,
   textTheme: const TextTheme(
-    bodyLarge: TextStyle(color: kText),
-    bodyMedium: TextStyle(color: kText),
-    bodySmall: TextStyle(color: kTextDim),
-    titleLarge: TextStyle(color: kText, fontWeight: FontWeight.bold),
-    titleMedium: TextStyle(color: kText, fontWeight: FontWeight.w600),
+    bodyLarge: TextStyle(color: kText, fontSize: 15),
+    bodyMedium: TextStyle(color: kText, fontSize: 14),
+    bodySmall: TextStyle(color: kTextDim, fontSize: 12),
+    titleLarge: TextStyle(color: kText, fontWeight: FontWeight.bold, fontSize: 22),
+    titleMedium: TextStyle(color: kText, fontWeight: FontWeight.w600, fontSize: 17),
   ),
   inputDecorationTheme: InputDecorationTheme(
     filled: true,

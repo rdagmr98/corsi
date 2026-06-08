@@ -108,6 +108,7 @@ class AttendanceRecord {
   final String attendeeId;
   final bool present;
   final String? justification;
+  final int? recoveredModule;
   final String? confirmedBy;
   final DateTime? confirmedAt;
 
@@ -118,6 +119,7 @@ class AttendanceRecord {
     required this.attendeeId,
     required this.present,
     this.justification,
+    this.recoveredModule,
     this.confirmedBy,
     this.confirmedAt,
   });
@@ -129,6 +131,7 @@ class AttendanceRecord {
     attendeeId: j['attendee_id'] as String,
     present: j['present'] as bool? ?? false,
     justification: j['justification'] as String?,
+    recoveredModule: j['recovered_module'] as int?,
     confirmedBy: j['confirmed_by'] as String?,
     confirmedAt: j['confirmed_at'] != null
         ? DateTime.tryParse(j['confirmed_at'] as String)
@@ -142,6 +145,7 @@ class AttendanceRecord {
     'attendee_id': attendeeId,
     'present': present,
     'justification': justification,
+    'recovered_module': recoveredModule,
     'confirmed_by': confirmedBy,
     'confirmed_at': confirmedAt?.toIso8601String(),
   };

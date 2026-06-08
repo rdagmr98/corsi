@@ -83,6 +83,92 @@ class AttendanceService {
     return {'absent': absent, 'unjustified': unjustified, 'total': records.length};
   }
 
+  List<AttendanceRecord> getAllRecordsForCourse(String courseId) =>
+      getAllRecords().where((r) => r.courseId == courseId).toList();
+
+  /// Per-module absence/recovery stats for one attendee.
+  /// Returns map keyed by module number: {total, absent, recovered, unrecovered}
+  Map<int, Map<String, int>> computePerModuleStats(
+    String courseId,
+    String attendeeId,
+    List<ScheduledLesson> allLessons,
+  ) {
+    final confirmedLessons = allLessons
+        .where((l) => l.courseId == courseId && l.confirmed && l.timeSlot > 0)
+        .toList();
+    final records = getRecordsForAttendee(courseId, attendeeId);
+    final recordMap = {for (final r in records) r.scheduleId: r};
+
+    final Map<int, int> totalByModule = {};
+    final Map<int, int> absentByModule = {};
+    for (final l in confirmedLessons) {
+      totalByModule[l.moduleNumber] = (totalByModule[l.moduleNumber] ?? 0) + 1;
+      final r = recordMap[l.id];
+      if (r != null && !r.present) {
+        absentByModule[l.moduleNumber] = (absentByModule[l.moduleNumber] ?? 0) + 1;
+      }
+    }
+
+    final Map<int, int> recoveredByModule = {};
+    for (final r in records) {
+      if (r.justification == 'recupero' && r.recoveredModule != null) {
+        final m = r.recoveredModule!;
+        recoveredByModule[m] = (recoveredByModule[m] ?? 0) + 1;
+      }
+    }
+
+    final result = <int, Map<String, int>>{};
+    for (final module in totalByModule.keys) {
+      final total = totalByModule[module] ?? 0;
+      final absent = absentByModule[module] ?? 0;
+      final recovered = recoveredByModule[module] ?? 0;
+      final unrecovered = (absent - recovered).clamp(0, absent);
+      result[module] = {
+        'total': total,
+        'absent': absent,
+        'recovered': recovered,
+        'unrecovered': unrecovered,
+      };
+    }
+    return result;
+  }
+
+  Future<void> saveRecovery({
+    required String courseId,
+    required String attendeeId,
+    required String confirmedBy,
+    required int recoveredModule,
+    required DateTime recoveryDate,
+  }) async {
+    final records = _db.records.toList();
+    final dateKey = recoveryDate.toIso8601String().split('T').first;
+    final syntheticScheduleId =
+        'recovery:${courseId.substring(0, 8)}:${attendeeId.substring(0, 8)}:$dateKey:m$recoveredModule';
+    final alreadyExists = records.any((r) =>
+        r['schedule_id'] == syntheticScheduleId &&
+        r['attendee_id'] == attendeeId);
+    if (alreadyExists) return;
+
+    final id = 'rec_${DateTime.now().microsecondsSinceEpoch.toRadixString(16)}';
+    records.add({
+      'id': id,
+      'schedule_id': syntheticScheduleId,
+      'course_id': courseId,
+      'attendee_id': attendeeId,
+      'present': true,
+      'justification': 'recupero',
+      'recovered_module': recoveredModule,
+      'confirmed_by': confirmedBy,
+      'confirmed_at': DateTime.now().toIso8601String(),
+    });
+    await _db.saveRecords(records);
+  }
+
+  Future<void> deleteRecovery(String recordId) async {
+    final records = _db.records.where((r) => r['id'] != recordId).toList();
+    await _db.saveRecords(records);
+  }
+
   /// Returns true if at least one attendee in the course has >10% absence rate
   /// (excluding recoveries) relative to total confirmed lessons.
   bool courseHasAttendeesInRecovery(String courseId, List<String> attendeeIds, int totalLessons) {
