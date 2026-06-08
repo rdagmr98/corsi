@@ -1,9 +1,9 @@
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:printing/printing.dart';
 
 import '../models/course_models.dart';
+import '../utils/pdf_download.dart';
 import '../models/reference_models.dart';
 import '../models/schedule_models.dart';
 import '../models/user_models.dart';
@@ -42,10 +42,8 @@ class PdfExportService {
     _addCurrencyPage(doc, course, instructors, gradeService);
 
     final bytes = await doc.save();
-    await Printing.sharePdf(
-      bytes: bytes,
-      filename: '${course.title.replaceAll(' ', '_')}_report.pdf',
-    );
+    final filename = '${course.title.replaceAll(' ', '_')}_report.pdf';
+    await downloadPdf(bytes, filename);
   }
 
   // ── Cover page ─────────────────────────────────────────────────────────────

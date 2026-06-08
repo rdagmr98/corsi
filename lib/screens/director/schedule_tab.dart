@@ -297,28 +297,65 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                   style: TextStyle(color: kTextDim, fontSize: 11),
                 ),
                 const SizedBox(height: 8),
-                ElevatedButton.icon(
-                  onPressed: () async {
-                    final d = await showDatePicker(
-                      context: ctx,
-                      initialDate: DateTime.now(),
-                      firstDate: DateTime(2024),
-                      lastDate: DateTime(2030),
-                      builder: (context, child) => Theme(
-                        data: ThemeData.dark(),
-                        child: child!,
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () async {
+                          final d = await showDatePicker(
+                            context: ctx,
+                            initialDate: DateTime.now(),
+                            firstDate: DateTime(2024),
+                            lastDate: DateTime(2030),
+                            builder: (context, child) => Theme(
+                              data: ThemeData.dark(), child: child!,
+                            ),
+                          );
+                          if (d != null) {
+                            final s = '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+                            if (!excluded.contains(s)) {
+                              setDlg(() { excluded.add(s); excluded.sort(); });
+                            }
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8)),
+                        icon: const Icon(Icons.add, size: 14),
+                        label: const Text('Giorno', style: TextStyle(fontSize: 11)),
                       ),
-                    );
-                    if (d != null) {
-                      final s =
-                          '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
-                      if (!excluded.contains(s)) {
-                        setDlg(() { excluded.add(s); excluded.sort(); });
-                      }
-                    }
-                  },
-                  icon: const Icon(Icons.add, size: 14),
-                  label: const Text('Aggiungi giorno escluso', style: TextStyle(fontSize: 12)),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () async {
+                          final range = await showDateRangePicker(
+                            context: ctx,
+                            firstDate: DateTime(2024),
+                            lastDate: DateTime(2030),
+                            initialDateRange: DateTimeRange(
+                              start: DateTime.now(),
+                              end: DateTime.now().add(const Duration(days: 7)),
+                            ),
+                            builder: (context, child) => Theme(
+                              data: ThemeData.dark(), child: child!,
+                            ),
+                          );
+                          if (range != null) {
+                            var d = range.start;
+                            while (!d.isAfter(range.end)) {
+                              final s = '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+                              if (!excluded.contains(s)) excluded.add(s);
+                              d = d.add(const Duration(days: 1));
+                            }
+                            excluded.sort();
+                            setDlg(() {});
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8)),
+                        icon: const Icon(Icons.date_range, size: 14),
+                        label: const Text('Periodo', style: TextStyle(fontSize: 11)),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 8),
                 Expanded(
@@ -363,6 +400,98 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                 _load();
               },
               child: const Text('Salva'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _addRecovery(DateTime day) async {
+    if (_selected == null) return;
+    final attendees = _userService.getAllUsers()
+        .where((u) => _selected!.attendeeIds.contains(u.id))
+        .toList();
+    if (attendees.isEmpty) return;
+
+    final typeInfo = _typeInfo;
+    if (typeInfo == null) return;
+
+    final selectedAttendees = <String>{};
+    int? selectedModule = typeInfo.modules.isNotEmpty ? typeInfo.modules.first.number : null;
+    final user = ref.read(authProvider).currentUser;
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlg) => AlertDialog(
+          backgroundColor: kCard,
+          title: Text(
+            'Recupero – ${DateFormat('dd/MM/yyyy').format(day)}',
+            style: const TextStyle(color: kText, fontSize: 14),
+          ),
+          content: SizedBox(
+            width: 400,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Modulo recuperato:', style: TextStyle(color: kTextDim, fontSize: 12)),
+                const SizedBox(height: 6),
+                DropdownButtonFormField<int>(
+                  value: selectedModule,
+                  dropdownColor: kSurface,
+                  style: const TextStyle(color: kText),
+                  decoration: const InputDecoration(isDense: true),
+                  items: typeInfo.modules
+                      .map((m) => DropdownMenuItem(value: m.number, child: Text('M${m.number} – ${m.name}', overflow: TextOverflow.ellipsis)))
+                      .toList(),
+                  onChanged: (v) => setDlg(() => selectedModule = v),
+                ),
+                const SizedBox(height: 12),
+                const Text('Frequentatori presenti al recupero:', style: TextStyle(color: kTextDim, fontSize: 12)),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: attendees.map((a) {
+                    final sel = selectedAttendees.contains(a.id);
+                    return FilterChip(
+                      label: Text(a.fullName, style: TextStyle(color: sel ? Colors.white : kTextDim, fontSize: 11)),
+                      selected: sel,
+                      selectedColor: kAccent.withOpacity(0.8),
+                      backgroundColor: kSurface,
+                      onSelected: (v) => setDlg(() {
+                        if (v) selectedAttendees.add(a.id); else selectedAttendees.remove(a.id);
+                      }),
+                    );
+                  }).toList(),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annulla', style: TextStyle(color: kTextDim)),
+            ),
+            ElevatedButton(
+              onPressed: selectedAttendees.isEmpty || selectedModule == null
+                  ? null
+                  : () async {
+                      Navigator.pop(ctx);
+                      for (final id in selectedAttendees) {
+                        await _attendanceService.saveRecovery(
+                          courseId: _selected!.id,
+                          attendeeId: id,
+                          confirmedBy: user?.id ?? '',
+                          recoveredModule: selectedModule!,
+                          recoveryDate: day,
+                        );
+                      }
+                      _reload();
+                    },
+              child: const Text('Salva recuperi'),
             ),
           ],
         ),
@@ -417,7 +546,6 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
 
     final weekDays = List.generate(5, (i) => _weekStart.add(Duration(days: i)));
     final allSlots = _typeInfo?.schedule.mondayThursday ?? [];
-    // Controlla se ci sono lezioni di recupero nella settimana (slot 0)
     final recoveryLessons = _weekLessons.where((l) => l.timeSlot == 0).toList();
     final regularLessons = _weekLessons.where((l) => l.timeSlot > 0).toList();
 
@@ -503,42 +631,55 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                         )),
                       ],
                     ),
-                    // Riga recupero (slot 0) — mostrata solo se esiste almeno un giorno con recupero
-                    if (recoveryLessons.isNotEmpty)
-                      TableRow(
-                        decoration: BoxDecoration(color: kWarning.withOpacity(0.06)),
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(6),
-                            child: const Column(
-                              children: [
-                                Icon(Icons.restore, color: kWarning, size: 12),
-                                Text('Rec.', style: TextStyle(color: kWarning, fontSize: 9, fontWeight: FontWeight.bold)),
-                              ],
-                            ),
+                    // Riga recupero (slot 0) — sempre visibile
+                    TableRow(
+                      decoration: BoxDecoration(color: kWarning.withOpacity(0.06)),
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(6),
+                          child: const Column(
+                            children: [
+                              Icon(Icons.restore, color: kWarning, size: 12),
+                              Text('Rec.', style: TextStyle(color: kWarning, fontSize: 9, fontWeight: FontWeight.bold)),
+                            ],
                           ),
-                          ...weekDays.map((day) {
-                            final rec = recoveryLessons
-                                .where((l) => _sameDay(l.date, day))
-                                .firstOrNull;
-                            return TableCell(
-                              child: rec != null
-                                  ? Container(
-                                      height: 50,
-                                      margin: const EdgeInsets.all(2),
-                                      padding: const EdgeInsets.all(6),
-                                      decoration: BoxDecoration(
-                                        color: kWarning.withOpacity(0.12),
-                                        borderRadius: BorderRadius.circular(4),
-                                        border: Border.all(color: kWarning.withOpacity(0.4)),
-                                      ),
-                                      child: const Text('Recupero', style: TextStyle(color: kWarning, fontSize: 10, fontWeight: FontWeight.bold)),
-                                    )
-                                  : const SizedBox(height: 50),
-                            );
-                          }),
-                        ],
-                      ),
+                        ),
+                        ...weekDays.map((day) {
+                          final recs = recoveryLessons.where((l) => _sameDay(l.date, day)).toList();
+                          return TableCell(
+                            child: InkWell(
+                              onTap: () => _addRecovery(day),
+                              child: Container(
+                                height: 50,
+                                margin: const EdgeInsets.all(2),
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: recs.isNotEmpty
+                                      ? kWarning.withOpacity(0.12)
+                                      : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(
+                                    color: recs.isNotEmpty
+                                        ? kWarning.withOpacity(0.4)
+                                        : kBorder.withOpacity(0.3),
+                                    width: recs.isNotEmpty ? 1 : 0.5,
+                                  ),
+                                ),
+                                child: recs.isNotEmpty
+                                    ? Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text('${recs.length} rec.',
+                                              style: const TextStyle(color: kWarning, fontSize: 9, fontWeight: FontWeight.bold)),
+                                        ],
+                                      )
+                                    : const Center(child: Icon(Icons.add, color: kBorder, size: 12)),
+                              ),
+                            ),
+                          );
+                        }),
+                      ],
+                    ),
                     ...allSlots.map((slot) {
                       final slotStr = '${slot.start}–${slot.end}';
                       return TableRow(
@@ -606,9 +747,8 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
 
   Widget _lessonCell(ScheduledLesson lesson) {
     final isTheory = lesson.type != 'pratica';
-    final color = lesson.confirmed
-        ? (isTheory ? kPrimary : kAccent)
-        : (isTheory ? kPrimary.withOpacity(0.6) : kAccent.withOpacity(0.6));
+    final base = moduleColor(lesson.moduleNumber);
+    final color = lesson.confirmed ? base : base.withOpacity(0.5);
     return GestureDetector(
       onSecondaryTap: () => _deleteLesson(lesson),
       child: Container(
@@ -643,7 +783,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                 ),
                 const Spacer(),
                 if (lesson.confirmed)
-                  const Icon(Icons.check_circle, color: kAccent, size: 10),
+                  Icon(Icons.check_circle, color: color, size: 10),
                 GestureDetector(
                   onTap: () => _deleteLesson(lesson),
                   child: const Icon(Icons.close, color: kError, size: 10),

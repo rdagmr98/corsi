@@ -12,6 +12,7 @@ import '../../services/reference_service.dart';
 import '../../services/schedule_service.dart';
 import '../../services/user_service.dart';
 import '../../theme.dart';
+import 'course_detail_screen.dart';
 
 class CoursesTab extends ConsumerStatefulWidget {
   const CoursesTab({super.key});
@@ -269,15 +270,27 @@ class _CoursesTabState extends ConsumerState<CoursesTab> {
       final attendees = allUsers.where((u) => c.attendeeIds.contains(u.id)).toList();
       final instructors = allUsers.where((u) => c.instructorIds.contains(u.id)).toList();
 
-      await PdfExportService.downloadCourseReport(
-        course: c,
-        typeInfo: typeInfo,
-        lessons: lessons,
-        attendees: attendees,
-        instructors: instructors,
-        gradeService: _gradeService,
-        attendanceService: _attendanceService,
-      );
+      try {
+        await PdfExportService.downloadCourseReport(
+          course: c,
+          typeInfo: typeInfo,
+          lessons: lessons,
+          attendees: attendees,
+          instructors: instructors,
+          gradeService: _gradeService,
+          attendanceService: _attendanceService,
+        );
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Errore generazione PDF: $e'),
+              backgroundColor: kError,
+            ),
+          );
+        }
+        return;
+      }
     }
 
     if (newStatus == 'active') await _courseService.activateCourse(c.id);
@@ -329,7 +342,14 @@ class _CoursesTabState extends ConsumerState<CoursesTab> {
                         borderRadius: BorderRadius.circular(10),
                         side: BorderSide(color: color.withOpacity(0.3)),
                       ),
-                      child: ListTile(
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(10),
+                        onTap: () => showDialog(
+                          context: context,
+                          barrierDismissible: true,
+                          builder: (_) => MasterCourseDetailScreen(course: c),
+                        ),
+                        child: ListTile(
                         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                         leading: Container(
                           width: 4,
@@ -403,7 +423,8 @@ class _CoursesTabState extends ConsumerState<CoursesTab> {
                             ),
                           ],
                         ),
-                      ),
+                      ), // ListTile
+                      ), // InkWell
                     );
                   },
                 ),

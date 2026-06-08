@@ -31,7 +31,7 @@ class CorsiApp extends ConsumerWidget {
       routerConfig: _router,
       builder: (context, child) => MediaQuery(
         data: MediaQuery.of(context).copyWith(
-          textScaler: const TextScaler.linear(1.25),
+          textScaler: const TextScaler.linear(1.35),
         ),
         child: child!,
       ),

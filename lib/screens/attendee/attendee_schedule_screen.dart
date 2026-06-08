@@ -116,7 +116,7 @@ class _AttendeeScheduleScreenState extends ConsumerState<AttendeeScheduleScreen>
                           ),
                           ...dayLessons.map((l) {
                             final isTheory = l.isTheory;
-                            final color = isTheory ? kPrimary : kAccent;
+                            final color = moduleColor(l.moduleNumber);
                             return Card(
                               color: kCard,
                               margin: const EdgeInsets.only(bottom: 6),

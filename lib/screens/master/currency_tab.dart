@@ -62,6 +62,124 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
       ..sort((a, b) => (b['year'] as int).compareTo(a['year'] as int));
   }
 
+  // ── Group update dialog ───────────────────────────────────────────────────
+  Future<void> _addGroupUpdate() async {
+    final hoursCtrl = TextEditingController();
+    final descCtrl  = TextEditingController();
+    String type = 'professional';
+    DateTime date = DateTime.now();
+    final selectedInstructors = <String>{};
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlg) => AlertDialog(
+          backgroundColor: kCard,
+          title: const Text('Aggiornamento di gruppo', style: TextStyle(color: kText)),
+          content: SizedBox(
+            width: 480,
+            child: SingleChildScrollView(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                DropdownButtonFormField<String>(
+                  value: type,
+                  dropdownColor: kSurface,
+                  style: const TextStyle(color: kText),
+                  decoration: const InputDecoration(labelText: 'Tipo', isDense: true),
+                  items: const [
+                    DropdownMenuItem(value: 'teaching',     child: Text('Ore insegnamento')),
+                    DropdownMenuItem(value: 'professional', child: Text('Aggiornamento professionale')),
+                  ],
+                  onChanged: (v) => setDlg(() => type = v ?? type),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: hoursCtrl,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  style: const TextStyle(color: kText),
+                  decoration: const InputDecoration(labelText: 'Ore', isDense: true),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: descCtrl,
+                  style: const TextStyle(color: kText),
+                  decoration: const InputDecoration(labelText: 'Descrizione', isDense: true),
+                ),
+                const SizedBox(height: 12),
+                Row(children: [
+                  Text(DateFormat('dd/MM/yyyy').format(date),
+                      style: const TextStyle(color: kText)),
+                  const SizedBox(width: 12),
+                  TextButton(
+                    onPressed: () async {
+                      final d = await showDatePicker(
+                        context: ctx,
+                        initialDate: date,
+                        firstDate: DateTime(2020),
+                        lastDate: DateTime(2030),
+                      );
+                      if (d != null) setDlg(() => date = d);
+                    },
+                    child: const Text('Cambia'),
+                  ),
+                ]),
+                const SizedBox(height: 12),
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('Istruttori:', style: TextStyle(color: kTextDim, fontSize: 12)),
+                ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: _instructors.map((i) {
+                    final sel = selectedInstructors.contains(i.id);
+                    return FilterChip(
+                      label: Text(i.fullName,
+                          style: TextStyle(
+                              color: sel ? Colors.white : kTextDim,
+                              fontSize: 11)),
+                      selected: sel,
+                      selectedColor: kPrimary.withOpacity(0.8),
+                      backgroundColor: kSurface,
+                      onSelected: (v) => setDlg(() {
+                        if (v) selectedInstructors.add(i.id);
+                        else selectedInstructors.remove(i.id);
+                      }),
+                    );
+                  }).toList(),
+                ),
+              ]),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annulla', style: TextStyle(color: kTextDim)),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final hours = double.tryParse(hoursCtrl.text.trim()) ?? 0;
+                if (hours <= 0 || selectedInstructors.isEmpty) return;
+                Navigator.pop(ctx);
+                for (final id in selectedInstructors) {
+                  await _gradeService.addUpdate(
+                    instructorId: id,
+                    type: type,
+                    hours: hours,
+                    description: descCtrl.text.trim(),
+                    date: date,
+                  );
+                }
+                _reload();
+              },
+              child: Text('Aggiungi a ${selectedInstructors.length} istruttori'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // ── Add update dialog ─────────────────────────────────────────────────────
   Future<void> _addUpdate(AppUser instr) async {
     final hoursCtrl = TextEditingController();
@@ -513,6 +631,13 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
           Text('Idoneità Istruttori (${_instructors.length})',
               style: Theme.of(context).textTheme.titleLarge),
           const Spacer(),
+          ElevatedButton.icon(
+            onPressed: _addGroupUpdate,
+            icon: const Icon(Icons.groups, size: 16),
+            label: const Text('Aggiornamento di gruppo', style: TextStyle(fontSize: 12)),
+            style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
+          ),
+          const SizedBox(width: 8),
           IconButton(
               icon: const Icon(Icons.refresh, color: kTextDim),
               onPressed: _reload),
