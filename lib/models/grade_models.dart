@@ -129,16 +129,19 @@ class AttendeeGradeSummary {
   });
 
   double get weightedAverage {
-    if (grades.isEmpty) return 0;
+    final valid = grades.where((g) => g.isPassing).toList();
+    if (valid.isEmpty) return 0;
     double totalWeightedScore = 0;
     int totalWeight = 0;
-    for (final g in grades) {
+    for (final g in valid) {
       final w = g.assessmentType.weight;
       totalWeightedScore += g.score * w;
       totalWeight += w;
     }
     return totalWeight == 0 ? 0 : totalWeightedScore / totalWeight;
   }
+
+  bool get hasFailing => grades.any((g) => !g.isPassing);
 
   bool get isPassing => weightedAverage >= 22.5;
   bool get hasGrades => grades.isNotEmpty;

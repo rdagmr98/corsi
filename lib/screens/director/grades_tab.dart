@@ -175,92 +175,128 @@ class _DirectorGradesTabState extends ConsumerState<DirectorGradesTab> {
         Expanded(
           child: typeInfo == null || attendees.isEmpty
               ? const Center(child: Text('Nessun dato disponibile', style: TextStyle(color: kTextDim)))
-              : SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
-                    child: Table(
-                      border: TableBorder.all(color: kBorder, width: 0.5),
-                      defaultColumnWidth: const FixedColumnWidth(120),
-                      columnWidths: const {0: FixedColumnWidth(160)},
-                      children: [
-                        TableRow(
-                          decoration: const BoxDecoration(color: kSurface),
-                          children: [
-                            _cell('Frequentatore', header: true),
-                            ...typeInfo.modules.map((m) => _cell('M${m.number}\n${m.name}', header: true)),
-                            _cell('Media', header: true),
-                          ],
-                        ),
-                        ...attendees.map((a) {
-                          final summary = _gradeService.getAttendeeSummary(course.id, a.id);
-                          double totalScore = 0;
-                          int gradeCount = 0;
-                          for (final s in summary.values) {
-                            if (s.hasGrades) {
-                              totalScore += s.weightedAverage;
-                              gradeCount++;
-                            }
-                          }
-                          final avg = gradeCount > 0 ? totalScore / gradeCount : null;
+              : LayoutBuilder(
+                  builder: (context, constraints) {
+                    final ranking = _gradeService.getCourseRanking(
+                        course.id, course.attendeeIds);
+                    final rankMap = {for (final r in ranking) r.attendeeId: r.rank};
 
-                          return TableRow(
-                            children: [
-                              Padding(
-                                padding: const EdgeInsets.all(8),
-                                child: Text(a.fullName, style: const TextStyle(color: kText, fontSize: 12)),
-                              ),
-                              ...typeInfo.modules.map((m) {
-                                final s = summary[m.number];
-                                return TableCell(
-                                  child: InkWell(
-                                    onTap: () => _addGrade(course, a.id, m.number),
-                                    child: Container(
-                                      padding: const EdgeInsets.all(8),
-                                      alignment: Alignment.center,
-                                      child: s == null || !s.hasGrades
-                                          ? const Icon(Icons.add, color: kBorder, size: 14)
-                                          : Column(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                Text(
-                                                  s.weightedAverage.toStringAsFixed(1),
-                                                  style: TextStyle(
-                                                    color: s.isPassing ? kAccent : kError,
-                                                    fontWeight: FontWeight.bold,
-                                                    fontSize: 13,
-                                                  ),
-                                                ),
-                                                Text(
-                                                  '${s.grades.length} val.',
-                                                  style: const TextStyle(color: kTextDim, fontSize: 9),
-                                                ),
-                                              ],
-                                            ),
+                    return SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                        child: Table(
+                          border: TableBorder.all(color: kBorder, width: 0.5),
+                          defaultColumnWidth: const FixedColumnWidth(64),
+                          columnWidths: const {
+                            0: FixedColumnWidth(32),   // Pos.
+                            1: FixedColumnWidth(130),  // Nome
+                          },
+                          children: [
+                            TableRow(
+                              decoration: const BoxDecoration(color: kSurface),
+                              children: [
+                                _cell('#', header: true),
+                                _cell('Frequentatore', header: true),
+                                ...typeInfo.modules.map((m) => Tooltip(
+                                  message: 'M${m.number} - ${m.name}',
+                                  child: _cell('M${m.number}', header: true),
+                                )),
+                                _cell('Media', header: true),
+                              ],
+                            ),
+                            ...attendees.map((a) {
+                              final summary =
+                                  _gradeService.getAttendeeSummary(course.id, a.id);
+                              final gradScore = _gradeService.getGraduationScore(course.id, a.id);
+                              final hasAny = summary.values.any((s) => s.hasGrades);
+                              final pos = rankMap[a.id];
+
+                              return TableRow(
+                                children: [
+                                  // Pos
+                                  Padding(
+                                    padding: const EdgeInsets.all(4),
+                                    child: Text(
+                                      pos != null ? '$pos°' : '—',
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(
+                                          color: kTextDim, fontSize: 10),
                                     ),
                                   ),
-                                );
-                              }),
-                              Padding(
-                                padding: const EdgeInsets.all(8),
-                                child: avg == null
-                                    ? const Text('—', style: TextStyle(color: kTextDim, fontSize: 12), textAlign: TextAlign.center)
-                                    : Text(
-                                        avg.toStringAsFixed(1),
-                                        textAlign: TextAlign.center,
-                                        style: TextStyle(
-                                          color: avg >= 22.5 ? kAccent : kError,
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 14,
+                                  // Nome
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 6, vertical: 4),
+                                    child: Text(a.fullName,
+                                        style: const TextStyle(
+                                            color: kText, fontSize: 11)),
+                                  ),
+                                  // Per-module cells
+                                  ...typeInfo.modules.map((m) {
+                                    final s = summary[m.number];
+                                    return TableCell(
+                                      child: InkWell(
+                                        onTap: () => _addGrade(course, a.id, m.number),
+                                        child: Container(
+                                          padding: const EdgeInsets.all(4),
+                                          alignment: Alignment.center,
+                                          child: s == null || !s.hasGrades
+                                              ? const Icon(Icons.add,
+                                                  color: kBorder, size: 12)
+                                              : Column(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    Text(
+                                                      s.weightedAverage
+                                                          .toStringAsFixed(1),
+                                                      style: TextStyle(
+                                                        color: s.isPassing
+                                                            ? kAccent
+                                                            : kError,
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                        fontSize: 11,
+                                                      ),
+                                                    ),
+                                                    if (s.hasFailing)
+                                                      const Icon(Icons.warning,
+                                                          color: kWarning,
+                                                          size: 8),
+                                                  ],
+                                                ),
                                         ),
                                       ),
-                              ),
-                            ],
-                          );
-                        }),
-                      ],
-                    ),
-                  ),
+                                    );
+                                  }),
+                                  // Media globale (graduation score)
+                                  Padding(
+                                    padding: const EdgeInsets.all(4),
+                                    child: !hasAny
+                                        ? const Text('—',
+                                            textAlign: TextAlign.center,
+                                            style: TextStyle(
+                                                color: kTextDim, fontSize: 11))
+                                        : Text(
+                                            gradScore.toStringAsFixed(2),
+                                            textAlign: TextAlign.center,
+                                            style: TextStyle(
+                                              color: gradScore >= 22.5
+                                                  ? kAccent
+                                                  : kError,
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                  ),
+                                ],
+                              );
+                            }),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
                 ),
         ),
       ],

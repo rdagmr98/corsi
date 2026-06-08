@@ -55,15 +55,16 @@ class _AttendeeGradesScreenState extends ConsumerState<AttendeeGradesScreen> {
     final typeInfo = _refService.getCourseType(course.courseTypeId);
     final summary = _gradeService.getAttendeeSummary(course.id, widget.userId);
 
-    double totalScore = 0;
-    int gradeCount = 0;
-    for (final s in summary.values) {
-      if (s.hasGrades) {
-        totalScore += s.weightedAverage;
-        gradeCount++;
-      }
-    }
-    final globalAvg = gradeCount > 0 ? totalScore / gradeCount : null;
+    final gradScore = _gradeService.getGraduationScore(course.id, widget.userId);
+    final hasAnyGrade = summary.values.any((s) => s.hasGrades);
+    final globalAvg = hasAnyGrade ? gradScore : null;
+
+    // Provisional ranking
+    final ranking = _gradeService.getCourseRanking(course.id, course.attendeeIds);
+    final myRank = ranking.firstWhere(
+        (r) => r.attendeeId == widget.userId,
+        orElse: () => (attendeeId: widget.userId, score: 0, rank: 0));
+    final rankPos = hasAnyGrade ? myRank.rank : null;
 
     return RefreshIndicator(
       onRefresh: _reload,
@@ -95,7 +96,9 @@ class _AttendeeGradesScreenState extends ConsumerState<AttendeeGradesScreen> {
                       color: kCard,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
-                        side: BorderSide(color: (globalAvg >= 22.5 ? kAccent : kError).withOpacity(0.3)),
+                        side: BorderSide(
+                            color: (globalAvg >= 22.5 ? kAccent : kError)
+                                .withOpacity(0.3)),
                       ),
                       child: Padding(
                         padding: const EdgeInsets.all(16),
@@ -103,27 +106,50 @@ class _AttendeeGradesScreenState extends ConsumerState<AttendeeGradesScreen> {
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Text(
-                              globalAvg.toStringAsFixed(1),
+                              globalAvg.toStringAsFixed(3),
                               style: TextStyle(
                                 color: globalAvg >= 22.5 ? kAccent : kError,
-                                fontSize: 40,
+                                fontSize: 36,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
-                            const Text(' / 30', style: TextStyle(color: kTextDim, fontSize: 20)),
-                            const SizedBox(width: 16),
+                            const Text(' /30',
+                                style:
+                                    TextStyle(color: kTextDim, fontSize: 18)),
+                            const SizedBox(width: 20),
                             Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  globalAvg >= 22.5 ? 'SUFFICIENTE' : 'INSUFFICIENTE',
+                                  globalAvg >= 22.5
+                                      ? 'SUFFICIENTE'
+                                      : 'INSUFFICIENTE',
                                   style: TextStyle(
                                     color: globalAvg >= 22.5 ? kAccent : kError,
                                     fontWeight: FontWeight.bold,
                                     fontSize: 12,
                                   ),
                                 ),
-                                Text('Media ponderata', style: const TextStyle(color: kTextDim, fontSize: 11)),
+                                const Text('Media ponderata graduatoria',
+                                    style: TextStyle(
+                                        color: kTextDim, fontSize: 11)),
+                                if (rankPos != null && rankPos > 0) ...[
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    children: [
+                                      const Icon(Icons.leaderboard,
+                                          color: kWarning, size: 14),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        'Posizione provvisoria: $rankPos°/${course.attendeeIds.length}',
+                                        style: const TextStyle(
+                                            color: kWarning,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold),
+                                      ),
+                                    ],
+                                  ),
+                                ],
                               ],
                             ),
                           ],
@@ -205,12 +231,21 @@ class _AttendeeGradesScreenState extends ConsumerState<AttendeeGradesScreen> {
                                     Text(DateFormat('dd/MM/yyyy').format(g.date),
                                         style: const TextStyle(color: kTextDim, fontSize: 11)),
                                     const Spacer(),
-                                    Text(
-                                      g.score.toStringAsFixed(1),
-                                      style: TextStyle(
-                                        color: g.isPassing ? kAccent : kError,
-                                        fontWeight: FontWeight.bold,
-                                      ),
+                                    Column(
+                                      crossAxisAlignment: CrossAxisAlignment.end,
+                                      children: [
+                                        Text(
+                                          g.score.toStringAsFixed(1),
+                                          style: TextStyle(
+                                            color: g.isPassing ? kAccent : kError,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        if (!g.isPassing)
+                                          const Text('da recuperare',
+                                              style: TextStyle(
+                                                  color: kError, fontSize: 9)),
+                                      ],
                                     ),
                                   ],
                                 ),

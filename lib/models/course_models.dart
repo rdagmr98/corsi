@@ -33,6 +33,7 @@ class Course {
   final List<String> directorIds;
   final List<String> attendeeIds;
   final List<String> instructorIds;
+  final List<String> excludedDates; // YYYY-MM-DD days excluded from auto-schedule
   final String createdBy;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -47,6 +48,7 @@ class Course {
     this.directorIds = const [],
     this.attendeeIds = const [],
     this.instructorIds = const [],
+    this.excludedDates = const [],
     required this.createdBy,
     required this.createdAt,
     required this.updatedAt,
@@ -69,6 +71,7 @@ class Course {
     directorIds: List<String>.from(j['director_ids'] as List? ?? []),
     attendeeIds: List<String>.from(j['attendee_ids'] as List? ?? []),
     instructorIds: List<String>.from(j['instructor_ids'] as List? ?? []),
+    excludedDates: List<String>.from(j['excluded_dates'] as List? ?? []),
     createdBy: j['created_by'] as String? ?? '',
     createdAt: DateTime.parse(
       j['created_at'] as String? ?? DateTime.now().toIso8601String(),
@@ -88,6 +91,7 @@ class Course {
     'director_ids': directorIds,
     'attendee_ids': attendeeIds,
     'instructor_ids': instructorIds,
+    'excluded_dates': excludedDates,
     'created_by': createdBy,
     'created_at': createdAt.toIso8601String(),
     'updated_at': updatedAt.toIso8601String(),
@@ -102,6 +106,7 @@ class Course {
     List<String>? directorIds,
     List<String>? attendeeIds,
     List<String>? instructorIds,
+    List<String>? excludedDates,
   }) => Course(
     id: id,
     courseTypeId: courseTypeId ?? this.courseTypeId,
@@ -112,6 +117,7 @@ class Course {
     directorIds: directorIds ?? this.directorIds,
     attendeeIds: attendeeIds ?? this.attendeeIds,
     instructorIds: instructorIds ?? this.instructorIds,
+    excludedDates: excludedDates ?? this.excludedDates,
     createdBy: createdBy,
     createdAt: createdAt,
     updatedAt: DateTime.now(),

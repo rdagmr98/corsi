@@ -56,7 +56,7 @@ class _AmcTabState extends ConsumerState<AmcTab>
       Map<String, String>.from(_db.amcData['submoduleNames'] as Map? ?? {});
 
   Map<String, AppUser> _uidToUser() =>
-      {for (final u in _userService.getInstructors()) u.id: u};
+      {for (final u in _userService.getAllUsers()) u.id: u};
 
   Set<String> _courseInstructors() {
     if (_selectedCourseId == null) return {};

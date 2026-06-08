@@ -92,6 +92,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
       courseId: _selected!.id,
       typeInfo: _typeInfo!,
       hasAttendeesInRecovery: hasRecovery,
+      excludedDates: _selected!.excludedDates,
     );
     _reload();
   }
@@ -102,7 +103,35 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
         .where((u) => _selected!.instructorIds.contains(u.id))
         .toList();
 
-    int? selectedModule = _typeInfo!.modules.isNotEmpty ? _typeInfo!.modules.first.number : null;
+    // Count confirmed hours per submodule to show only remaining lessons
+    final doneLessons = _scheduleService
+        .getLessonsForCourse(_selected!.id)
+        .where((l) => l.confirmed)
+        .toList();
+    final doneT = <String, int>{};
+    final doneP = <String, int>{};
+    for (final l in doneLessons) {
+      if (l.isTheory) doneT[l.submoduleCode] = (doneT[l.submoduleCode] ?? 0) + 1;
+      else            doneP[l.submoduleCode] = (doneP[l.submoduleCode] ?? 0) + 1;
+    }
+
+    // Only offer modules/submodules with remaining hours
+    final availableModules = _typeInfo!.modules.where((m) =>
+        m.submodules.any((s) =>
+            (s.theoryHours    - (doneT[s.code] ?? 0)) > 0 ||
+            (s.practicalHours - (doneP[s.code] ?? 0)) > 0)
+    ).toList();
+
+    if (availableModules.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Tutte le lezioni del corso sono già completate.')),
+        );
+      }
+      return;
+    }
+
+    int? selectedModule = availableModules.first.number;
     String? selectedSubmodule;
     String type = 'teoria';
     String? selectedInstructor;
@@ -112,16 +141,33 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDlg) {
           final module = selectedModule != null
-              ? _typeInfo!.modules.firstWhere((m) => m.number == selectedModule, orElse: () => _typeInfo!.modules.first)
+              ? availableModules.firstWhere((m) => m.number == selectedModule,
+                  orElse: () => availableModules.first)
               : null;
-          if (selectedSubmodule == null && module != null && module.submodules.isNotEmpty) {
-            selectedSubmodule = module.submodules.first.code;
+
+          final availableSubs = module?.submodules.where((s) =>
+              (s.theoryHours    - (doneT[s.code] ?? 0)) > 0 ||
+              (s.practicalHours - (doneP[s.code] ?? 0)) > 0).toList() ?? [];
+
+          if (selectedSubmodule == null && availableSubs.isNotEmpty) {
+            selectedSubmodule = availableSubs.first.code;
+            // Auto-select type based on what's remaining
+            final first = availableSubs.first;
+            if ((first.theoryHours - (doneT[first.code] ?? 0)) <= 0) type = 'pratica';
+            else type = 'teoria';
           }
+
+          final selSub = availableSubs.firstWhere(
+              (s) => s.code == selectedSubmodule,
+              orElse: () => availableSubs.isNotEmpty ? availableSubs.first : module!.submodules.first);
+          final remT = selSub.theoryHours    - (doneT[selSub.code] ?? 0);
+          final remP = selSub.practicalHours - (doneP[selSub.code] ?? 0);
+
           return AlertDialog(
             backgroundColor: kCard,
             title: const Text('Aggiungi lezione', style: TextStyle(color: kText)),
             content: SizedBox(
-              width: 380,
+              width: 400,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -133,10 +179,11 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                     dropdownColor: kSurface,
                     style: const TextStyle(color: kText),
                     decoration: const InputDecoration(labelText: 'Modulo', isDense: true),
-                    items: _typeInfo!.modules
+                    items: availableModules
                         .map((m) => DropdownMenuItem(
                               value: m.number,
-                              child: Text('M${m.number} - ${m.name}', overflow: TextOverflow.ellipsis),
+                              child: Text('M${m.number} - ${m.name}',
+                                  overflow: TextOverflow.ellipsis),
                             ))
                         .toList(),
                     onChanged: (v) => setDlg(() {
@@ -145,19 +192,29 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                     }),
                   ),
                   const SizedBox(height: 12),
-                  if (module != null && module.submodules.isNotEmpty)
+                  if (availableSubs.isNotEmpty)
                     DropdownButtonFormField<String>(
                       value: selectedSubmodule,
                       dropdownColor: kSurface,
                       style: const TextStyle(color: kText),
                       decoration: const InputDecoration(labelText: 'Sottomodulo', isDense: true),
-                      items: module.submodules
-                          .map((s) => DropdownMenuItem(
-                                value: s.code,
-                                child: Text('${s.code} - ${s.name}', overflow: TextOverflow.ellipsis),
-                              ))
-                          .toList(),
-                      onChanged: (v) => setDlg(() => selectedSubmodule = v),
+                      items: availableSubs.map((s) {
+                        final rT = s.theoryHours    - (doneT[s.code] ?? 0);
+                        final rP = s.practicalHours - (doneP[s.code] ?? 0);
+                        final tag = [if (rT > 0) '${rT}T', if (rP > 0) '${rP}P'].join(' ');
+                        return DropdownMenuItem(
+                          value: s.code,
+                          child: Text('${s.code} - ${s.name}  ($tag)',
+                              overflow: TextOverflow.ellipsis),
+                        );
+                      }).toList(),
+                      onChanged: (v) => setDlg(() {
+                        selectedSubmodule = v;
+                        if (v != null) {
+                          final s = availableSubs.firstWhere((x) => x.code == v);
+                          type = (s.theoryHours - (doneT[v] ?? 0)) > 0 ? 'teoria' : 'pratica';
+                        }
+                      }),
                     ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
@@ -165,9 +222,11 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                     dropdownColor: kSurface,
                     style: const TextStyle(color: kText),
                     decoration: const InputDecoration(labelText: 'Tipo', isDense: true),
-                    items: const [
-                      DropdownMenuItem(value: 'teoria', child: Text('Teoria')),
-                      DropdownMenuItem(value: 'pratica', child: Text('Pratica')),
+                    items: [
+                      if (remT > 0)
+                        const DropdownMenuItem(value: 'teoria', child: Text('Teoria')),
+                      if (remP > 0)
+                        const DropdownMenuItem(value: 'pratica', child: Text('Pratica')),
                     ],
                     onChanged: (v) => setDlg(() => type = v ?? type),
                   ),
@@ -179,7 +238,8 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                     decoration: const InputDecoration(labelText: 'Istruttore', isDense: true),
                     items: [
                       const DropdownMenuItem(value: null, child: Text('— Da assegnare —')),
-                      ...instructors.map((i) => DropdownMenuItem(value: i.id, child: Text(i.fullName))),
+                      ...instructors.map(
+                          (i) => DropdownMenuItem(value: i.id, child: Text(i.fullName))),
                     ],
                     onChanged: (v) => setDlg(() => selectedInstructor = v),
                   ),
@@ -195,13 +255,11 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                 onPressed: () async {
                   Navigator.pop(ctx);
                   if (selectedModule == null) return;
-                  final sub = module?.submodules
-                      .firstWhere((s) => s.code == selectedSubmodule, orElse: () => module.submodules.first);
                   await _scheduleService.addLesson(
                     courseId: _selected!.id,
                     moduleNumber: selectedModule!,
                     submoduleCode: selectedSubmodule ?? '',
-                    topic: sub?.name ?? '',
+                    topic: selSub.name,
                     type: type,
                     date: date,
                     timeSlot: slot,
@@ -214,6 +272,100 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
             ],
           );
         },
+      ),
+    );
+  }
+
+  Future<void> _showExcludedDates() async {
+    if (_selected == null) return;
+    final excluded = List<String>.from(_selected!.excludedDates)..sort();
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlg) => AlertDialog(
+          backgroundColor: kCard,
+          title: const Text('Giorni esclusi dalla pianificazione',
+              style: TextStyle(color: kText, fontSize: 14)),
+          content: SizedBox(
+            width: 360,
+            height: 380,
+            child: Column(
+              children: [
+                const Text(
+                  'Vacanze natalizie, pasquali, estive e festività.',
+                  style: TextStyle(color: kTextDim, fontSize: 11),
+                ),
+                const SizedBox(height: 8),
+                ElevatedButton.icon(
+                  onPressed: () async {
+                    final d = await showDatePicker(
+                      context: ctx,
+                      initialDate: DateTime.now(),
+                      firstDate: DateTime(2024),
+                      lastDate: DateTime(2030),
+                      builder: (context, child) => Theme(
+                        data: ThemeData.dark(),
+                        child: child!,
+                      ),
+                    );
+                    if (d != null) {
+                      final s =
+                          '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+                      if (!excluded.contains(s)) {
+                        setDlg(() { excluded.add(s); excluded.sort(); });
+                      }
+                    }
+                  },
+                  icon: const Icon(Icons.add, size: 14),
+                  label: const Text('Aggiungi giorno escluso', style: TextStyle(fontSize: 12)),
+                ),
+                const SizedBox(height: 8),
+                Expanded(
+                  child: excluded.isEmpty
+                      ? const Center(
+                          child: Text('Nessun giorno escluso',
+                              style: TextStyle(color: kTextDim, fontSize: 12)))
+                      : ListView.builder(
+                          itemCount: excluded.length,
+                          itemBuilder: (_, i) {
+                            final d = DateTime.tryParse(excluded[i]);
+                            return ListTile(
+                              dense: true,
+                              title: Text(
+                                d != null
+                                    ? DateFormat('EEEE dd/MM/yyyy', 'it').format(d)
+                                    : excluded[i],
+                                style: const TextStyle(color: kText, fontSize: 12),
+                              ),
+                              trailing: IconButton(
+                                icon: const Icon(Icons.delete_outline,
+                                    color: kError, size: 16),
+                                onPressed: () => setDlg(() => excluded.removeAt(i)),
+                              ),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annulla', style: TextStyle(color: kTextDim)),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.pop(ctx);
+                final updated = _selected!.copyWith(excludedDates: excluded);
+                await _courseService.updateCourse(updated);
+                _load();
+              },
+              child: const Text('Salva'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -265,12 +417,23 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
               ),
               IconButton(icon: const Icon(Icons.chevron_right), onPressed: _nextWeek, color: kText),
               const SizedBox(width: 8),
-              if (_selected != null)
+              if (_selected != null) ...[
+                OutlinedButton.icon(
+                  onPressed: _showExcludedDates,
+                  icon: Icon(Icons.event_busy, size: 16,
+                      color: _selected!.excludedDates.isNotEmpty ? kWarning : kTextDim),
+                  label: Text(
+                    'Giorni esclusi${_selected!.excludedDates.isNotEmpty ? ' (${_selected!.excludedDates.length})' : ''}',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ),
+                const SizedBox(width: 8),
                 OutlinedButton.icon(
                   onPressed: _generateRemaining,
                   icon: const Icon(Icons.auto_fix_high, size: 16),
                   label: const Text('Genera lezioni rimanenti', style: TextStyle(fontSize: 12)),
                 ),
+              ],
               IconButton(icon: const Icon(Icons.refresh, color: kTextDim), onPressed: _reload),
             ],
           ),

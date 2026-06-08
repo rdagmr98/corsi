@@ -187,11 +187,11 @@ class ScheduleService {
           final slotIdx = i % slotList.length;
           final slot = slotList[slotIdx];
           if (slotIdx == 0 && i > 0) {
-            currentDate = _nextWorkday(currentDate.add(const Duration(days: 1)));
+            currentDate = _nextWorkday(_safeNext(currentDate));
           }
           lessons.add(_lessonMap(courseId, module.number, sub.code, sub.name, 'teoria', currentDate, slot.slot, now));
           if (slotIdx == slotList.length - 1) {
-            currentDate = _nextWorkday(currentDate.add(const Duration(days: 1)));
+            currentDate = _nextWorkday(_safeNext(currentDate));
           }
         }
         currentDate = _nextWorkday(currentDate);
@@ -200,11 +200,11 @@ class ScheduleService {
           final slotIdx = i % slotList.length;
           final slot = slotList[slotIdx];
           if (slotIdx == 0 && i > 0) {
-            currentDate = _nextWorkday(currentDate.add(const Duration(days: 1)));
+            currentDate = _nextWorkday(_safeNext(currentDate));
           }
           lessons.add(_lessonMap(courseId, module.number, sub.code, sub.name, 'pratica', currentDate, slot.slot, now));
           if (slotIdx == slotList.length - 1) {
-            currentDate = _nextWorkday(currentDate.add(const Duration(days: 1)));
+            currentDate = _nextWorkday(_safeNext(currentDate));
           }
         }
         currentDate = _nextWorkday(currentDate);
@@ -238,10 +238,19 @@ class ScheduleService {
     'updated_at': now,
   };
 
-  DateTime _nextWorkday(DateTime d) {
-    var next = d;
-    while (next.weekday == DateTime.saturday || next.weekday == DateTime.sunday) {
-      next = next.add(const Duration(days: 1));
+  // ── Date helpers (DST-safe: no Duration arithmetic) ─────────────────────────
+
+  DateTime _safeNext(DateTime d) => DateTime(d.year, d.month, d.day + 1);
+
+  String _fmt(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  DateTime _nextWorkday(DateTime d, [List<String> excluded = const []]) {
+    var next = DateTime(d.year, d.month, d.day);
+    while (next.weekday == DateTime.saturday ||
+        next.weekday == DateTime.sunday ||
+        excluded.contains(_fmt(next))) {
+      next = DateTime(next.year, next.month, next.day + 1);
     }
     return next;
   }
@@ -255,72 +264,109 @@ class ScheduleService {
     return map;
   }
 
-  /// Generate unconfirmed lessons for remaining hours not yet taught.
-  /// Skips submodules already fully covered by confirmed lessons.
-  /// Adds a 'recupero' lesson at slot 0 on each day if [hasAttendeesInRecovery] is true.
+  /// Auto-generate remaining unconfirmed lessons mixing 2–3-hour blocks from
+  /// different modules each day. Removes old auto-generated lessons; keeps
+  /// confirmed lessons and any manually-placed unconfirmed lessons.
   Future<void> generateRemainingSchedule({
     required String courseId,
     required CourseTypeInfo typeInfo,
     required bool hasAttendeesInRecovery,
+    List<String> excludedDates = const [],
   }) async {
     final allLessons = getLessonsForCourse(courseId);
+
     // Count confirmed hours per (submoduleCode, type)
     final doneT = <String, int>{};
     final doneP = <String, int>{};
     for (final l in allLessons.where((l) => l.confirmed)) {
-      if (l.isTheory) {
-        doneT[l.submoduleCode] = (doneT[l.submoduleCode] ?? 0) + 1;
-      } else {
-        doneP[l.submoduleCode] = (doneP[l.submoduleCode] ?? 0) + 1;
-      }
+      if (l.isTheory) doneT[l.submoduleCode] = (doneT[l.submoduleCode] ?? 0) + 1;
+      else            doneP[l.submoduleCode] = (doneP[l.submoduleCode] ?? 0) + 1;
     }
 
-    // Build queue of (code, module, type, hours_remaining)
-    final queue = <(String, int, String)>[];
+    // Build 2–3-hour blocks per module, then interleave round-robin for mixing
+    final moduleBlocks = <int, List<List<(String, int, String)>>>{};
     for (final m in typeInfo.modules) {
       for (final sub in m.submodules) {
-        final remT = sub.theoryHours - (doneT[sub.code] ?? 0);
-        final remP = sub.practicalHours - (doneP[sub.code] ?? 0);
-        for (var i = 0; i < remT; i++) { queue.add((sub.code, m.number, 'teoria')); }
-        for (var i = 0; i < remP; i++) { queue.add((sub.code, m.number, 'pratica')); }
+        final remT = (sub.theoryHours    - (doneT[sub.code] ?? 0)).clamp(0, 9999);
+        final remP = (sub.practicalHours - (doneP[sub.code] ?? 0)).clamp(0, 9999);
+
+        void addBlocks(int rem, String t) {
+          var r = rem;
+          while (r > 0) {
+            // prefer 3-hr blocks; avoid leaving a lone 1-hr tail (use 2+2 for 4)
+            final size = (r == 1) ? 1 : (r == 4 ? 2 : (r >= 3 ? 3 : 2));
+            moduleBlocks.putIfAbsent(m.number, () => [])
+                .add(List.generate(size, (_) => (sub.code, m.number, t)));
+            r -= size;
+          }
+        }
+
+        if (remT > 0) addBlocks(remT, 'teoria');
+        if (remP > 0) addBlocks(remP, 'pratica');
       }
     }
 
-    if (queue.isEmpty) return;
+    // Interleave: one block per module per pass
+    final queue = <(String, int, String)>[];
+    final modNums = moduleBlocks.keys.toList()..sort();
+    final modIdx  = {for (final k in modNums) k: 0};
+    bool anyLeft = true;
+    while (anyLeft) {
+      anyLeft = false;
+      for (final mod in modNums) {
+        final blocks = moduleBlocks[mod]!;
+        final bi = modIdx[mod]!;
+        if (bi < blocks.length) {
+          queue.addAll(blocks[bi]);
+          modIdx[mod] = bi + 1;
+          anyLeft = true;
+        }
+      }
+    }
 
-    // Start date: day after last confirmed lesson (or tomorrow, whichever is later)
-    DateTime startDate;
+    // Remove old auto-generated unconfirmed lessons; keep confirmed + manual
+    final rawSchedules = _db.schedules.toList();
+    final cleaned = rawSchedules.where((s) {
+      if (s['course_id'] != courseId) return true;
+      if (s['confirmed'] == true) return true;
+      return !(s['auto_generated'] as bool? ?? false);
+    }).toList();
+
+    if (queue.isEmpty) {
+      await _db.saveSchedules(cleaned);
+      return;
+    }
+
+    // Start: day after last confirmed lesson or today, whichever is later
     final confirmedDates = allLessons
         .where((l) => l.confirmed)
         .map((l) => l.date)
         .toList()
       ..sort();
     final lastDone = confirmedDates.isNotEmpty ? confirmedDates.last : DateTime.now();
-    final tomorrow = DateTime.now().add(const Duration(days: 1));
-    startDate = lastDone.isAfter(tomorrow) ? lastDone : tomorrow;
-    startDate = _nextWorkday(DateTime(startDate.year, startDate.month, startDate.day));
+    final today   = DateTime.now();
+    final seed    = lastDone.isAfter(today) ? lastDone : today;
+    var date      = _nextWorkday(_safeNext(seed), excludedDates);
 
-    // Remove any existing unconfirmed lessons (regenerate)
-    final existing = _db.schedules.toList();
-    final cleaned = existing.where((s) {
-      if (s['course_id'] != courseId) return true;
-      return s['confirmed'] == true;
-    }).toList();
+    final subNames = <String, String>{
+      for (final m in typeInfo.modules)
+        for (final s in m.submodules) s.code: s.name,
+    };
 
     final newLessons = <Map<String, dynamic>>[];
     final now = DateTime.now().toIso8601String();
+    var counter = 0;
     var qi = 0;
-    var date = startDate;
 
     while (qi < queue.length) {
-      final slots = typeInfo.schedule.slotsForWeekday(date.weekday);
-      final dateStr = date.toIso8601String().split('T').first;
+      final weekday = date.weekday;
+      final slots   = typeInfo.schedule.slotsForWeekday(weekday);
+      final dateStr = _fmt(date);
 
-      // Recovery slot (slot 0) if needed
-      if (hasAttendeesInRecovery) {
-        final id = '${DateTime.now().microsecondsSinceEpoch.toRadixString(16)}r$qi';
+      // Recovery slot 0 — Mon–Thu only (weekday 1..4)
+      if (hasAttendeesInRecovery && weekday <= DateTime.thursday) {
         newLessons.add({
-          'id': id,
+          'id': 'gen_rec_${counter++}',
           'course_id': courseId,
           'module_number': 0,
           'submodule_code': 'RECUPERO',
@@ -330,6 +376,7 @@ class ScheduleService {
           'time_slot': 0,
           'instructor_id': null,
           'confirmed': false,
+          'auto_generated': true,
           'created_at': now,
           'updated_at': now,
         });
@@ -337,25 +384,25 @@ class ScheduleService {
 
       for (final slot in slots) {
         if (qi >= queue.length) break;
-        final (code, modNum, type) = queue[qi++];
-        final id = '${DateTime.now().microsecondsSinceEpoch.toRadixString(16)}f$qi';
+        final (code, modNum, lessonType) = queue[qi++];
         newLessons.add({
-          'id': id,
+          'id': 'gen_${counter++}',
           'course_id': courseId,
           'module_number': modNum,
           'submodule_code': code,
-          'topic': code,
-          'type': type,
+          'topic': subNames[code] ?? code,
+          'type': lessonType,
           'date': dateStr,
           'time_slot': slot.slot,
           'instructor_id': null,
           'confirmed': false,
+          'auto_generated': true,
           'created_at': now,
           'updated_at': now,
         });
       }
 
-      date = _nextWorkday(date.add(const Duration(days: 1)));
+      date = _nextWorkday(_safeNext(date), excludedDates);
     }
 
     cleaned.addAll(newLessons);

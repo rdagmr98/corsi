@@ -122,6 +122,34 @@ class GradeService {
     return InstructorUpdate.fromJson(entry);
   }
 
+  /// Overall graduation score: sum(score × weight) / sum(weights) for passing grades only.
+  double getGraduationScore(String courseId, String attendeeId) {
+    final grades = getGradesForAttendee(courseId, attendeeId)
+        .where((g) => g.isPassing)
+        .toList();
+    if (grades.isEmpty) return 0;
+    double total = 0;
+    int totalWeight = 0;
+    for (final g in grades) {
+      final w = g.assessmentType.weight;
+      total += g.score * w;
+      totalWeight += w;
+    }
+    return totalWeight == 0 ? 0 : total / totalWeight;
+  }
+
+  List<({String attendeeId, double score, int rank})> getCourseRanking(
+      String courseId, List<String> attendeeIds) {
+    final scored = attendeeIds
+        .map((id) => (id: id, score: getGraduationScore(courseId, id)))
+        .toList()
+      ..sort((a, b) => b.score.compareTo(a.score));
+    return [
+      for (var i = 0; i < scored.length; i++)
+        (attendeeId: scored[i].id, score: scored[i].score, rank: i + 1),
+    ];
+  }
+
   Future<void> deleteUpdate(String updateId) async {
     final updates = _db.updates.where((u) => u['id'] != updateId).toList();
     await _db.saveUpdates(updates);
