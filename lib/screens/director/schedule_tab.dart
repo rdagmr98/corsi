@@ -375,6 +375,40 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
     _reload();
   }
 
+  Future<void> _deleteUnconfirmedLessons() async {
+    if (_selected == null) return;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: kCard,
+        title: const Text('Cancella lezioni non svolte', style: TextStyle(color: kError)),
+        content: const Text(
+          'Questa operazione cancellerà tutte le lezioni programmate ma non ancora confermate per questo corso.\n\nL\'operazione non è reversibile.',
+          style: TextStyle(color: kText),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annulla', style: TextStyle(color: kTextDim)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: kError),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Cancella'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    final deleted = await _scheduleService.deleteUnconfirmedLessons(_selected!.id);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$deleted lezioni non svolte cancellate.')),
+      );
+    }
+    _reload();
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_courses.isEmpty) {
@@ -432,6 +466,16 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                   onPressed: _generateRemaining,
                   icon: const Icon(Icons.auto_fix_high, size: 16),
                   label: const Text('Genera lezioni rimanenti', style: TextStyle(fontSize: 12)),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  onPressed: _deleteUnconfirmedLessons,
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: kError),
+                    foregroundColor: kError,
+                  ),
+                  icon: const Icon(Icons.delete_sweep, size: 16),
+                  label: const Text('Cancella non svolte', style: TextStyle(fontSize: 12)),
                 ),
               ],
               IconButton(icon: const Icon(Icons.refresh, color: kTextDim), onPressed: _reload),

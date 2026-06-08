@@ -150,10 +150,11 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
     List<ScheduledLesson> allLessons,
     CourseTypeInfo? typeInfo,
   ) {
-    final modStats = _attendanceService.computePerModuleStats(course.id, a.id, allLessons);
+    final modStats = _attendanceService.computePerModuleStats(
+      course.id, a.id, allLessons, modules: typeInfo?.modules);
     final totalAbsent = modStats.values.fold(0, (s, m) => s + (m['absent'] ?? 0));
     final totalUnrecovered = modStats.values.fold(0, (s, m) => s + (m['unrecovered'] ?? 0));
-    final totalLessons = modStats.values.fold(0, (s, m) => s + (m['total'] ?? 0));
+    final totalPlannedHours = typeInfo?.modules.fold(0, (s, m) => s + m.totalHours) ?? 0;
     final anyWarning = typeInfo != null &&
         modStats.entries.any((e) {
           final total = e.value['total'] ?? 0;
@@ -180,7 +181,7 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
         title: Text(a.fullName,
             style: const TextStyle(color: kText, fontWeight: FontWeight.w500, fontSize: 14)),
         subtitle: Text(
-          '$totalAbsent ass. · $totalUnrecovered non recuperate · $totalLessons lezioni',
+          '$totalAbsent ore ass. · $totalUnrecovered non rec. su $totalPlannedHours ore prev.',
           style: TextStyle(
               color: anyWarning ? kError : kTextDim, fontSize: 12),
         ),
@@ -227,13 +228,13 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
           overflow: TextOverflow.ellipsis),
       subtitle: warn
           ? Text(
-              '$absent ass. / $recovered rec. / $unrecovered non rec. — ${(pct * 100).toStringAsFixed(0)}%  ⚠ LIMITE 10%',
+              '$unrecovered ore non rec. / $total ore prev. — ${(pct * 100).toStringAsFixed(1)}%  ⚠ LIMITE 10%',
               style: const TextStyle(color: kError, fontSize: 11),
             )
           : Text(
               absent == 0
-                  ? 'Nessuna assenza'
-                  : '$absent ass. · $recovered rec. · $unrecovered non recuperate',
+                  ? 'Nessuna assenza su $total ore prev.'
+                  : '$absent ore ass. · $recovered rec. · $unrecovered non rec. / $total ore prev.',
               style: const TextStyle(color: kTextDim, fontSize: 11),
             ),
       trailing: Row(

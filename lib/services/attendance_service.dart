@@ -1,3 +1,4 @@
+import '../models/reference_models.dart';
 import '../models/schedule_models.dart';
 import 'gh_db_service.dart';
 
@@ -87,22 +88,25 @@ class AttendanceService {
       getAllRecords().where((r) => r.courseId == courseId).toList();
 
   /// Per-module absence/recovery stats for one attendee.
+  /// 'total' = planned module hours from [modules] reference (if provided),
+  /// otherwise falls back to confirmed lesson count.
   /// Returns map keyed by module number: {total, absent, recovered, unrecovered}
   Map<int, Map<String, int>> computePerModuleStats(
     String courseId,
     String attendeeId,
-    List<ScheduledLesson> allLessons,
-  ) {
+    List<ScheduledLesson> allLessons, {
+    List<ModuleInfo>? modules,
+  }) {
     final confirmedLessons = allLessons
         .where((l) => l.courseId == courseId && l.confirmed && l.timeSlot > 0)
         .toList();
     final records = getRecordsForAttendee(courseId, attendeeId);
     final recordMap = {for (final r in records) r.scheduleId: r};
 
-    final Map<int, int> totalByModule = {};
+    final Map<int, int> confirmedByModule = {};
     final Map<int, int> absentByModule = {};
     for (final l in confirmedLessons) {
-      totalByModule[l.moduleNumber] = (totalByModule[l.moduleNumber] ?? 0) + 1;
+      confirmedByModule[l.moduleNumber] = (confirmedByModule[l.moduleNumber] ?? 0) + 1;
       final r = recordMap[l.id];
       if (r != null && !r.present) {
         absentByModule[l.moduleNumber] = (absentByModule[l.moduleNumber] ?? 0) + 1;
@@ -117,14 +121,21 @@ class AttendanceService {
       }
     }
 
+    // Build total hours map: use planned module hours when available
+    final plannedHours = modules != null
+        ? {for (final m in modules) m.number: m.totalHours}
+        : <int, int>{};
+
     final result = <int, Map<String, int>>{};
-    for (final module in totalByModule.keys) {
-      final total = totalByModule[module] ?? 0;
-      final absent = absentByModule[module] ?? 0;
-      final recovered = recoveredByModule[module] ?? 0;
+    final moduleKeys = {...confirmedByModule.keys, ...absentByModule.keys};
+    for (final moduleNum in moduleKeys) {
+      final total = plannedHours[moduleNum] ?? confirmedByModule[moduleNum] ?? 0;
+      final absent = absentByModule[moduleNum] ?? 0;
+      final recovered = recoveredByModule[moduleNum] ?? 0;
       final unrecovered = (absent - recovered).clamp(0, absent);
-      result[module] = {
+      result[moduleNum] = {
         'total': total,
+        'confirmed': confirmedByModule[moduleNum] ?? 0,
         'absent': absent,
         'recovered': recovered,
         'unrecovered': unrecovered,
@@ -170,9 +181,13 @@ class AttendanceService {
   }
 
   /// Returns true if at least one attendee in the course has >10% absence rate
-  /// (excluding recoveries) relative to total confirmed lessons.
-  bool courseHasAttendeesInRecovery(String courseId, List<String> attendeeIds, int totalLessons) {
-    if (totalLessons == 0) return false;
+  /// (excluding recoveries) relative to total planned module hours.
+  bool courseHasAttendeesInRecovery(
+    String courseId,
+    List<String> attendeeIds,
+    int totalPlannedHours,
+  ) {
+    if (totalPlannedHours == 0) return false;
     for (final id in attendeeIds) {
       final stats = computeAbsences(courseId, id);
       final absences = stats['absent'] ?? 0;
@@ -180,7 +195,7 @@ class AttendanceService {
           .where((r) => r.courseId == courseId && r.attendeeId == id && r.justification == 'recupero')
           .length;
       final unrecoveredAbsences = absences - recoveries;
-      if (unrecoveredAbsences / totalLessons > 0.10) return true;
+      if (unrecoveredAbsences / totalPlannedHours > 0.10) return true;
     }
     return false;
   }

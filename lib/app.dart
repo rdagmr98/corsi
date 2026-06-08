@@ -29,6 +29,12 @@ class CorsiApp extends ConsumerWidget {
       debugShowCheckedModeBanner: false,
       theme: buildTheme(),
       routerConfig: _router,
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(
+          textScaler: const TextScaler.linear(1.25),
+        ),
+        child: child!,
+      ),
     );
   }
 }

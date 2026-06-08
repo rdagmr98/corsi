@@ -4,8 +4,12 @@ import 'package:intl/intl.dart';
 import '../../models/course_models.dart';
 import '../../models/user_models.dart';
 import '../../providers/auth_provider.dart';
+import '../../services/attendance_service.dart';
 import '../../services/course_service.dart';
+import '../../services/grade_service.dart';
+import '../../services/pdf_export_service.dart';
 import '../../services/reference_service.dart';
+import '../../services/schedule_service.dart';
 import '../../services/user_service.dart';
 import '../../theme.dart';
 
@@ -20,6 +24,9 @@ class _CoursesTabState extends ConsumerState<CoursesTab> {
   final _courseService = CourseService();
   final _refService = ReferenceService();
   final _userService = UserService();
+  final _scheduleService = ScheduleService();
+  final _gradeService = GradeService();
+  final _attendanceService = AttendanceService();
   List<Course> _courses = [];
   bool _loading = true;
 
@@ -232,6 +239,47 @@ class _CoursesTabState extends ConsumerState<CoursesTab> {
   }
 
   Future<void> _changeStatus(Course c, String newStatus) async {
+    if (newStatus == 'archived') {
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: const Color(0xFF1A2A3A),
+          title: const Text('Archivia corso', style: TextStyle(color: Colors.white)),
+          content: const Text(
+            'Verrà generato e scaricato il PDF con tutti i dati probanti del corso.\n\nProcedere?',
+            style: TextStyle(color: Colors.white70),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Annulla', style: TextStyle(color: Colors.white54)),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Archivia e scarica PDF'),
+            ),
+          ],
+        ),
+      );
+      if (confirm != true) return;
+
+      final typeInfo = _refService.getCourseType(c.courseTypeId);
+      final lessons = _scheduleService.getLessonsForCourse(c.id);
+      final allUsers = _userService.getAllUsers();
+      final attendees = allUsers.where((u) => c.attendeeIds.contains(u.id)).toList();
+      final instructors = allUsers.where((u) => c.instructorIds.contains(u.id)).toList();
+
+      await PdfExportService.downloadCourseReport(
+        course: c,
+        typeInfo: typeInfo,
+        lessons: lessons,
+        attendees: attendees,
+        instructors: instructors,
+        gradeService: _gradeService,
+        attendanceService: _attendanceService,
+      );
+    }
+
     if (newStatus == 'active') await _courseService.activateCourse(c.id);
     else if (newStatus == 'completed') await _courseService.completeCourse(c.id);
     else await _courseService.updateCourse(c.copyWith(status: newStatus));
