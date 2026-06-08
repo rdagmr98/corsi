@@ -59,15 +59,10 @@ class _CoursesTabState extends ConsumerState<CoursesTab> {
 
     String? selectedType = course?.courseTypeId ?? (courseTypes.isNotEmpty ? courseTypes.first.id : null);
     final titleCtrl     = TextEditingController(text: course?.title ?? '');
-    final dirNomeCtrl   = TextEditingController();
-    final dirCognCtrl   = TextEditingController();
-    final dirUserCtrl   = TextEditingController();
-    final dirPwdCtrl    = TextEditingController();
     DateTime? startDate = course?.startDate;
     Set<String> selectedDirectors  = Set.from(course?.directorIds ?? []);
     Set<String> selectedInstructors = Set.from(course?.instructorIds ?? []);
     Set<String> selectedAttendees  = Set.from(course?.attendeeIds ?? []);
-    String? dirError;
 
     await showDialog(
       context: context,
@@ -128,49 +123,14 @@ class _CoursesTabState extends ConsumerState<CoursesTab> {
                   ),
                   const Divider(color: kBorder, height: 28),
                   // ── DIRETTORE ───────────────────────────────────────────
-                  if (isNew) ...[
-                    _label('Direttore del corso — crea account'),
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        Expanded(child: TextField(
-                          controller: dirCognCtrl,
-                          style: const TextStyle(color: kText),
-                          decoration: const InputDecoration(labelText: 'Cognome', isDense: true),
-                        )),
-                        const SizedBox(width: 8),
-                        Expanded(child: TextField(
-                          controller: dirNomeCtrl,
-                          style: const TextStyle(color: kText),
-                          decoration: const InputDecoration(labelText: 'Nome', isDense: true),
-                        )),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(child: TextField(
-                          controller: dirUserCtrl,
-                          style: const TextStyle(color: kText),
-                          decoration: const InputDecoration(labelText: 'Username', isDense: true),
-                        )),
-                        const SizedBox(width: 8),
-                        Expanded(child: TextField(
-                          controller: dirPwdCtrl,
-                          obscureText: true,
-                          style: const TextStyle(color: kText),
-                          decoration: const InputDecoration(labelText: 'Password iniziale', isDense: true),
-                        )),
-                      ],
-                    ),
-                    if (dirError != null) ...[
-                      const SizedBox(height: 6),
-                      Text(dirError!, style: const TextStyle(color: kError, fontSize: 11)),
-                    ],
-                  ] else ...[
-                    _label('Direttori'),
+                  _label('Direttore del corso'),
+                  if (existingDirectors.isEmpty)
+                    const Text(
+                      'Nessun direttore disponibile. Crea prima un utente con ruolo "Direttore corso" dalla scheda Utenti.',
+                      style: TextStyle(color: kWarning, fontSize: 11),
+                    )
+                  else
                     _multiSelect(existingDirectors, selectedDirectors, setDlg),
-                  ],
                   const Divider(color: kBorder, height: 28),
                   _label('Istruttori'),
                   _multiSelect(instructors, selectedInstructors, setDlg),
@@ -192,37 +152,18 @@ class _CoursesTabState extends ConsumerState<CoursesTab> {
                 if (title.isEmpty || selectedType == null) return;
                 final masterId = ref.read(authProvider).currentUser?.id ?? '';
 
+                Navigator.pop(ctx);
                 if (isNew) {
-                  // Valida e crea direttore
-                  final dUser = dirUserCtrl.text.trim();
-                  final dPwd  = dirPwdCtrl.text.trim();
-                  final dNome = dirNomeCtrl.text.trim();
-                  final dCogn = dirCognCtrl.text.trim();
-                  if (dUser.isEmpty || dPwd.isEmpty || dNome.isEmpty || dCogn.isEmpty) {
-                    setDlg(() => dirError = 'Completa tutti i campi del direttore.');
-                    return;
-                  }
-                  if (_userService.usernameExists(dUser)) {
-                    setDlg(() => dirError = 'Username "$dUser" già in uso.');
-                    return;
-                  }
-                  Navigator.pop(ctx);
-                  final dirUser = await _userService.createUser(
-                    nome: dNome, cognome: dCogn,
-                    username: dUser, password: dPwd,
-                    role: UserRole.courseDirector,
-                  );
                   await _courseService.createCourse(
                     courseTypeId: selectedType!,
                     title: title,
                     createdBy: masterId,
                     startDate: startDate,
-                    directorIds: [dirUser.id],
+                    directorIds: selectedDirectors.toList(),
                     instructorIds: selectedInstructors.toList(),
                     attendeeIds: selectedAttendees.toList(),
                   );
                 } else {
-                  Navigator.pop(ctx);
                   await _courseService.updateCourse(course!.copyWith(
                     courseTypeId: selectedType,
                     title: title,

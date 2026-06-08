@@ -19,6 +19,8 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
   final _gradeService = GradeService();
   final _db           = GhDbService();
   List<AppUser> _instructors = [];
+  bool? _filterGo; // null=tutti, true=GO, false=NO-GO
+  _SortMode _sortMode = _SortMode.name;
 
   @override
   void initState() {
@@ -28,8 +30,7 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
 
   void _load() {
     setState(() {
-      _instructors = _userService.getInstructors()
-        ..sort((a, b) => a.cognome.compareTo(b.cognome));
+      _instructors = _userService.getInstructors();
     });
   }
 
@@ -195,7 +196,7 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
         .toList()
       ..sort((a, b) => b.date.compareTo(a.date));
     final goTeach  = instr.goOverride || teachH >= 6;
-    final goProf   = profH >= 35;
+    final goProf   = instr.goOverride || profH >= 35;
     final go       = goTeach && goProf;
 
     showDialog(
@@ -478,6 +479,33 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
 
   @override
   Widget build(BuildContext context) {
+    // Compute GO for each instructor
+    final rows = _instructors.map((instr) {
+      final teachH = _gradeService.getTeachingHoursRollingYear(instr.id);
+      final profH  = _gradeService.getProfessionalUpdateHoursLast2Years(instr.id);
+      final goT = instr.goOverride || teachH >= 6;
+      final goP = instr.goOverride || profH >= 35;
+      final go  = goT && goP;
+      return (instr: instr, teachH: teachH, profH: profH, goT: goT, goP: goP, go: go);
+    }).toList();
+
+    // Filter
+    final filtered = _filterGo == null
+        ? rows
+        : rows.where((r) => r.go == _filterGo).toList();
+
+    // Sort
+    filtered.sort((a, b) => switch (_sortMode) {
+      _SortMode.name    => a.instr.cognome.compareTo(b.instr.cognome),
+      _SortMode.goFirst => b.go ? 1 : (a.go ? -1 : a.instr.cognome.compareTo(b.instr.cognome)),
+      _SortMode.noGoFirst => a.go ? 1 : (b.go ? -1 : a.instr.cognome.compareTo(b.instr.cognome)),
+      _SortMode.teachH  => b.teachH.compareTo(a.teachH),
+      _SortMode.profH   => b.profH.compareTo(a.profH),
+    });
+
+    final goCount   = rows.where((r) => r.go).length;
+    final noGoCount = rows.length - goCount;
+
     return Column(children: [
       Padding(
         padding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
@@ -490,26 +518,57 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
               onPressed: _reload),
         ]),
       ),
+      // Filters + Sort bar
+      Padding(
+        padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+        child: Row(children: [
+          // GO filter chips
+          _filterChip('Tutti', _filterGo == null, kTextDim,
+              () => setState(() => _filterGo = null)),
+          const SizedBox(width: 6),
+          _filterChip('GO ($goCount)', _filterGo == true, kAccent,
+              () => setState(() => _filterGo = true)),
+          const SizedBox(width: 6),
+          _filterChip('NO-GO ($noGoCount)', _filterGo == false, kError,
+              () => setState(() => _filterGo = false)),
+          const Spacer(),
+          // Sort menu
+          PopupMenuButton<_SortMode>(
+            color: kSurface,
+            tooltip: 'Ordina',
+            icon: const Icon(Icons.sort, color: kTextDim, size: 20),
+            onSelected: (m) => setState(() => _sortMode = m),
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: _SortMode.name,     child: Text('A-Z', style: TextStyle(color: kText))),
+              PopupMenuItem(value: _SortMode.goFirst,  child: Text('GO prima', style: TextStyle(color: kText))),
+              PopupMenuItem(value: _SortMode.noGoFirst,child: Text('NO-GO prima', style: TextStyle(color: kText))),
+              PopupMenuItem(value: _SortMode.teachH,   child: Text('Ore lezione ↓', style: TextStyle(color: kText))),
+              PopupMenuItem(value: _SortMode.profH,    child: Text('Ore aggiorn. ↓', style: TextStyle(color: kText))),
+            ],
+          ),
+        ]),
+      ),
       Padding(
         padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
         child: const Text(
-          'GO se: ≥6h insegnamento (ultimi 365 giorni) E ≥35h aggiornamento professionale (ultimi 2 anni)',
+          'GO se: ≥6h insegnamento (365gg) E ≥35h aggiorn. prof. (2 anni). OJT manuale bypassa entrambi.',
           style: TextStyle(color: kTextDim, fontSize: 11),
         ),
       ),
       Expanded(
         child: ListView.builder(
           padding: const EdgeInsets.symmetric(horizontal: 24),
-          itemCount: _instructors.length,
+          itemCount: filtered.length,
           itemBuilder: (_, i) {
-            final instr  = _instructors[i];
-            final teachH = _gradeService.getTeachingHoursRollingYear(instr.id);
-            final profH  = _gradeService.getProfessionalUpdateHoursLast2Years(instr.id);
+            final r      = filtered[i];
+            final instr  = r.instr;
+            final teachH = r.teachH;
+            final profH  = r.profH;
             final tMods  = _theoryMods(instr.id);
             final pMods  = _practiceMods(instr.id);
-            final goT    = instr.goOverride || teachH >= 6;
-            final goP    = profH >= 35;
-            final go     = goT && goP;
+            final goT    = r.goT;
+            final goP    = r.goP;
+            final go     = r.go;
 
             return Card(
               color: kCard,
@@ -588,4 +647,24 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
               fontWeight: FontWeight.bold)),
     ],
   );
+
+  Widget _filterChip(String label, bool selected, Color color, VoidCallback onTap) =>
+      GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: selected ? color.withOpacity(0.15) : kSurface,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: selected ? color : kBorder),
+          ),
+          child: Text(label,
+              style: TextStyle(
+                  color: selected ? color : kTextDim,
+                  fontSize: 11,
+                  fontWeight: selected ? FontWeight.bold : FontWeight.normal)),
+        ),
+      );
 }
+
+enum _SortMode { name, goFirst, noGoFirst, teachH, profH }
