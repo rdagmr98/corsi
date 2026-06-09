@@ -185,6 +185,11 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
           style: TextStyle(
               color: anyWarning ? kError : kTextDim, fontSize: 12),
         ),
+        trailing: IconButton(
+          icon: const Icon(Icons.person_remove_outlined, color: kError, size: 18),
+          tooltip: 'Espelli dal corso',
+          onPressed: () => _expelStudent(course, a),
+        ),
         children: typeInfo == null
             ? []
             : typeInfo.modules
@@ -193,6 +198,37 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
                 .toList(),
       ),
     );
+  }
+
+  Future<void> _expelStudent(Course course, AppUser student) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: kCard,
+        title: const Text('Espelli frequentatore', style: TextStyle(color: kText)),
+        content: Text(
+          'Rimuovere ${student.fullName} dal corso "${course.title}"?\n\nI dati di presenze e voti verranno mantenuti.',
+          style: const TextStyle(color: kTextDim),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annulla', style: TextStyle(color: kTextDim)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: kError),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Espelli'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final updated = course.copyWith(
+      attendeeIds: course.attendeeIds.where((id) => id != student.id).toList(),
+    );
+    await _courseService.updateCourse(updated);
+    _reload();
   }
 
   Widget _buildModuleRow(

@@ -103,24 +103,25 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
         .where((u) => _selected!.instructorIds.contains(u.id))
         .toList();
 
-    // Count confirmed hours per submodule to show only remaining lessons
+    // Count confirmed hours per submodule and per module total
     final doneLessons = _scheduleService
         .getLessonsForCourse(_selected!.id)
-        .where((l) => l.confirmed)
+        .where((l) => l.confirmed && l.timeSlot > 0)
         .toList();
     final doneT = <String, int>{};
     final doneP = <String, int>{};
+    final doneTotalByModule = <int, int>{};
     for (final l in doneLessons) {
       if (l.isTheory) doneT[l.submoduleCode] = (doneT[l.submoduleCode] ?? 0) + 1;
       else            doneP[l.submoduleCode] = (doneP[l.submoduleCode] ?? 0) + 1;
+      doneTotalByModule[l.moduleNumber] = (doneTotalByModule[l.moduleNumber] ?? 0) + 1;
     }
 
-    // Only offer modules/submodules with remaining hours
-    final availableModules = _typeInfo!.modules.where((m) =>
-        m.submodules.any((s) =>
-            (s.theoryHours    - (doneT[s.code] ?? 0)) > 0 ||
-            (s.practicalHours - (doneP[s.code] ?? 0)) > 0)
-    ).toList();
+    // Only offer modules where confirmed total < planned total
+    final availableModules = _typeInfo!.modules.where((m) {
+      final done = doneTotalByModule[m.number] ?? 0;
+      return done < m.totalHours;
+    }).toList();
 
     if (availableModules.isEmpty) {
       if (mounted) {

@@ -38,7 +38,7 @@ class ScheduledLesson {
   });
 
   LessonType get lessonType => LessonTypeExt.fromString(type);
-  bool get isTheory => type == 'teoria';
+  bool get isTheory => type != 'pratica';
 
   factory ScheduledLesson.fromJson(Map<String, dynamic> j) => ScheduledLesson(
     id: j['id'] as String,

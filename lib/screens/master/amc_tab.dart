@@ -4,6 +4,7 @@ import '../../models/user_models.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/course_service.dart';
 import '../../services/gh_db_service.dart';
+import '../../services/reference_service.dart';
 import '../../services/user_service.dart';
 import '../../theme.dart';
 
@@ -15,9 +16,10 @@ class AmcTab extends ConsumerStatefulWidget {
 
 class _AmcTabState extends ConsumerState<AmcTab>
     with SingleTickerProviderStateMixin {
-  final _userService   = UserService();
-  final _courseService = CourseService();
-  final _db            = GhDbService();
+  final _userService        = UserService();
+  final _courseService      = CourseService();
+  final _db                 = GhDbService();
+  final _referenceService   = ReferenceService();
   late final TabController _tabs = TabController(length: 2, vsync: this);
 
   String? _selectedCourseId;
@@ -52,8 +54,20 @@ class _AmcTabState extends ConsumerState<AmcTab>
     return raw.map((k, v) => MapEntry(k, List<String>.from(v as List)));
   }
 
-  Map<String, String> _submoduleNames() =>
-      Map<String, String>.from(_db.amcData['submoduleNames'] as Map? ?? {});
+  Map<String, String> _submoduleNames() {
+    final fromAmc = Map<String, String>.from(_db.amcData['submoduleNames'] as Map? ?? {});
+    if (fromAmc.isNotEmpty) return fromAmc;
+    // Build from reference.json as fallback
+    final result = <String, String>{};
+    for (final ct in _referenceService.getCourseTypes()) {
+      for (final m in ct.modules) {
+        for (final s in m.submodules) {
+          result[s.code] = s.name;
+        }
+      }
+    }
+    return result;
+  }
 
   Map<String, AppUser> _uidToUser() =>
       {for (final u in _userService.getAllUsers()) u.id: u};

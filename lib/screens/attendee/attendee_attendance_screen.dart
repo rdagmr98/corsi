@@ -51,12 +51,14 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
     final course = _selected;
     if (course == null) return const SizedBox();
 
-    final stats = _attendanceService.computeAbsences(course.id, widget.userId);
     final lessons = _scheduleService.getLessonsForCourse(course.id);
     final records = _attendanceService.getRecordsForAttendee(course.id, widget.userId);
     final recordMap = {for (final r in records) r.scheduleId: r};
-    final total = stats['total'] ?? 0;
-    final absent = stats['absent'] ?? 0;
+    // total = confirmed regular lessons; absent = those with an absence record
+    final confirmedLessons = lessons.where((l) => l.confirmed && l.timeSlot > 0).toList();
+    final total = confirmedLessons.length;
+    final absent = confirmedLessons.where((l) => recordMap[l.id] != null && recordMap[l.id]!.present == false).length;
+    final recovered = records.where((r) => r.justification == 'recupero').length;
     final present = total - absent;
     final pct = total > 0 ? present / total : 1.0;
 
@@ -99,8 +101,8 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
                             mainAxisAlignment: MainAxisAlignment.spaceAround,
                             children: [
                               _stat('$present', 'Presenti', kAccent),
-                              _stat('$absent', 'Assenze', kError),
-                              _stat('$total', 'Totale', kText),
+                              _stat('$absent', 'Assenze', absent > 0 ? kError : kAccent),
+                              _stat('$recovered', 'Recuperate', kPrimary),
                               _stat('${(pct * 100).toStringAsFixed(0)}%', 'Presenza', pct >= 0.75 ? kAccent : kError),
                             ],
                           ),
@@ -126,23 +128,34 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
               delegate: SliverChildBuilderDelegate(
                 (_, i) {
                   final l = lessons[i];
+                  if (l.timeSlot == 0) return const SizedBox.shrink();
                   final r = recordMap[l.id];
-                  final confirmed = r != null;
-                  final present2 = r?.present ?? false;
-                  final justified = r?.justification != null;
+                  final isRecovery = r?.justification == 'recupero';
+                  final isPresent = r?.present ?? false;
+                  final isJustified = r != null && r.justification != null && r.justification != 'recupero';
 
                   Color statusColor;
                   IconData statusIcon;
                   String statusText;
-                  if (!confirmed) {
-                    statusColor = kTextDim;
-                    statusIcon = Icons.schedule;
-                    statusText = 'Non registrata';
-                  } else if (present2) {
+                  if (r == null && l.confirmed) {
+                    // Confirmed lesson, no absence record = student was present
                     statusColor = kAccent;
                     statusIcon = Icons.check_circle;
                     statusText = 'Presente';
-                  } else if (justified) {
+                  } else if (r == null) {
+                    // Future or unconfirmed lesson
+                    statusColor = kTextDim;
+                    statusIcon = Icons.schedule;
+                    statusText = 'Non registrata';
+                  } else if (isRecovery) {
+                    statusColor = kPrimary;
+                    statusIcon = Icons.replay;
+                    statusText = 'Recuperata (M${r.recoveredModule ?? l.moduleNumber})';
+                  } else if (isPresent) {
+                    statusColor = kAccent;
+                    statusIcon = Icons.check_circle;
+                    statusText = 'Presente';
+                  } else if (isJustified) {
                     statusColor = kWarning;
                     statusIcon = Icons.warning_amber;
                     statusText = 'Giustificata';

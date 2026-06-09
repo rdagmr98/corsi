@@ -284,20 +284,33 @@ class ScheduleService {
   }) async {
     final allLessons = getLessonsForCourse(courseId);
 
-    // Count confirmed hours per (submoduleCode, type)
+    // Count confirmed hours per (submoduleCode, type) AND per module total
     final doneT = <String, int>{};
     final doneP = <String, int>{};
-    for (final l in allLessons.where((l) => l.confirmed)) {
+    final doneTotalByModule = <int, int>{};
+    for (final l in allLessons.where((l) => l.confirmed && l.timeSlot > 0)) {
       if (l.isTheory) doneT[l.submoduleCode] = (doneT[l.submoduleCode] ?? 0) + 1;
       else            doneP[l.submoduleCode] = (doneP[l.submoduleCode] ?? 0) + 1;
+      doneTotalByModule[l.moduleNumber] = (doneTotalByModule[l.moduleNumber] ?? 0) + 1;
     }
 
     // Build 2–3-hour blocks per module, then interleave round-robin for mixing
     final moduleBlocks = <int, List<List<(String, int, String)>>>{};
     for (final m in typeInfo.modules) {
+      // Skip entire module if confirmed hours already meet planned total
+      final moduleDone = doneTotalByModule[m.number] ?? 0;
+      if (moduleDone >= m.totalHours) continue;
+      // Remaining module capacity to distribute across submodules
+      var moduleCapacity = m.totalHours - moduleDone;
+
       for (final sub in m.submodules) {
-        final remT = (sub.theoryHours    - (doneT[sub.code] ?? 0)).clamp(0, 9999);
-        final remP = (sub.practicalHours - (doneP[sub.code] ?? 0)).clamp(0, 9999);
+        if (moduleCapacity <= 0) break;
+        final subDone = (doneT[sub.code] ?? 0) + (doneP[sub.code] ?? 0);
+        final subPlanned = sub.theoryHours + sub.practicalHours;
+        final subRemaining = (subPlanned - subDone).clamp(0, moduleCapacity);
+        final remT = (sub.theoryHours    - (doneT[sub.code] ?? 0)).clamp(0, subRemaining);
+        final remP = (sub.practicalHours - (doneP[sub.code] ?? 0)).clamp(0, (subRemaining - remT).clamp(0, 9999));
+        moduleCapacity -= remT + remP;
 
         void addBlocks(int rem, String t) {
           var r = rem;
