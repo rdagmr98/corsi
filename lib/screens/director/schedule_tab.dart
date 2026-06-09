@@ -94,7 +94,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
       hasAttendeesInRecovery: hasRecovery,
       excludedDates: _selected!.excludedDates,
     );
-    _reload();
+    _load();
   }
 
   Future<void> _addLesson(DateTime date, int slot) async {
@@ -270,7 +270,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                     timeSlot: slot,
                     instructorId: selectedInstructor,
                   );
-                  _reload();
+                  _refreshWeek();
                 },
                 child: const Text('Aggiungi'),
               ),
@@ -494,7 +494,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                           recoveryDate: day,
                         );
                       }
-                      _reload();
+                      _refreshWeek();
                     },
               child: const Text('Salva recuperi'),
             ),
@@ -506,7 +506,58 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
 
   Future<void> _deleteLesson(ScheduledLesson lesson) async {
     await _scheduleService.deleteLesson(lesson.id);
-    _reload();
+    _refreshWeek();
+  }
+
+  Future<void> _editLessonInstructor(ScheduledLesson lesson) async {
+    if (_selected == null) return;
+    final instructors = _userService.getInstructors()
+        .where((u) => _selected!.instructorIds.contains(u.id))
+        .toList();
+    String? selectedInstructor = lesson.instructorId;
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlg) => AlertDialog(
+          backgroundColor: kCard,
+          title: Text(
+            'M${lesson.moduleNumber} · ${lesson.submoduleCode}',
+            style: const TextStyle(color: kText, fontSize: 14),
+          ),
+          content: SizedBox(
+            width: 360,
+            child: DropdownButtonFormField<String?>(
+              value: selectedInstructor,
+              dropdownColor: kSurface,
+              style: const TextStyle(color: kText),
+              decoration: const InputDecoration(labelText: 'Istruttore', isDense: true),
+              items: [
+                const DropdownMenuItem(value: null, child: Text('— Da assegnare —')),
+                ...instructors.map(
+                    (i) => DropdownMenuItem(value: i.id, child: Text(i.fullName))),
+              ],
+              onChanged: (v) => setDlg(() => selectedInstructor = v),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annulla', style: TextStyle(color: kTextDim)),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.pop(ctx);
+                await _scheduleService.updateLesson(
+                    lesson.copyWith(instructorId: selectedInstructor));
+                _refreshWeek();
+              },
+              child: const Text('Salva'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _deleteUnconfirmedLessons() async {
@@ -539,8 +590,8 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('$deleted lezioni non svolte cancellate.')),
       );
+      _refreshWeek();
     }
-    _reload();
   }
 
   @override
@@ -549,10 +600,14 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
       return const Center(child: Text('Nessun corso assegnato', style: TextStyle(color: kTextDim)));
     }
 
-    final weekDays = List.generate(5, (i) => _weekStart.add(Duration(days: i)));
+    final weekDays = List.generate(7, (i) => _weekStart.add(Duration(days: i)));
     final allSlots = _typeInfo?.schedule.mondayThursday ?? [];
     final recoveryLessons = _weekLessons.where((l) => l.timeSlot == 0).toList();
     final regularLessons = _weekLessons.where((l) => l.timeSlot > 0).toList();
+    final subNameMap = <String, String>{
+      for (final m in _typeInfo?.modules ?? [])
+        for (final s in m.submodules) s.code: s.name,
+    };
 
     return Column(
       children: [
@@ -579,7 +634,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
               const Spacer(),
               IconButton(icon: const Icon(Icons.chevron_left), onPressed: _prevWeek, color: kText),
               Text(
-                '${DateFormat('dd/MM').format(_weekStart)} – ${DateFormat('dd/MM/yyyy').format(_weekStart.add(const Duration(days: 4)))}',
+                '${DateFormat('dd/MM').format(_weekStart)} – ${DateFormat('dd/MM/yyyy').format(_weekStart.add(const Duration(days: 6)))}',
                 style: const TextStyle(color: kText, fontSize: 13),
               ),
               IconButton(icon: const Icon(Icons.chevron_right), onPressed: _nextWeek, color: kText),
@@ -631,7 +686,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                       children: [
                         _headerCell('Ora'),
                         ...weekDays.map((d) => _headerCell(
-                          DateFormat('EEE\ndd/MM', 'it').format(d),
+                          DateFormat('EEE dd/MM', 'it').format(d),
                           highlight: _isToday(d),
                         )),
                       ],
@@ -650,6 +705,13 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                           ),
                         ),
                         ...weekDays.map((day) {
+                          final isWeekend = day.weekday == DateTime.saturday ||
+                              day.weekday == DateTime.sunday;
+                          if (isWeekend) {
+                            return TableCell(
+                              child: Container(height: 50, color: kBorder.withOpacity(0.04)),
+                            );
+                          }
                           final recs = recoveryLessons.where((l) => _sameDay(l.date, day)).toList();
                           return TableCell(
                             child: InkWell(
@@ -699,6 +761,19 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                             ),
                           ),
                           ...weekDays.map((day) {
+                            final isWeekend = day.weekday == DateTime.saturday ||
+                                day.weekday == DateTime.sunday;
+                            if (isWeekend) {
+                              return TableCell(
+                                child: Container(
+                                  height: 70,
+                                  color: kBorder.withOpacity(0.04),
+                                  child: const Center(
+                                    child: Text('—', style: TextStyle(color: kBorder, fontSize: 10)),
+                                  ),
+                                ),
+                              );
+                            }
                             if (day.weekday == DateTime.friday && slot.slot > 3) {
                               return const TableCell(
                                 child: SizedBox(height: 70, child: Center(
@@ -719,7 +794,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                                         child: const Icon(Icons.add, color: kBorder, size: 16),
                                       ),
                                     )
-                                  : _lessonCell(lesson),
+                                  : _lessonCell(lesson, subNameMap),
                             );
                           }),
                         ],
@@ -750,11 +825,24 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
         )),
   );
 
-  Widget _lessonCell(ScheduledLesson lesson) {
+  Widget _lessonCell(ScheduledLesson lesson, Map<String, String> subNames) {
     final isTheory = lesson.type != 'pratica';
     final base = moduleColor(lesson.moduleNumber);
     final color = lesson.confirmed ? base : base.withOpacity(0.5);
+
+    // Se il topic è un codice sottomodulo (es. "7.3", "12.7P"), mostra il nome
+    final codeRe = RegExp(r'^\d+[A-Za-z]?\.\d+[A-Za-z]?$');
+    String displayTopic = lesson.topic;
+    if (codeRe.hasMatch(lesson.topic)) {
+      String nc = lesson.topic;
+      if (nc.endsWith('P')) nc = nc.substring(0, nc.length - 1);
+      final parts = nc.split('.');
+      if (parts.length >= 3) nc = '${parts[0]}.${parts[1]}';
+      displayTopic = subNames[nc] ?? lesson.topic;
+    }
+
     return GestureDetector(
+      onTap: () => _editLessonInstructor(lesson),
       onSecondaryTap: () => _deleteLesson(lesson),
       child: Container(
         height: 70,
@@ -798,7 +886,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
             const SizedBox(height: 2),
             Expanded(
               child: Text(
-                lesson.topic,
+                displayTopic,
                 style: TextStyle(color: color, fontSize: 10),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,

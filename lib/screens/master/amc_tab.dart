@@ -233,25 +233,33 @@ class _AmcTabState extends ConsumerState<AmcTab>
       );
     }
 
-    // Raggruppa per modulo (es. "3" = modulo 3, "11A" = 11A)
-    String _moduleKey(String code) {
+    // Pre-computa coppie (code, showHeader) prima del ListView per evitare
+    // bug di ordinamento dovuti al rendering lazy di ListView.builder.
+    String moduleKey(String code) {
       final m = RegExp(r'^(\d+[A-Za-z]?)').firstMatch(code);
       return m?.group(1) ?? code;
     }
 
-    String? currentModule;
+    final items = <({String code, bool showHeader, String modKey})>[];
+    {
+      String? lastMod;
+      for (final c in codes) {
+        final mk = moduleKey(c);
+        items.add((code: c, showHeader: mk != lastMod, modKey: mk));
+        lastMod = mk;
+      }
+    }
 
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-      itemCount: codes.length,
+      itemCount: items.length,
       itemBuilder: (_, i) {
-        final code    = codes[i];
+        final item    = items[i];
+        final code    = item.code;
         final uids    = grid[code] ?? [];
         final subName = subNames[code] ?? '';
-        final modKey  = _moduleKey(code);
 
-        final showHeader = modKey != currentModule;
-        if (showHeader) currentModule = modKey;
+        final showHeader = item.showHeader;
 
         final inCourse    = uids.where((uid) => courseUids.contains(uid)).toList();
         final notInCourse = _selectedCourseId != null
@@ -265,7 +273,7 @@ class _AmcTabState extends ConsumerState<AmcTab>
               Padding(
                 padding: const EdgeInsets.only(top: 12, bottom: 4),
                 child: Text(
-                  'Modulo $modKey',
+                  'Modulo ${item.modKey}',
                   style: const TextStyle(color: kTextDim, fontSize: 11,
                       fontWeight: FontWeight.bold, letterSpacing: 0.5),
                 ),
