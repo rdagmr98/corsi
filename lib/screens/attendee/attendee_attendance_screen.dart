@@ -233,11 +233,13 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Row(children: [
-                            Icon(Icons.warning_amber, color: kError, size: 16),
-                            SizedBox(width: 6),
-                            Text('Recuperi necessari per rientrare nel 10%',
-                                style: TextStyle(color: kError, fontSize: 12, fontWeight: FontWeight.w600)),
+                          Row(children: [
+                            const Icon(Icons.warning_amber, color: kError, size: 16),
+                            const SizedBox(width: 6),
+                            const Flexible(
+                              child: Text('Recuperi necessari per rientrare nel 10%',
+                                  style: TextStyle(color: kError, fontSize: 12, fontWeight: FontWeight.w600)),
+                            ),
                           ]),
                           const SizedBox(height: 6),
                           ...recoveryWindow.entries.map((e) => Padding(

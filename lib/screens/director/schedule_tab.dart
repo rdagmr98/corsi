@@ -937,10 +937,19 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
         ? (instrNames[lesson.instructorId!] ?? '?')
         : null;
 
+    final tooltipMsg = [
+      displayTopic,
+      if (instrName != null) '👤 $instrName',
+      hoursStr,
+    ].join('\n');
+
     return GestureDetector(
       onTap: () => _editLessonInstructor(lesson),
       onSecondaryTap: () => _deleteLesson(lesson),
-      child: Container(
+      child: Tooltip(
+        message: tooltipMsg,
+        waitDuration: const Duration(milliseconds: 500),
+        child: Container(
         height: 80,
         margin: const EdgeInsets.all(2),
         padding: const EdgeInsets.all(6),
@@ -980,22 +989,31 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                   overflow: TextOverflow.ellipsis),
             ),
             Row(children: [
-              Text(hoursStr,
-                  style: TextStyle(
-                      color: color.withOpacity(0.7),
-                      fontSize: 9,
-                      fontWeight: FontWeight.w500)),
-              const Spacer(),
+              Expanded(
+                child: Text(hoursStr,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        color: color.withOpacity(0.7),
+                        fontSize: 9,
+                        fontWeight: FontWeight.w500)),
+              ),
+              const SizedBox(width: 2),
               if (instrName != null)
-                Text(instrName,
-                    style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.bold))
+                Flexible(
+                  child: Text(instrName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.end,
+                      style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.bold)),
+                )
               else
                 Icon(Icons.person_outline, size: 9, color: kBorder),
             ]),
           ],
         ),
       ),
-    );
+    ));
   }
 
   bool _sameDay(DateTime a, DateTime b) =>

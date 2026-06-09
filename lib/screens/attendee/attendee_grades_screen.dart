@@ -117,40 +117,45 @@ class _AttendeeGradesScreenState extends ConsumerState<AttendeeGradesScreen> {
                                 style:
                                     TextStyle(color: kTextDim, fontSize: 18)),
                             const SizedBox(width: 20),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  globalAvg >= 22.5
-                                      ? 'SUFFICIENTE'
-                                      : 'INSUFFICIENTE',
-                                  style: TextStyle(
-                                    color: globalAvg >= 22.5 ? kAccent : kError,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                                const Text('Media ponderata graduatoria',
+                            Flexible(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    globalAvg >= 22.5
+                                        ? 'SUFFICIENTE'
+                                        : 'INSUFFICIENTE',
                                     style: TextStyle(
-                                        color: kTextDim, fontSize: 11)),
-                                if (rankPos != null && rankPos > 0) ...[
-                                  const SizedBox(height: 4),
-                                  Row(
-                                    children: [
-                                      const Icon(Icons.leaderboard,
-                                          color: kWarning, size: 14),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        'Posizione provvisoria: $rankPos°/${course.attendeeIds.length}',
-                                        style: const TextStyle(
-                                            color: kWarning,
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.bold),
-                                      ),
-                                    ],
+                                      color: globalAvg >= 22.5 ? kAccent : kError,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12,
+                                    ),
                                   ),
+                                  const Text('Media ponderata graduatoria',
+                                      style: TextStyle(
+                                          color: kTextDim, fontSize: 11)),
+                                  if (rankPos != null && rankPos > 0) ...[
+                                    const SizedBox(height: 4),
+                                    Row(
+                                      children: [
+                                        const Icon(Icons.leaderboard,
+                                            color: kWarning, size: 14),
+                                        const SizedBox(width: 4),
+                                        Flexible(
+                                          child: Text(
+                                            'Posizione provvisoria: $rankPos°/${course.attendeeIds.length}',
+                                            style: const TextStyle(
+                                                color: kWarning,
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.bold),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
                                 ],
-                              ],
+                              ),
                             ),
                           ],
                         ),
