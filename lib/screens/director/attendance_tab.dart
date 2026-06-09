@@ -157,9 +157,9 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
     final totalPlannedHours = typeInfo?.modules.fold(0, (s, m) => s + m.totalHours) ?? 0;
     final anyWarning = typeInfo != null &&
         modStats.entries.any((e) {
-          final total = e.value['total'] ?? 0;
+          final confirmed = e.value['confirmed'] ?? 0;
           final unrecovered = e.value['unrecovered'] ?? 0;
-          return total > 0 && unrecovered / total > 0.10;
+          return confirmed > 0 && unrecovered / confirmed > 0.10;
         });
 
     return Card(
@@ -237,11 +237,12 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
     ModuleInfo mod,
     Map<String, int> stats,
   ) {
-    final total = stats['total'] ?? 0;
-    final absent = stats['absent'] ?? 0;
-    final recovered = stats['recovered'] ?? 0;
+    final confirmed  = stats['confirmed'] ?? 0;
+    final absent     = stats['absent'] ?? 0;
+    final recovered  = stats['recovered'] ?? 0;
     final unrecovered = stats['unrecovered'] ?? 0;
-    final pct = total > 0 ? unrecovered / total : 0.0;
+    // 10% threshold on confirmed lessons (what actually happened, not planned)
+    final pct  = confirmed > 0 ? unrecovered / confirmed : 0.0;
     final warn = pct > 0.10;
 
     return ListTile(
@@ -264,13 +265,13 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
           overflow: TextOverflow.ellipsis),
       subtitle: warn
           ? Text(
-              '$unrecovered ore non rec. / $total ore prev. — ${(pct * 100).toStringAsFixed(1)}%  ⚠ LIMITE 10%',
+              '$unrecovered non rec. / $confirmed lez. — ${(pct * 100).toStringAsFixed(1)}%  ⚠ LIMITE 10%',
               style: const TextStyle(color: kError, fontSize: 11),
             )
           : Text(
               absent == 0
-                  ? 'Nessuna assenza su $total ore prev.'
-                  : '$absent ore ass. · $recovered rec. · $unrecovered non rec. / $total ore prev.',
+                  ? 'Nessuna assenza su $confirmed lezioni'
+                  : '$absent ass. · $recovered rec. · $unrecovered non rec. / $confirmed lez.',
               style: const TextStyle(color: kTextDim, fontSize: 11),
             ),
       trailing: Row(
