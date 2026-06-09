@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../models/schedule_models.dart';
 import '../../providers/auth_provider.dart';
+import '../../services/course_service.dart';
+import '../../services/reference_service.dart';
 import '../../services/schedule_service.dart';
 import '../../theme.dart';
 
@@ -16,6 +18,8 @@ class InstructorScheduleScreen extends ConsumerStatefulWidget {
 
 class _InstructorScheduleScreenState extends ConsumerState<InstructorScheduleScreen> {
   final _scheduleService = ScheduleService();
+  final _courseService   = CourseService();
+  final _refService      = ReferenceService();
   List<ScheduledLesson> _lessons = [];
 
   @override
@@ -37,6 +41,50 @@ class _InstructorScheduleScreenState extends ConsumerState<InstructorScheduleScr
 
   @override
   Widget build(BuildContext context) {
+    String normCode(String code) {
+      String c = code.endsWith('P') ? code.substring(0, code.length - 1) : code;
+      final parts = c.split('.');
+      return parts.length >= 3 ? '${parts[0]}.${parts[1]}' : c;
+    }
+
+    final courseTypeMap = <String, String>{
+      for (final c in _courseService.getAllCourses()) c.id: c.courseTypeId,
+    };
+    final subNamesPerType = <String, Map<String, String>>{};
+    final subSchedTPerType = <String, Map<String, int>>{};
+    final subSchedPPerType = <String, Map<String, int>>{};
+    for (final l in _lessons) {
+      if (l.timeSlot == 0) continue;
+      final typeId = courseTypeMap[l.courseId] ?? '';
+      subNamesPerType.putIfAbsent(typeId, () {
+        final ti = _refService.getCourseType(typeId);
+        return <String, String>{
+          for (final m in ti?.modules ?? [])
+            for (final s in m.submodules) s.code: s.name,
+        };
+      });
+      final nc = normCode(l.submoduleCode);
+      if (l.isTheory) {
+        subSchedTPerType.putIfAbsent(typeId, () => {});
+        subSchedTPerType[typeId]![nc] = (subSchedTPerType[typeId]![nc] ?? 0) + 1;
+      } else {
+        subSchedPPerType.putIfAbsent(typeId, () => {});
+        subSchedPPerType[typeId]![nc] = (subSchedPPerType[typeId]![nc] ?? 0) + 1;
+      }
+    }
+    final subPlanPerType = <String, Map<String, ({int t, int p})>>{};
+    for (final typeId in subNamesPerType.keys) {
+      final ti = _refService.getCourseType(typeId);
+      subPlanPerType[typeId] = {
+        for (final m in ti?.modules ?? [])
+          for (final s in m.submodules)
+            s.code: (
+              t: s.theoryHours > 0    ? s.theoryHours    : (subSchedTPerType[typeId]?[s.code] ?? 0),
+              p: s.practicalHours > 0 ? s.practicalHours : (subSchedPPerType[typeId]?[s.code] ?? 0),
+            ),
+      };
+    }
+
     final grouped = <String, List<ScheduledLesson>>{};
     for (final l in _lessons) {
       final key = DateFormat('yyyy-MM-dd').format(l.date);
@@ -88,6 +136,25 @@ class _InstructorScheduleScreenState extends ConsumerState<InstructorScheduleScr
                     ...dayLessons.map((l) {
                       final isTheory = l.isTheory;
                       final color = moduleColor(l.moduleNumber);
+                      final typeId = courseTypeMap[l.courseId] ?? '';
+                      final nc = normCode(l.submoduleCode);
+                      final subNames = subNamesPerType[typeId] ?? {};
+                      final planMap = subPlanPerType[typeId] ?? {};
+                      final plan = planMap[nc];
+                      final schedT = subSchedTPerType[typeId]?[nc] ?? 0;
+                      final schedP = subSchedPPerType[typeId]?[nc] ?? 0;
+                      final schedCount = isTheory ? schedT : schedP;
+                      final planCount = isTheory ? (plan?.t ?? 0) : (plan?.p ?? 0);
+                      final typeLabel = isTheory ? 'T' : 'P';
+                      final hoursStr = planCount > 0
+                          ? '$typeLabel $schedCount/$planCount h'
+                          : '$typeLabel ${schedCount}h';
+
+                      String displayTopic = l.topic;
+                      if (RegExp(r'^\d').hasMatch(l.topic) && l.topic.contains('.')) {
+                        displayTopic = subNames[normCode(l.topic)] ?? subNames[nc] ?? l.topic;
+                      }
+
                       return Card(
                         color: kCard,
                         margin: const EdgeInsets.only(bottom: 6),
@@ -109,8 +176,8 @@ class _InstructorScheduleScreenState extends ConsumerState<InstructorScheduleScr
                               style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12),
                             ),
                           ),
-                          title: Text(l.topic, style: const TextStyle(color: kText, fontSize: 13)),
-                          subtitle: Text('M${l.moduleNumber} · ${isTheory ? "Teoria" : "Pratica"}',
+                          title: Text(displayTopic, style: const TextStyle(color: kText, fontSize: 13)),
+                          subtitle: Text('M${l.moduleNumber} · ${isTheory ? "Teoria" : "Pratica"} · $hoursStr',
                               style: const TextStyle(color: kTextDim, fontSize: 11)),
                           trailing: l.confirmed
                               ? const Icon(Icons.check_circle, color: kAccent, size: 18)

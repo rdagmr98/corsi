@@ -32,6 +32,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
   DateTime _weekStart = _mondayOf(DateTime.now());
   List<ScheduledLesson> _weekLessons = [];
   CourseTypeInfo? _typeInfo;
+  List<ScheduledLesson> _allCourseLessons = [];
 
   static DateTime _mondayOf(DateTime d) {
     final diff = d.weekday - DateTime.monday;
@@ -54,8 +55,16 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
     if (_selected == null) return;
     setState(() {
       _weekLessons = _scheduleService.getLessonsForWeek(_selected!.id, _weekStart);
+      _allCourseLessons = _scheduleService.getLessonsForCourse(_selected!.id)
+          .where((l) => l.timeSlot > 0).toList();
       _typeInfo = _refService.getCourseType(_selected!.courseTypeId);
     });
+  }
+
+  String _normSubCode(String code) {
+    String c = code.endsWith('P') ? code.substring(0, code.length - 1) : code;
+    final parts = c.split('.');
+    return parts.length >= 3 ? '${parts[0]}.${parts[1]}' : c;
   }
 
   Future<void> _reload() async {
@@ -121,8 +130,9 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
       doneTotalByModule[l.moduleNumber] = (doneTotalByModule[l.moduleNumber] ?? 0) + 1;
     }
 
-    // Only offer modules where confirmed total < planned total
+    // Only offer modules where confirmed total < planned total (skip constraint when ref hours = 0)
     final availableModules = _typeInfo!.modules.where((m) {
+      if (m.totalHours == 0) return true;
       final done = doneTotalByModule[m.number] ?? 0;
       return done < m.totalHours;
     }).toList();
@@ -150,23 +160,26 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                   orElse: () => availableModules.first)
               : null;
 
-          final availableSubs = module?.submodules.where((s) =>
-              (s.theoryHours    - (doneT[s.code] ?? 0)) > 0 ||
-              (s.practicalHours - (doneP[s.code] ?? 0)) > 0).toList() ?? [];
+          final availableSubs = module?.submodules.where((s) {
+            if (s.theoryHours == 0 && s.practicalHours == 0) return true;
+            return (s.theoryHours    - (doneT[s.code] ?? 0)) > 0 ||
+                   (s.practicalHours - (doneP[s.code] ?? 0)) > 0;
+          }).toList() ?? [];
 
           if (selectedSubmodule == null && availableSubs.isNotEmpty) {
             selectedSubmodule = availableSubs.first.code;
             // Auto-select type based on what's remaining
             final first = availableSubs.first;
-            if ((first.theoryHours - (doneT[first.code] ?? 0)) <= 0) type = 'pratica';
+            if (first.theoryHours > 0 && (first.theoryHours - (doneT[first.code] ?? 0)) <= 0) type = 'pratica';
             else type = 'teoria';
           }
 
           final selSub = availableSubs.firstWhere(
               (s) => s.code == selectedSubmodule,
               orElse: () => availableSubs.isNotEmpty ? availableSubs.first : module!.submodules.first);
-          final remT = selSub.theoryHours    - (doneT[selSub.code] ?? 0);
-          final remP = selSub.practicalHours - (doneP[selSub.code] ?? 0);
+          final unconstrained = selSub.theoryHours == 0 && selSub.practicalHours == 0;
+          final remT = unconstrained ? 1 : (selSub.theoryHours    - (doneT[selSub.code] ?? 0));
+          final remP = unconstrained ? 1 : (selSub.practicalHours - (doneP[selSub.code] ?? 0));
 
           return AlertDialog(
             backgroundColor: kCard,
@@ -178,7 +191,24 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                 children: [
                   Text(DateFormat('EEEE dd/MM/yyyy', 'it').format(date),
                       style: const TextStyle(color: kTextDim)),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
+                  if (_selected!.attendeeIds.length > 15)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: kWarning.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: kWarning.withOpacity(0.4)),
+                      ),
+                      child: Row(children: [
+                        const Icon(Icons.group, color: kWarning, size: 14),
+                        const SizedBox(width: 6),
+                        Text('${_selected!.attendeeIds.length} studenti — richiesti 2 istruttori',
+                            style: const TextStyle(color: kWarning, fontSize: 11)),
+                      ]),
+                    ),
+                  const SizedBox(height: 4),
                   DropdownButtonFormField<int>(
                     value: selectedModule,
                     dropdownColor: kSurface,
@@ -204,9 +234,12 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                       style: const TextStyle(color: kText),
                       decoration: const InputDecoration(labelText: 'Sottomodulo', isDense: true),
                       items: availableSubs.map((s) {
+                        final free = s.theoryHours == 0 && s.practicalHours == 0;
                         final rT = s.theoryHours    - (doneT[s.code] ?? 0);
                         final rP = s.practicalHours - (doneP[s.code] ?? 0);
-                        final tag = [if (rT > 0) '${rT}T', if (rP > 0) '${rP}P'].join(' ');
+                        final tag = free
+                            ? 'T:${doneT[s.code]??0}h P:${doneP[s.code]??0}h'
+                            : [if (rT > 0) '${rT}T', if (rP > 0) '${rP}P'].join(' ');
                         return DropdownMenuItem(
                           value: s.code,
                           child: Text('${s.code} - ${s.name}  ($tag)',
@@ -217,7 +250,11 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                         selectedSubmodule = v;
                         if (v != null) {
                           final s = availableSubs.firstWhere((x) => x.code == v);
-                          type = (s.theoryHours - (doneT[v] ?? 0)) > 0 ? 'teoria' : 'pratica';
+                          if (s.theoryHours == 0 && s.practicalHours == 0) {
+                            type = 'teoria';
+                          } else {
+                            type = (s.theoryHours - (doneT[v] ?? 0)) > 0 ? 'teoria' : 'pratica';
+                          }
                         }
                       }),
                     ),
@@ -527,17 +564,38 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
           ),
           content: SizedBox(
             width: 360,
-            child: DropdownButtonFormField<String?>(
-              value: selectedInstructor,
-              dropdownColor: kSurface,
-              style: const TextStyle(color: kText),
-              decoration: const InputDecoration(labelText: 'Istruttore', isDense: true),
-              items: [
-                const DropdownMenuItem(value: null, child: Text('— Da assegnare —')),
-                ...instructors.map(
-                    (i) => DropdownMenuItem(value: i.id, child: Text(i.fullName))),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_selected!.attendeeIds.length > 15)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: kWarning.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: kWarning.withOpacity(0.4)),
+                    ),
+                    child: Row(children: [
+                      const Icon(Icons.group, color: kWarning, size: 14),
+                      const SizedBox(width: 6),
+                      Text('${_selected!.attendeeIds.length} studenti — richiesti 2 istruttori',
+                          style: const TextStyle(color: kWarning, fontSize: 11)),
+                    ]),
+                  ),
+                DropdownButtonFormField<String?>(
+                  value: selectedInstructor,
+                  dropdownColor: kSurface,
+                  style: const TextStyle(color: kText),
+                  decoration: const InputDecoration(labelText: 'Istruttore', isDense: true),
+                  items: [
+                    const DropdownMenuItem(value: null, child: Text('— Da assegnare —')),
+                    ...instructors.map(
+                        (i) => DropdownMenuItem(value: i.id, child: Text(i.fullName))),
+                  ],
+                  onChanged: (v) => setDlg(() => selectedInstructor = v),
+                ),
               ],
-              onChanged: (v) => setDlg(() => selectedInstructor = v),
             ),
           ),
           actions: [
@@ -607,6 +665,34 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
     final subNameMap = <String, String>{
       for (final m in _typeInfo?.modules ?? [])
         for (final s in m.submodules) s.code: s.name,
+    };
+
+    final subConfT  = <String, int>{};
+    final subConfP  = <String, int>{};
+    final subSchedT = <String, int>{};
+    final subSchedP = <String, int>{};
+    for (final l in _allCourseLessons) {
+      final nc = _normSubCode(l.submoduleCode);
+      if (l.type != 'pratica') {
+        subSchedT[nc] = (subSchedT[nc] ?? 0) + 1;
+        if (l.confirmed) subConfT[nc] = (subConfT[nc] ?? 0) + 1;
+      } else {
+        subSchedP[nc] = (subSchedP[nc] ?? 0) + 1;
+        if (l.confirmed) subConfP[nc] = (subConfP[nc] ?? 0) + 1;
+      }
+    }
+    final subPlanT = <String, int>{
+      for (final m in _typeInfo?.modules ?? <ModuleInfo>[])
+        for (final s in m.submodules)
+          s.code: s.theoryHours > 0 ? s.theoryHours : (subSchedT[s.code] ?? 0),
+    };
+    final subPlanP = <String, int>{
+      for (final m in _typeInfo?.modules ?? <ModuleInfo>[])
+        for (final s in m.submodules)
+          s.code: s.practicalHours > 0 ? s.practicalHours : (subSchedP[s.code] ?? 0),
+    };
+    final instrNames = <String, String>{
+      for (final u in _userService.getInstructors()) u.id: u.cognome,
     };
 
     return Column(
@@ -794,7 +880,9 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                                         child: const Icon(Icons.add, color: kBorder, size: 16),
                                       ),
                                     )
-                                  : _lessonCell(lesson, subNameMap),
+                                  : _lessonCell(lesson, subNameMap, instrNames,
+                                      confT: subConfT, confP: subConfP,
+                                      planT: subPlanT, planP: subPlanP),
                             );
                           }),
                         ],
@@ -825,27 +913,38 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
         )),
   );
 
-  Widget _lessonCell(ScheduledLesson lesson, Map<String, String> subNames) {
+  Widget _lessonCell(
+    ScheduledLesson lesson,
+    Map<String, String> subNames,
+    Map<String, String> instrNames, {
+    required Map<String, int> confT,
+    required Map<String, int> confP,
+    required Map<String, int> planT,
+    required Map<String, int> planP,
+  }) {
     final isTheory = lesson.type != 'pratica';
+    final nc = _normSubCode(lesson.submoduleCode);
     final base = moduleColor(lesson.moduleNumber);
     final color = lesson.confirmed ? base : base.withOpacity(0.5);
 
-    // Se il topic è un codice sottomodulo (es. "7.3", "12.7P"), mostra il nome
-    final codeRe = RegExp(r'^\d+[A-Za-z]?\.\d+[A-Za-z]?$');
     String displayTopic = lesson.topic;
-    if (codeRe.hasMatch(lesson.topic)) {
-      String nc = lesson.topic;
-      if (nc.endsWith('P')) nc = nc.substring(0, nc.length - 1);
-      final parts = nc.split('.');
-      if (parts.length >= 3) nc = '${parts[0]}.${parts[1]}';
-      displayTopic = subNames[nc] ?? lesson.topic;
+    if (RegExp(r'^\d').hasMatch(lesson.topic) && lesson.topic.contains('.')) {
+      displayTopic = subNames[_normSubCode(lesson.topic)] ?? subNames[nc] ?? lesson.topic;
     }
+
+    final conf = isTheory ? (confT[nc] ?? 0) : (confP[nc] ?? 0);
+    final plan = isTheory ? (planT[nc] ?? 0) : (planP[nc] ?? 0);
+    final typeLabel = isTheory ? 'T' : 'P';
+    final hoursStr = plan > 0 ? '$typeLabel $conf/$plan h' : '$typeLabel ${conf}h';
+    final instrName = lesson.instructorId != null
+        ? (instrNames[lesson.instructorId!] ?? '?')
+        : null;
 
     return GestureDetector(
       onTap: () => _editLessonInstructor(lesson),
       onSecondaryTap: () => _deleteLesson(lesson),
       child: Container(
-        height: 70,
+        height: 80,
         margin: const EdgeInsets.all(2),
         padding: const EdgeInsets.all(6),
         decoration: BoxDecoration(
@@ -856,42 +955,46 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                  decoration: BoxDecoration(
-                    color: color.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                  child: Text(
-                    isTheory ? 'T' : 'P',
-                    style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.bold),
-                  ),
+            Row(children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(2),
                 ),
-                const SizedBox(width: 4),
-                Text(
-                  'M${lesson.moduleNumber}',
-                  style: const TextStyle(color: kTextDim, fontSize: 9),
-                ),
-                const Spacer(),
-                if (lesson.confirmed)
-                  Icon(Icons.check_circle, color: color, size: 10),
-                GestureDetector(
-                  onTap: () => _deleteLesson(lesson),
-                  child: const Icon(Icons.close, color: kError, size: 10),
-                ),
-              ],
-            ),
+                child: Text(typeLabel,
+                    style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.bold)),
+              ),
+              const SizedBox(width: 4),
+              Text('M${lesson.moduleNumber}',
+                  style: const TextStyle(color: kTextDim, fontSize: 9)),
+              const Spacer(),
+              if (lesson.confirmed) Icon(Icons.check_circle, color: color, size: 10),
+              GestureDetector(
+                onTap: () => _deleteLesson(lesson),
+                child: const Icon(Icons.close, color: kError, size: 10),
+              ),
+            ]),
             const SizedBox(height: 2),
             Expanded(
-              child: Text(
-                displayTopic,
-                style: TextStyle(color: color, fontSize: 10),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
+              child: Text(displayTopic,
+                  style: TextStyle(color: color, fontSize: 10),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis),
             ),
+            Row(children: [
+              Text(hoursStr,
+                  style: TextStyle(
+                      color: color.withOpacity(0.7),
+                      fontSize: 9,
+                      fontWeight: FontWeight.w500)),
+              const Spacer(),
+              if (instrName != null)
+                Text(instrName,
+                    style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.bold))
+              else
+                Icon(Icons.person_outline, size: 9, color: kBorder),
+            ]),
           ],
         ),
       ),

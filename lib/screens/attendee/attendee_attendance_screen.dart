@@ -58,6 +58,42 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
     final recordMap = {for (final r in records) r.scheduleId: r};
     final typeInfo  = _refService.getCourseType(course.courseTypeId);
 
+    String normCode(String code) {
+      String c = code.endsWith('P') ? code.substring(0, code.length - 1) : code;
+      final parts = c.split('.');
+      return parts.length >= 3 ? '${parts[0]}.${parts[1]}' : c;
+    }
+
+    final subNames = <String, String>{
+      for (final m in typeInfo?.modules ?? [])
+        for (final s in m.submodules) s.code: s.name,
+    };
+    final subConfT  = <String, int>{};
+    final subConfP  = <String, int>{};
+    final subSchedT = <String, int>{};
+    final subSchedP = <String, int>{};
+    for (final l in lessons) {
+      if (l.timeSlot == 0) continue;
+      final nc = normCode(l.submoduleCode);
+      if (l.type != 'pratica') {
+        subSchedT[nc] = (subSchedT[nc] ?? 0) + 1;
+        if (l.confirmed) subConfT[nc] = (subConfT[nc] ?? 0) + 1;
+      } else {
+        subSchedP[nc] = (subSchedP[nc] ?? 0) + 1;
+        if (l.confirmed) subConfP[nc] = (subConfP[nc] ?? 0) + 1;
+      }
+    }
+    final subPlanT = <String, int>{
+      for (final m in typeInfo?.modules ?? [])
+        for (final s in m.submodules)
+          s.code: s.theoryHours > 0 ? s.theoryHours : (subSchedT[s.code] ?? 0),
+    };
+    final subPlanP = <String, int>{
+      for (final m in typeInfo?.modules ?? [])
+        for (final s in m.submodules)
+          s.code: s.practicalHours > 0 ? s.practicalHours : (subSchedP[s.code] ?? 0),
+    };
+
     final modStats = _attendanceService.computePerModuleStats(
       course.id, widget.userId, lessons, modules: typeInfo?.modules);
 
@@ -170,6 +206,18 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
                   final isPresent   = r?.present ?? false;
                   final isJustified = r != null && r.justification != null && r.justification != 'recupero';
 
+                  final isTheory = l.type != 'pratica';
+                  final nc = normCode(l.submoduleCode);
+                  final conf = isTheory ? (subConfT[nc] ?? 0) : (subConfP[nc] ?? 0);
+                  final plan = isTheory ? (subPlanT[nc] ?? 0) : (subPlanP[nc] ?? 0);
+                  final typeLabel = isTheory ? 'T' : 'P';
+                  final hoursStr = plan > 0 ? '· $typeLabel $conf/$plan h' : '· $typeLabel ${conf}h';
+
+                  String displayTopic = l.topic;
+                  if (RegExp(r'^\d').hasMatch(l.topic) && l.topic.contains('.')) {
+                    displayTopic = subNames[normCode(l.topic)] ?? subNames[nc] ?? l.topic;
+                  }
+
                   Color statusColor;
                   IconData statusIcon;
                   String statusText;
@@ -206,11 +254,12 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
                     child: ListTile(
                       dense: true,
                       leading: Icon(statusIcon, color: statusColor, size: 20),
-                      title: Text('M${l.moduleNumber} ${l.topic}',
+                      title: Text('M${l.moduleNumber} $displayTopic',
                           style: const TextStyle(color: kText, fontSize: 12),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis),
-                      subtitle: Text(DateFormat('dd/MM/yyyy').format(l.date),
+                      subtitle: Text(
+                          '${DateFormat('dd/MM/yyyy').format(l.date)} $hoursStr',
                           style: const TextStyle(color: kTextDim, fontSize: 11)),
                       trailing: Text(statusText,
                           style: TextStyle(color: statusColor, fontSize: 11)),
