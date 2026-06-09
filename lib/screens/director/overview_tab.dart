@@ -82,7 +82,7 @@ class _DirectorOverviewTabState extends ConsumerState<DirectorOverviewTab> {
   }
 
   Widget _buildCourseOverview(Course course) {
-    final typeInfo = _refService.getCourseType(course.courseTypeId);
+    final typeInfo = _refService.getEffectiveCourseType(course.courseTypeId, course.extensionTypeId);
     final taughtHours = _scheduleService.computeModuleHoursTaught(course.id);
     final totalTheory = typeInfo?.totalTheoryHours ?? 0;
     final totalPractical = typeInfo?.totalPracticalHours ?? 0;

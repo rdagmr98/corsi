@@ -290,7 +290,7 @@ class ScheduleService {
     final doneT = <String, int>{};
     final doneP = <String, int>{};
     final doneTotalByModule = <int, int>{};
-    for (final l in allLessons.where((l) => l.confirmed && l.timeSlot > 0)) {
+    for (final l in allLessons.where((l) => l.timeSlot > 0)) {
       String c = l.submoduleCode;
       if (c.endsWith('P')) c = c.substring(0, c.length - 1);
       final parts = c.split('.');
@@ -305,9 +305,9 @@ class ScheduleService {
     for (final m in typeInfo.modules) {
       // Skip entire module if confirmed hours already meet planned total
       final moduleDone = doneTotalByModule[m.number] ?? 0;
-      if (moduleDone >= m.totalHours) continue;
+      if (m.totalHours > 0 && moduleDone >= m.totalHours) continue;
       // Remaining module capacity to distribute across submodules
-      var moduleCapacity = m.totalHours - moduleDone;
+      var moduleCapacity = m.totalHours > 0 ? m.totalHours - moduleDone : 9999;
 
       for (final sub in m.submodules) {
         if (moduleCapacity <= 0) break;

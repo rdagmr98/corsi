@@ -239,6 +239,45 @@ class _CoursesTabState extends ConsumerState<CoursesTab> {
     }
   }
 
+  Future<void> _extendCourse(Course c) async {
+    final extId = c.courseTypeId == 'b1' ? 'b1mil' : 'b2mil';
+    final milType = _refService.getCourseType(extId);
+    if (milType == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Tipo $extId non trovato in reference.json'), backgroundColor: kError),
+      );
+      return;
+    }
+    final modCodes = milType.modules.map((m) => 'M${m.number}').join(', ');
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: kCard,
+        title: Text('Estendi ${c.courseTypeId.toUpperCase()} con moduli MIL',
+            style: const TextStyle(color: kText)),
+        content: Text(
+          'Verranno aggiunti al programma i moduli militari: $modCodes '
+          '(${milType.totalHours}h totali).\n\nQuesti moduli compariranno nel calendario, '
+          'nelle presenze e nei voti.',
+          style: const TextStyle(color: kTextDim),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annulla', style: TextStyle(color: kTextDim)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Estendi'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    await _courseService.updateCourse(c.copyWith(extensionTypeId: extId));
+    _reload();
+  }
+
   Future<void> _changeStatus(Course c, String newStatus) async {
     if (newStatus == 'archived') {
       final confirm = await showDialog<bool>(
@@ -264,7 +303,7 @@ class _CoursesTabState extends ConsumerState<CoursesTab> {
       );
       if (confirm != true) return;
 
-      final typeInfo = _refService.getCourseType(c.courseTypeId);
+      final typeInfo = _refService.getEffectiveCourseType(c.courseTypeId, c.extensionTypeId);
       final lessons = _scheduleService.getLessonsForCourse(c.id);
       final allUsers = _userService.getAllUsers();
       final attendees = allUsers.where((u) => c.attendeeIds.contains(u.id)).toList();
@@ -333,7 +372,7 @@ class _CoursesTabState extends ConsumerState<CoursesTab> {
                   itemCount: _courses.length,
                   itemBuilder: (_, i) {
                     final c = _courses[i];
-                    final typeInfo = _refService.getCourseType(c.courseTypeId);
+                    final typeInfo = _refService.getEffectiveCourseType(c.courseTypeId, c.extensionTypeId);
                     final color = _statusColor(c.courseStatus);
                     return Card(
                       color: kCard,
@@ -372,6 +411,17 @@ class _CoursesTabState extends ConsumerState<CoursesTab> {
                                 ),
                                 child: Text(typeInfo.code, style: const TextStyle(color: kPrimary, fontSize: 10)),
                               ),
+                            if (c.extensionTypeId != null) ...[
+                              const SizedBox(width: 4),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: kWarning.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: const Text('+MIL', style: TextStyle(color: kWarning, fontSize: 10, fontWeight: FontWeight.bold)),
+                              ),
+                            ],
                           ],
                         ),
                         subtitle: Row(
@@ -413,6 +463,12 @@ class _CoursesTabState extends ConsumerState<CoursesTab> {
                                 const PopupMenuItem(value: 'archived', child: Text('Archiviato', style: TextStyle(color: kText))),
                               ],
                             ),
+                            if (c.extensionTypeId == null && (c.courseTypeId == 'b1' || c.courseTypeId == 'b2'))
+                              IconButton(
+                                icon: const Icon(Icons.military_tech_outlined, color: kWarning, size: 20),
+                                tooltip: 'Estendi con moduli MIL',
+                                onPressed: () => _extendCourse(c),
+                              ),
                             IconButton(
                               icon: const Icon(Icons.edit_outlined, color: kTextDim, size: 20),
                               onPressed: () => _showCourseDialog(course: c),

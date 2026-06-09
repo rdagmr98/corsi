@@ -26,6 +26,7 @@ extension CourseStatusExt on CourseStatus {
 class Course {
   final String id;
   final String courseTypeId;
+  final String? extensionTypeId; // optional mil extension (e.g. 'b1mil' for a b1 course)
   final String title;
   final DateTime? startDate;
   final DateTime? endDate;
@@ -41,6 +42,7 @@ class Course {
   const Course({
     required this.id,
     required this.courseTypeId,
+    this.extensionTypeId,
     required this.title,
     this.startDate,
     this.endDate,
@@ -60,6 +62,7 @@ class Course {
   factory Course.fromJson(Map<String, dynamic> j) => Course(
     id: j['id'] as String,
     courseTypeId: j['course_type_id'] as String,
+    extensionTypeId: j['extension_type_id'] as String?,
     title: j['title'] as String,
     startDate: j['start_date'] != null
         ? DateTime.tryParse(j['start_date'] as String)
@@ -84,6 +87,7 @@ class Course {
   Map<String, dynamic> toJson() => {
     'id': id,
     'course_type_id': courseTypeId,
+    if (extensionTypeId != null) 'extension_type_id': extensionTypeId,
     'title': title,
     'start_date': startDate?.toIso8601String().split('T').first,
     'end_date': endDate?.toIso8601String().split('T').first,
@@ -99,6 +103,7 @@ class Course {
 
   Course copyWith({
     String? courseTypeId,
+    Object? extensionTypeId = _s,
     String? title,
     Object? startDate = _s,
     Object? endDate = _s,
@@ -110,6 +115,7 @@ class Course {
   }) => Course(
     id: id,
     courseTypeId: courseTypeId ?? this.courseTypeId,
+    extensionTypeId: identical(extensionTypeId, _s) ? this.extensionTypeId : extensionTypeId as String?,
     title: title ?? this.title,
     startDate: identical(startDate, _s) ? this.startDate : startDate as DateTime?,
     endDate: identical(endDate, _s) ? this.endDate : endDate as DateTime?,

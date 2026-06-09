@@ -57,7 +57,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
       _weekLessons = _scheduleService.getLessonsForWeek(_selected!.id, _weekStart);
       _allCourseLessons = _scheduleService.getLessonsForCourse(_selected!.id)
           .where((l) => l.timeSlot > 0).toList();
-      _typeInfo = _refService.getCourseType(_selected!.courseTypeId);
+      _typeInfo = _refService.getEffectiveCourseType(_selected!.courseTypeId, _selected!.extensionTypeId);
     });
   }
 
@@ -112,11 +112,8 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
         .where((u) => _selected!.instructorIds.contains(u.id))
         .toList();
 
-    // Count confirmed hours per submodule and per module total
-    final doneLessons = _scheduleService
-        .getLessonsForCourse(_selected!.id)
-        .where((l) => l.confirmed && l.timeSlot > 0)
-        .toList();
+    // Count all scheduled hours (confirmed + unconfirmed) per submodule and module
+    final doneLessons = _allCourseLessons;
     final doneT = <String, int>{};
     final doneP = <String, int>{};
     final doneTotalByModule = <int, int>{};
@@ -842,7 +839,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                             child: Column(
                               children: [
                                 Text('${slot.slot}ª', style: const TextStyle(color: kPrimary, fontSize: 11, fontWeight: FontWeight.bold)),
-                                Text(slotStr, style: const TextStyle(color: kTextDim, fontSize: 9)),
+                                Text(slotStr, style: const TextStyle(color: kTextDim, fontSize: 9), softWrap: false, overflow: TextOverflow.visible),
                               ],
                             ),
                           ),

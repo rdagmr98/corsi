@@ -64,7 +64,7 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
 
   @override
   Widget build(BuildContext context) {
-    final typeInfo = _refService.getCourseType(_course.courseTypeId);
+    final typeInfo = _refService.getEffectiveCourseType(_course.courseTypeId, _course.extensionTypeId);
     final confirmedLessons = _lessons.where((l) => l.confirmed && l.timeSlot > 0).toList();
 
     return Dialog(
@@ -212,7 +212,7 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
               child: Text(l.isTheory ? 'T' : 'P', style: TextStyle(color: col, fontSize: 10, fontWeight: FontWeight.bold)),
             ),
             const SizedBox(width: 8),
-            Expanded(child: Text('${l.submoduleCode} – ${l.topic}', style: const TextStyle(color: kText, fontSize: 11), overflow: TextOverflow.ellipsis)),
+            Expanded(child: Text(l.topic, style: const TextStyle(color: kText, fontSize: 11), overflow: TextOverflow.ellipsis)),
             const SizedBox(width: 8),
             Text(instr?.cognome ?? '—', style: const TextStyle(color: kTextDim, fontSize: 10)),
           ]),
@@ -237,7 +237,7 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
         final totalUnrec = modStats.values.fold(0, (s, m) => s + (m['unrecovered'] ?? 0));
         final totalPlanned = typeInfo?.modules.fold<int>(0, (s, m) => s + (m.totalHours as int)) ?? 0;
         final anyWarn = typeInfo != null && modStats.entries.any((e) {
-          final tot = e.value['total'] ?? 0;
+          final tot = e.value['confirmed'] ?? 0;
           final unr = e.value['unrecovered'] ?? 0;
           return tot > 0 && unr / tot > 0.10;
         });
@@ -261,10 +261,10 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
               style: TextStyle(color: anyWarn ? kError : kTextDim, fontSize: 11),
             ),
             children: typeInfo == null ? [] : typeInfo.modules
-                .where((mod) => modStats.containsKey(mod.number) && (modStats[mod.number]!['total'] ?? 0) > 0)
+                .where((mod) => modStats.containsKey(mod.number) && (modStats[mod.number]!['confirmed'] ?? 0) > 0)
                 .map((mod) {
               final stats = modStats[mod.number]!;
-              final total = stats['total'] ?? 0;
+              final total = stats['confirmed'] ?? 0;
               final absent = stats['absent'] ?? 0;
               final recovered = stats['recovered'] ?? 0;
               final unrecovered = stats['unrecovered'] ?? 0;

@@ -25,6 +25,7 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
 
   List<Course> _courses = [];
   Course? _selected;
+  String? _filterMode; // null = tutti, 'present', 'absent', 'recovery'
 
   @override
   void initState() {
@@ -56,7 +57,7 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
     final lessons   = _scheduleService.getLessonsForCourse(course.id);
     final records   = _attendanceService.getRecordsForAttendee(course.id, widget.userId);
     final recordMap = {for (final r in records) r.scheduleId: r};
-    final typeInfo  = _refService.getCourseType(course.courseTypeId);
+    final typeInfo  = _refService.getEffectiveCourseType(course.courseTypeId, course.extensionTypeId);
 
     String normCode(String code) {
       String c = code.endsWith('P') ? code.substring(0, code.length - 1) : code;
@@ -112,6 +113,44 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
       for (final m in typeInfo?.modules ?? []) m.number: m.name,
     };
 
+    // Recovery window: how many more recoveries each over-limit module needs
+    final recoveryWindow = <int, int>{};
+    for (final e in modStats.entries) {
+      final confirmed  = e.value['confirmed'] ?? 0;
+      final unrecovered = e.value['unrecovered'] ?? 0;
+      if (confirmed > 0 && unrecovered / confirmed > 0.10) {
+        final maxAllowed = (confirmed * 0.10).floor();
+        recoveryWindow[e.key] = unrecovered - maxAllowed;
+      }
+    }
+
+    // Recovery records (synthetic schedule IDs)
+    final recoveryRecords = records.where((r) => r.justification == 'recupero').toList()
+      ..sort((a, b) {
+        final da = _dateFromSyntheticId(a.scheduleId);
+        final db = _dateFromSyntheticId(b.scheduleId);
+        if (da == null || db == null) return 0;
+        return db.compareTo(da);
+      });
+
+    // Filtered lesson list for tabs (exclude timeSlot==0 and recovery schedule IDs)
+    bool isPresent(l) {
+      final r = recordMap[l.id];
+      if (r == null) return l.confirmed;
+      return r.present && r.justification != 'recupero';
+    }
+    bool isAbsent(l) {
+      final r = recordMap[l.id];
+      return r != null && !r.present;
+    }
+
+    final visibleLessons = lessons.where((l) {
+      if (l.timeSlot == 0) return false;
+      if (_filterMode == 'present') return isPresent(l);
+      if (_filterMode == 'absent')  return isAbsent(l);
+      return true;
+    }).toList();
+
     return RefreshIndicator(
       onRefresh: _reload,
       color: kWarning,
@@ -135,6 +174,7 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
                           .toList(),
                       onChanged: (id) => setState(() {
                         _selected = _courses.firstWhere((c) => c.id == id);
+                        _filterMode = null;
                       }),
                     ),
                   const SizedBox(height: 12),
@@ -181,97 +221,210 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
                   ),
                   const SizedBox(height: 12),
 
+                  // Recovery window alert
+                  if (recoveryWindow.isNotEmpty) ...[
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: kError.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: kError.withValues(alpha: 0.35)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Row(children: [
+                            Icon(Icons.warning_amber, color: kError, size: 16),
+                            SizedBox(width: 6),
+                            Text('Recuperi necessari per rientrare nel 10%',
+                                style: TextStyle(color: kError, fontSize: 12, fontWeight: FontWeight.w600)),
+                          ]),
+                          const SizedBox(height: 6),
+                          ...recoveryWindow.entries.map((e) => Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Text(
+                              '• M${e.key}: ancora ${e.value} lezione${e.value > 1 ? 'i' : 'e'} da recuperare',
+                              style: const TextStyle(color: kError, fontSize: 11),
+                            ),
+                          )),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+
                   // Per-module stats
                   if (modStats.isNotEmpty) ...[
                     const Text('Dettaglio per modulo',
                         style: TextStyle(color: kTextDim, fontSize: 12, fontWeight: FontWeight.w600)),
                     const SizedBox(height: 6),
                     ..._buildModuleRows(modStats, modNames),
+                    const SizedBox(height: 12),
                   ],
+
+                  // Filter chips
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: [
+                      _filterChip('Tutte', null),
+                      _filterChip('Presenze', 'present'),
+                      _filterChip('Assenze', 'absent'),
+                      if (totalRecovered > 0) _filterChip('Recuperi', 'recovery'),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
                 ],
               ),
             ),
           ),
 
-          // Lesson list
-          SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            sliver: SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (_, i) {
-                  final l = lessons[i];
-                  if (l.timeSlot == 0) return const SizedBox.shrink();
-                  final r         = recordMap[l.id];
-                  final isRecovery  = r?.justification == 'recupero';
-                  final isPresent   = r?.present ?? false;
-                  final isJustified = r != null && r.justification != null && r.justification != 'recupero';
-
-                  final isTheory = l.type != 'pratica';
-                  final nc = normCode(l.submoduleCode);
-                  final conf = isTheory ? (subConfT[nc] ?? 0) : (subConfP[nc] ?? 0);
-                  final plan = isTheory ? (subPlanT[nc] ?? 0) : (subPlanP[nc] ?? 0);
-                  final typeLabel = isTheory ? 'T' : 'P';
-                  final hoursStr = plan > 0 ? '· $typeLabel $conf/$plan h' : '· $typeLabel ${conf}h';
-
-                  String displayTopic = l.topic;
-                  if (RegExp(r'^\d').hasMatch(l.topic) && l.topic.contains('.')) {
-                    displayTopic = subNames[normCode(l.topic)] ?? subNames[nc] ?? l.topic;
-                  }
-
-                  Color statusColor;
-                  IconData statusIcon;
-                  String statusText;
-                  if (r == null && l.confirmed) {
-                    statusColor = kAccent;
-                    statusIcon  = Icons.check_circle;
-                    statusText  = 'Presente';
-                  } else if (r == null) {
-                    statusColor = kTextDim;
-                    statusIcon  = Icons.schedule;
-                    statusText  = 'Non registrata';
-                  } else if (isRecovery) {
-                    statusColor = kPrimary;
-                    statusIcon  = Icons.replay;
-                    statusText  = 'Recuperata (M${r.recoveredModule ?? l.moduleNumber})';
-                  } else if (isPresent) {
-                    statusColor = kAccent;
-                    statusIcon  = Icons.check_circle;
-                    statusText  = 'Presente';
-                  } else if (isJustified) {
-                    statusColor = kWarning;
-                    statusIcon  = Icons.warning_amber;
-                    statusText  = 'Giustificata';
-                  } else {
-                    statusColor = kError;
-                    statusIcon  = Icons.cancel;
-                    statusText  = 'Assente';
-                  }
-
-                  return Card(
-                    color: kCard,
-                    margin: const EdgeInsets.only(bottom: 6),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    child: ListTile(
-                      dense: true,
-                      leading: Icon(statusIcon, color: statusColor, size: 20),
-                      title: Text('M${l.moduleNumber} $displayTopic',
-                          style: const TextStyle(color: kText, fontSize: 12),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis),
-                      subtitle: Text(
-                          '${DateFormat('dd/MM/yyyy').format(l.date)} $hoursStr',
-                          style: const TextStyle(color: kTextDim, fontSize: 11)),
-                      trailing: Text(statusText,
-                          style: TextStyle(color: statusColor, fontSize: 11)),
+          // Lesson / recovery list
+          if (_filterMode == 'recovery')
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              sliver: recoveryRecords.isEmpty
+                  ? const SliverToBoxAdapter(
+                      child: Center(child: Text('Nessun recupero registrato',
+                          style: TextStyle(color: kTextDim, fontSize: 13))))
+                  : SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (_, i) {
+                          final r = recoveryRecords[i];
+                          final date = _dateFromSyntheticId(r.scheduleId);
+                          final modNum = r.recoveredModule;
+                          return Card(
+                            color: kCard,
+                            margin: const EdgeInsets.only(bottom: 6),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            child: ListTile(
+                              dense: true,
+                              leading: const Icon(Icons.replay, color: kPrimary, size: 20),
+                              title: Text(
+                                modNum != null
+                                    ? 'Recupero M$modNum – ${modNames[modNum] ?? ''}'
+                                    : 'Recupero',
+                                style: const TextStyle(color: kText, fontSize: 12),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              subtitle: date != null
+                                  ? Text(DateFormat('dd/MM/yyyy').format(date),
+                                      style: const TextStyle(color: kTextDim, fontSize: 11))
+                                  : null,
+                              trailing: const Text('Recuperata',
+                                  style: TextStyle(color: kPrimary, fontSize: 11)),
+                            ),
+                          );
+                        },
+                        childCount: recoveryRecords.length,
+                      ),
                     ),
-                  );
-                },
-                childCount: lessons.length,
+            )
+          else
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (_, i) {
+                    final l = visibleLessons[i];
+                    final r         = recordMap[l.id];
+                    final isRecovery  = r?.justification == 'recupero';
+                    final isPresent   = r?.present ?? false;
+                    final isJustified = r != null && r.justification != null && r.justification != 'recupero';
+
+                    final isTheory = l.type != 'pratica';
+                    final nc = normCode(l.submoduleCode);
+                    final conf = isTheory ? (subConfT[nc] ?? 0) : (subConfP[nc] ?? 0);
+                    final plan = isTheory ? (subPlanT[nc] ?? 0) : (subPlanP[nc] ?? 0);
+                    final typeLabel = isTheory ? 'T' : 'P';
+                    final hoursStr = plan > 0 ? '· $typeLabel $conf/$plan h' : '· $typeLabel ${conf}h';
+
+                    String displayTopic = l.topic;
+                    if (RegExp(r'^\d').hasMatch(l.topic) && l.topic.contains('.')) {
+                      displayTopic = subNames[normCode(l.topic)] ?? subNames[nc] ?? l.topic;
+                    }
+
+                    Color statusColor;
+                    IconData statusIcon;
+                    String statusText;
+                    if (r == null && l.confirmed) {
+                      statusColor = kAccent;
+                      statusIcon  = Icons.check_circle;
+                      statusText  = 'Presente';
+                    } else if (r == null) {
+                      statusColor = kTextDim;
+                      statusIcon  = Icons.schedule;
+                      statusText  = 'Non registrata';
+                    } else if (isRecovery) {
+                      statusColor = kPrimary;
+                      statusIcon  = Icons.replay;
+                      statusText  = 'Recuperata (M${r.recoveredModule ?? l.moduleNumber})';
+                    } else if (isPresent) {
+                      statusColor = kAccent;
+                      statusIcon  = Icons.check_circle;
+                      statusText  = 'Presente';
+                    } else if (isJustified) {
+                      statusColor = kWarning;
+                      statusIcon  = Icons.warning_amber;
+                      statusText  = 'Giustificata';
+                    } else {
+                      statusColor = kError;
+                      statusIcon  = Icons.cancel;
+                      statusText  = 'Assente';
+                    }
+
+                    return Card(
+                      color: kCard,
+                      margin: const EdgeInsets.only(bottom: 6),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      child: ListTile(
+                        dense: true,
+                        leading: Icon(statusIcon, color: statusColor, size: 20),
+                        title: Text('M${l.moduleNumber} $displayTopic',
+                            style: const TextStyle(color: kText, fontSize: 12),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis),
+                        subtitle: Text(
+                            '${DateFormat('dd/MM/yyyy').format(l.date)} $hoursStr',
+                            style: const TextStyle(color: kTextDim, fontSize: 11)),
+                        trailing: Text(statusText,
+                            style: TextStyle(color: statusColor, fontSize: 11)),
+                      ),
+                    );
+                  },
+                  childCount: visibleLessons.length,
+                ),
               ),
             ),
-          ),
         ],
       ),
+    );
+  }
+
+  DateTime? _dateFromSyntheticId(String id) {
+    // Format: 'recovery:courseId8:attendeeId8:YYYY-MM-DD:mN'
+    final parts = id.split(':');
+    if (parts.length >= 4) return DateTime.tryParse(parts[3]);
+    return null;
+  }
+
+  Widget _filterChip(String label, String? mode) {
+    final active = _filterMode == mode;
+    return FilterChip(
+      label: Text(label),
+      selected: active,
+      onSelected: (_) => setState(() => _filterMode = mode),
+      selectedColor: kPrimary.withValues(alpha: 0.25),
+      checkmarkColor: kPrimary,
+      labelStyle: TextStyle(
+        color: active ? kPrimary : kTextDim,
+        fontSize: 12,
+        fontWeight: active ? FontWeight.w600 : FontWeight.normal,
+      ),
+      backgroundColor: kSurface,
+      side: BorderSide(color: active ? kPrimary : kBorder),
+      padding: const EdgeInsets.symmetric(horizontal: 4),
     );
   }
 

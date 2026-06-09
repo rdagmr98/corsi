@@ -125,7 +125,7 @@ class _InstructorHoursScreenState extends ConsumerState<InstructorHoursScreen> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
-                    ok ? 'IDONEO' : 'NON IDONEO',
+                    ok ? 'GO' : 'NO GO',
                     style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold),
                   ),
                 ),
