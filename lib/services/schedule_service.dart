@@ -284,13 +284,19 @@ class ScheduleService {
   }) async {
     final allLessons = getLessonsForCourse(courseId);
 
-    // Count confirmed hours per (submoduleCode, type) AND per module total
+    // Count confirmed hours per (submoduleCode, type) AND per module total.
+    // Normalize codes to match reference: '7.3P' → '7.3' (P-suffix practical),
+    // '12.7.1' → '12.7' (triple-component codes collapsed to two components).
     final doneT = <String, int>{};
     final doneP = <String, int>{};
     final doneTotalByModule = <int, int>{};
     for (final l in allLessons.where((l) => l.confirmed && l.timeSlot > 0)) {
-      if (l.isTheory) doneT[l.submoduleCode] = (doneT[l.submoduleCode] ?? 0) + 1;
-      else            doneP[l.submoduleCode] = (doneP[l.submoduleCode] ?? 0) + 1;
+      String c = l.submoduleCode;
+      if (c.endsWith('P')) c = c.substring(0, c.length - 1);
+      final parts = c.split('.');
+      if (parts.length >= 3) c = '${parts[0]}.${parts[1]}';
+      if (l.isTheory) doneT[c] = (doneT[c] ?? 0) + 1;
+      else            doneP[c] = (doneP[c] ?? 0) + 1;
       doneTotalByModule[l.moduleNumber] = (doneTotalByModule[l.moduleNumber] ?? 0) + 1;
     }
 

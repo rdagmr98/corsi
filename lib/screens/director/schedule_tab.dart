@@ -112,8 +112,12 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
     final doneP = <String, int>{};
     final doneTotalByModule = <int, int>{};
     for (final l in doneLessons) {
-      if (l.isTheory) doneT[l.submoduleCode] = (doneT[l.submoduleCode] ?? 0) + 1;
-      else            doneP[l.submoduleCode] = (doneP[l.submoduleCode] ?? 0) + 1;
+      String c = l.submoduleCode;
+      if (c.endsWith('P')) c = c.substring(0, c.length - 1);
+      final parts = c.split('.');
+      if (parts.length >= 3) c = '${parts[0]}.${parts[1]}';
+      if (l.isTheory) doneT[c] = (doneT[c] ?? 0) + 1;
+      else            doneP[c] = (doneP[c] ?? 0) + 1;
       doneTotalByModule[l.moduleNumber] = (doneTotalByModule[l.moduleNumber] ?? 0) + 1;
     }
 
