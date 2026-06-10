@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/grade_service.dart';
+import '../../services/user_service.dart';
 import '../../theme.dart';
 
 class InstructorHoursScreen extends ConsumerStatefulWidget {
@@ -15,6 +16,7 @@ class InstructorHoursScreen extends ConsumerStatefulWidget {
 
 class _InstructorHoursScreenState extends ConsumerState<InstructorHoursScreen> {
   final _gradeService = GradeService();
+  final _userService  = UserService();
 
   @override
   void initState() {
@@ -28,11 +30,14 @@ class _InstructorHoursScreenState extends ConsumerState<InstructorHoursScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final teachH = _gradeService.getTeachingHoursRollingYear(widget.userId);
-    final profH = _gradeService.getProfessionalUpdateHoursLast2Years(widget.userId);
+    final teachH  = _gradeService.getTeachingHoursRollingYear(widget.userId);
+    final profH   = _gradeService.getProfessionalUpdateHoursLast2Years(widget.userId);
     final updates = _gradeService.getUpdatesForInstructor(widget.userId);
+    final me      = _userService.findById(widget.userId);
+    final daaExpiry = me?.daaExpiry;
     final teachOk = teachH >= 6;
-    final profOk = profH >= 35;
+    final profOk  = profH >= 35;
+    final daaOk   = daaExpiry == null || daaExpiry.isAfter(DateTime.now());
 
     return RefreshIndicator(
       onRefresh: _reload,
@@ -57,6 +62,10 @@ class _InstructorHoursScreenState extends ConsumerState<InstructorHoursScreen> {
               profOk,
               Icons.update,
             ),
+            if (daaExpiry != null) ...[
+              const SizedBox(height: 12),
+              _daaCard(daaExpiry, daaOk),
+            ],
             const SizedBox(height: 24),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -93,6 +102,47 @@ class _InstructorHoursScreenState extends ConsumerState<InstructorHoursScreen> {
               )),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _daaCard(DateTime expiry, bool ok) {
+    final color = ok ? kAccent : kError;
+    return Card(
+      color: kCard,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: color.withOpacity(0.3)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(children: [
+          Icon(Icons.verified_user, color: color, size: 20),
+          const SizedBox(width: 12),
+          Expanded(child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Aggiornamento biennale DAAA (M10)',
+                  style: TextStyle(color: kText, fontSize: 13)),
+              const SizedBox(height: 4),
+              Text(
+                'Scade: ${DateFormat('dd/MM/yyyy').format(expiry)}',
+                style: TextStyle(color: color, fontSize: 12),
+              ),
+            ],
+          )),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              ok ? 'GO' : 'SCADUTA',
+              style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ]),
       ),
     );
   }

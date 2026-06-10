@@ -115,4 +115,19 @@ class UserService {
     };
     await _db.saveUsers(users);
   }
+
+  Future<void> setDaaExpiry(String userId, DateTime? expiry) async {
+    final users = _db.users.toList();
+    final idx = users.indexWhere((u) => u['id'] == userId);
+    if (idx < 0) return;
+    final updated = Map<String, dynamic>.from(users[idx] as Map<String, dynamic>);
+    if (expiry == null) {
+      updated.remove('daaa_expiry');
+    } else {
+      updated['daaa_expiry'] = expiry.toIso8601String().substring(0, 10);
+    }
+    updated['updated_at'] = DateTime.now().toIso8601String();
+    users[idx] = updated;
+    await _db.saveUsers(users);
+  }
 }

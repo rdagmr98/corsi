@@ -56,16 +56,26 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
         .toList()..sort();
   }
 
-  // ── Ore confermate per istruttore (tutte le lezioni confirmed) ───────────
+  // ── Ore confermate per istruttore (lezioni confirmed + recuperi) ─────────
   Map<String, int> _confirmedHoursMap(bool theory) {
     final result = <String, int>{};
     for (final raw in _db.schedules) {
-      final instr = raw['instructorId'] as String?;
+      final instr = raw['instructor_id'] as String?;
       if (instr == null) continue;
       if (raw['confirmed'] != true) continue;
-      if (raw['timeSlot'] == 0) continue;
+      if ((raw['time_slot'] as int? ?? 0) <= 0) continue;
       final isT = raw['type'] != 'pratica';
       if (isT == theory) result[instr] = (result[instr] ?? 0) + 1;
+    }
+    // I recuperi confermati contano come ore di lezione per l'istruttore (teoria)
+    if (theory) {
+      for (final raw in _db.records) {
+        if (raw['justification'] != 'recupero') continue;
+        if (raw['present'] != true) continue;
+        final instr = raw['confirmed_by'] as String?;
+        if (instr == null || instr.isEmpty) continue;
+        result[instr] = (result[instr] ?? 0) + 1;
+      }
     }
     return result;
   }
@@ -290,6 +300,80 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
     );
   }
 
+  // ── DAAA expiry dialog ────────────────────────────────────────────────────
+  Future<void> _editDaaExpiry(AppUser instr) async {
+    DateTime? expiry = instr.daaExpiry;
+
+    final confirmed = await showDialog<Object?>(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlg) => AlertDialog(
+          backgroundColor: kCard,
+          title: Text('Scadenza DAAA – ${instr.cognome}',
+              style: const TextStyle(color: kText)),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Text(
+              'Aggiornamento biennale istruttore NAM/DAAA (M10)',
+              style: TextStyle(color: kTextDim, fontSize: 12),
+            ),
+            const SizedBox(height: 16),
+            Row(children: [
+              Expanded(
+                child: Text(
+                  expiry != null
+                      ? DateFormat('dd/MM/yyyy').format(expiry!)
+                      : 'Non impostata',
+                  style: TextStyle(
+                    color: expiry == null
+                        ? kTextDim
+                        : expiry!.isBefore(DateTime.now())
+                            ? kError
+                            : kAccent,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              TextButton(
+                onPressed: () async {
+                  final d = await showDatePicker(
+                    context: ctx,
+                    initialDate: expiry ?? DateTime.now(),
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime(2035),
+                  );
+                  if (d != null) setDlg(() => expiry = d);
+                },
+                child: const Text('Cambia'),
+              ),
+              if (expiry != null)
+                TextButton(
+                  onPressed: () => setDlg(() => expiry = null),
+                  child: const Text('Rimuovi', style: TextStyle(color: kError)),
+                ),
+            ]),
+          ]),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annulla', style: TextStyle(color: kTextDim)),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, expiry ?? const _RemoveDate()),
+              child: const Text('Salva'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed == null) return;
+    final newExpiry = confirmed is _RemoveDate ? null : confirmed as DateTime;
+    await _userService.setDaaExpiry(instr.id, newExpiry);
+    _reload();
+  }
+
   // ── GO override dialog ────────────────────────────────────────────────────
   Future<void> _toggleGoOverride(AppUser instr) async {
     final newVal = !instr.goOverride;
@@ -337,7 +421,9 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
       ..sort((a, b) => b.date.compareTo(a.date));
     final goTeach  = instr.goOverride || teachH >= 6;
     final goProf   = instr.goOverride || profH >= 35;
-    final go       = goTeach && goProf;
+    final goDaa    = instr.daaExpiry == null || instr.goOverride ||
+        instr.daaExpiry!.isAfter(DateTime.now());
+    final go       = goTeach && goProf && goDaa;
 
     showDialog(
       context: context,
@@ -406,6 +492,8 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
                         )),
                       ]),
                       const SizedBox(height: 8),
+                      _daaCard(instr, goDaa),
+                      const SizedBox(height: 4),
                       // Override toggle
                       OutlinedButton.icon(
                         onPressed: () async {
@@ -603,6 +691,62 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
         ]),
       );
 
+  Widget _daaCard(AppUser instr, bool ok) {
+    final expiry = instr.daaExpiry;
+    final color  = expiry == null ? kTextDim : (ok ? kAccent : kError);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: kSurface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(expiry == null ? 0.15 : 0.35)),
+      ),
+      child: Row(children: [
+        Expanded(child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Aggiornamento biennale DAAA (M10)',
+                style: TextStyle(color: kTextDim, fontSize: 11)),
+            const SizedBox(height: 4),
+            Text(
+              expiry == null
+                  ? 'Non applicabile'
+                  : 'Scade: ${DateFormat('dd/MM/yyyy').format(expiry)}',
+              style: TextStyle(
+                color: color,
+                fontSize: 14,
+                fontWeight: expiry != null ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+          ],
+        )),
+        if (expiry != null && !ok)
+          Container(
+            margin: const EdgeInsets.only(right: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: kError.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: const Text('SCADUTA', style: TextStyle(color: kError, fontSize: 10, fontWeight: FontWeight.bold)),
+          ),
+        TextButton.icon(
+          onPressed: () {
+            Navigator.pop(context);
+            _editDaaExpiry(instr);
+          },
+          icon: const Icon(Icons.edit_calendar, size: 14),
+          label: Text(expiry == null ? 'Imposta' : 'Modifica',
+              style: const TextStyle(fontSize: 11)),
+          style: TextButton.styleFrom(
+            foregroundColor: kPrimary,
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          ),
+        ),
+      ]),
+    );
+  }
+
   Widget _sectionTitle(String t) => Text(t,
       style: const TextStyle(
           color: kText, fontSize: 13, fontWeight: FontWeight.bold));
@@ -619,14 +763,16 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
 
   @override
   Widget build(BuildContext context) {
+    final now = DateTime.now();
     // Compute GO for each instructor
     final rows = _instructors.map((instr) {
       final teachH = _gradeService.getTeachingHoursRollingYear(instr.id);
       final profH  = _gradeService.getProfessionalUpdateHoursLast2Years(instr.id);
-      final goT = instr.goOverride || teachH >= 6;
-      final goP = instr.goOverride || profH >= 35;
-      final go  = goT && goP;
-      return (instr: instr, teachH: teachH, profH: profH, goT: goT, goP: goP, go: go);
+      final goT  = instr.goOverride || teachH >= 6;
+      final goP  = instr.goOverride || profH >= 35;
+      final goDaa = instr.daaExpiry == null || instr.goOverride || instr.daaExpiry!.isAfter(now);
+      final go  = goT && goP && goDaa;
+      return (instr: instr, teachH: teachH, profH: profH, goT: goT, goP: goP, goDaa: goDaa, go: go);
     }).toList();
 
     // Filter
@@ -717,6 +863,7 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
             final goT    = r.goT;
             final goP    = r.goP;
             final go     = r.go;
+            final goDaa  = r.goDaa;
 
             return Card(
               color: kCard,
@@ -761,10 +908,14 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
                         goP),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: Row(children: [
+                      child: Wrap(spacing: 4, runSpacing: 4, children: [
                         _chip('T: ${theoryH[instr.id] ?? 0}h', kPrimary),
-                        const SizedBox(width: 4),
                         _chip('P: ${practiceH[instr.id] ?? 0}h', kAccent),
+                        if (instr.daaExpiry != null)
+                          _chip(
+                            'DAAA ${DateFormat('MM/yy').format(instr.daaExpiry!)}',
+                            goDaa ? kAccent : kError,
+                          ),
                       ]),
                     ),
                     IconButton(
@@ -817,3 +968,7 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
 }
 
 enum _SortMode { name, goFirst, noGoFirst, teachH, profH }
+
+class _RemoveDate {
+  const _RemoveDate();
+}

@@ -35,6 +35,7 @@ class AppUser {
   final String role;
   final bool isActive;
   final bool goOverride;
+  final DateTime? daaExpiry;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -47,6 +48,7 @@ class AppUser {
     required this.role,
     this.isActive = true,
     this.goOverride = false,
+    this.daaExpiry,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -65,6 +67,9 @@ class AppUser {
     role: j['role'] as String? ?? 'attendee',
     isActive: j['is_active'] as bool? ?? true,
     goOverride: j['go_override'] as bool? ?? false,
+    daaExpiry: j['daaa_expiry'] != null
+        ? DateTime.tryParse(j['daaa_expiry'] as String)
+        : null,
     createdAt: DateTime.parse(
       j['created_at'] as String? ?? DateTime.now().toIso8601String(),
     ),
@@ -82,6 +87,7 @@ class AppUser {
     'role': role,
     'is_active': isActive,
     'go_override': goOverride,
+    if (daaExpiry != null) 'daaa_expiry': daaExpiry!.toIso8601String().substring(0, 10),
     'created_at': createdAt.toIso8601String(),
     'updated_at': updatedAt.toIso8601String(),
   };
@@ -96,6 +102,7 @@ class AppUser {
     String? role,
     bool? isActive,
     bool? goOverride,
+    Object? daaExpiry = _s,
   }) => AppUser(
     id: id,
     nome: nome ?? this.nome,
@@ -105,6 +112,7 @@ class AppUser {
     role: role ?? this.role,
     isActive: isActive ?? this.isActive,
     goOverride: goOverride ?? this.goOverride,
+    daaExpiry: identical(daaExpiry, _s) ? this.daaExpiry : daaExpiry as DateTime?,
     createdAt: createdAt,
     updatedAt: DateTime.now(),
   );
