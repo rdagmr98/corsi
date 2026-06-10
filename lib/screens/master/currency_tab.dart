@@ -40,13 +40,21 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
   }
 
   // ── AMC helpers ───────────────────────────────────────────────────────────
-  List<String> _theoryMods(String uid) => List<String>.from(
-      (_db.amcData['instructorAmc'] as Map? ?? {})[uid]
-          ?['theory_submodules'] as List? ?? []);
+  List<String> _theoryMods(String uid) {
+    final grid = _db.amcData['theoryGrid'] as Map<String, dynamic>? ?? {};
+    return grid.entries
+        .where((e) => (e.value as List).contains(uid))
+        .map((e) => e.key)
+        .toList()..sort();
+  }
 
-  List<String> _practiceMods(String uid) => List<String>.from(
-      (_db.amcData['instructorAmc'] as Map? ?? {})[uid]
-          ?['practice_submodules'] as List? ?? []);
+  List<String> _practiceMods(String uid) {
+    final grid = _db.amcData['practiceGrid'] as Map<String, dynamic>? ?? {};
+    return grid.entries
+        .where((e) => (e.value as List).contains(uid))
+        .map((e) => e.key)
+        .toList()..sort();
+  }
 
   // ── Ore insegnamento per anno (rolling) ───────────────────────────────────
   List<Map<String, dynamic>> _teachingByYear(String uid) {
