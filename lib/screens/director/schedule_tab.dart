@@ -116,14 +116,21 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
     final doneLessons = _allCourseLessons;
     final doneT = <String, int>{};
     final doneP = <String, int>{};
+    final confT = <String, int>{};
+    final confP = <String, int>{};
     final doneTotalByModule = <int, int>{};
     for (final l in doneLessons) {
       String c = l.submoduleCode;
       if (c.endsWith('P')) c = c.substring(0, c.length - 1);
       final parts = c.split('.');
       if (parts.length >= 3) c = '${parts[0]}.${parts[1]}';
-      if (l.isTheory) doneT[c] = (doneT[c] ?? 0) + 1;
-      else            doneP[c] = (doneP[c] ?? 0) + 1;
+      if (l.isTheory) {
+        doneT[c] = (doneT[c] ?? 0) + 1;
+        if (l.confirmed) confT[c] = (confT[c] ?? 0) + 1;
+      } else {
+        doneP[c] = (doneP[c] ?? 0) + 1;
+        if (l.confirmed) confP[c] = (confP[c] ?? 0) + 1;
+      }
       doneTotalByModule[l.moduleNumber] = (doneTotalByModule[l.moduleNumber] ?? 0) + 1;
     }
 
@@ -158,9 +165,16 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
               : null;
 
           final availableSubs = module?.submodules.where((s) {
+            // Unconstrained submodules (no reference hours) are always available
             if (s.theoryHours == 0 && s.practicalHours == 0) return true;
-            return (s.theoryHours    - (doneT[s.code] ?? 0)) > 0 ||
-                   (s.practicalHours - (doneP[s.code] ?? 0)) > 0;
+            final schedT = doneT[s.code] ?? 0;
+            final schedP = doneP[s.code] ?? 0;
+            final cT = confT[s.code] ?? 0;
+            final cP = confP[s.code] ?? 0;
+            // Exclude if all scheduled lessons are confirmed (director considers it done)
+            if ((schedT + schedP) > 0 && cT >= schedT && cP >= schedP) return false;
+            // Include if reference hours remain
+            return (s.theoryHours - schedT) > 0 || (s.practicalHours - schedP) > 0;
           }).toList() ?? [];
 
           if (selectedSubmodule == null && availableSubs.isNotEmpty) {
@@ -849,7 +863,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                             if (isWeekend) {
                               return TableCell(
                                 child: Container(
-                                  height: 70,
+                                  height: 90,
                                   color: kBorder.withOpacity(0.04),
                                   child: const Center(
                                     child: Text('—', style: TextStyle(color: kBorder, fontSize: 10)),
@@ -859,7 +873,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                             }
                             if (day.weekday == DateTime.friday && slot.slot > 3) {
                               return const TableCell(
-                                child: SizedBox(height: 70, child: Center(
+                                child: SizedBox(height: 90, child: Center(
                                   child: Text('—', style: TextStyle(color: kBorder)),
                                 )),
                               );
@@ -872,7 +886,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                                   ? InkWell(
                                       onTap: () => _addLesson(day, slot.slot),
                                       child: Container(
-                                        height: 70,
+                                        height: 90,
                                         alignment: Alignment.center,
                                         child: const Icon(Icons.add, color: kBorder, size: 16),
                                       ),
@@ -924,10 +938,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
     final base = moduleColor(lesson.moduleNumber);
     final color = lesson.confirmed ? base : base.withOpacity(0.5);
 
-    String displayTopic = lesson.topic;
-    if (RegExp(r'^\d').hasMatch(lesson.topic) && lesson.topic.contains('.')) {
-      displayTopic = subNames[_normSubCode(lesson.topic)] ?? subNames[nc] ?? lesson.topic;
-    }
+    final displayTopic = '$nc – ${subNames[nc] ?? lesson.topic}';
 
     final conf = isTheory ? (confT[nc] ?? 0) : (confP[nc] ?? 0);
     final plan = isTheory ? (planT[nc] ?? 0) : (planP[nc] ?? 0);
@@ -950,7 +961,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
         message: tooltipMsg,
         waitDuration: const Duration(milliseconds: 500),
         child: Container(
-        height: 80,
+        height: 100,
         margin: const EdgeInsets.all(2),
         padding: const EdgeInsets.all(6),
         decoration: BoxDecoration(
@@ -985,7 +996,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
             Expanded(
               child: Text(displayTopic,
                   style: TextStyle(color: color, fontSize: 10),
-                  maxLines: 2,
+                  maxLines: 3,
                   overflow: TextOverflow.ellipsis),
             ),
             Row(children: [
