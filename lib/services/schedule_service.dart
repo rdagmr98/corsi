@@ -172,6 +172,20 @@ class ScheduleService {
     return deleted;
   }
 
+  Future<int> deleteUnconfirmedLessonsFrom(String courseId, DateTime fromDate) async {
+    final all = _db.schedules.toList();
+    final fromStr = fromDate.toIso8601String().split('T').first;
+    final toKeep = all.where((s) {
+      if (s['course_id'] != courseId) return true;
+      if (s['confirmed'] == true) return true;
+      final dateStr = (s['date'] as String?)?.split('T').first ?? '';
+      return dateStr.compareTo(fromStr) < 0;
+    }).toList();
+    final deleted = all.length - toKeep.length;
+    if (deleted > 0) await _db.saveSchedules(toKeep);
+    return deleted;
+  }
+
   /// Auto-generate a weekly schedule for a course based on the module plan.
   /// Distributes theory then practical hours across working days starting from [startDate].
   Future<void> generateSchedule({

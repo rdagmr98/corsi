@@ -562,11 +562,28 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
   }
 
   Future<void> _editLessonInstructor(ScheduledLesson lesson) async {
-    if (_selected == null) return;
+    if (_selected == null || _typeInfo == null) return;
     final instructors = _userService.getInstructors()
         .where((u) => _selected!.instructorIds.contains(u.id))
         .toList();
+
+    // Build submodule list filtered by lesson type (teoria/pratica)
+    final isTheory = lesson.isTheory;
+    final submoduleOptions = <(String, String)>[];
+    for (final m in _typeInfo!.modules) {
+      for (final s in m.submodules) {
+        final hasHours = isTheory ? s.theoryHours > 0 : s.practicalHours > 0;
+        if (hasHours) submoduleOptions.add((s.code, 'M${m.number} ${s.code} – ${s.name}'));
+      }
+    }
+    // If current submodule not in list, add it to avoid invalid dropdown value
+    if (!submoduleOptions.any((e) => e.$1 == lesson.submoduleCode)) {
+      submoduleOptions.insert(0, (lesson.submoduleCode, lesson.submoduleCode));
+    }
+
     String? selectedInstructor = lesson.instructorId;
+    String selectedSubmodule = lesson.submoduleCode;
+    bool recompile = true;
 
     await showDialog(
       context: context,
@@ -578,7 +595,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
             style: const TextStyle(color: kText, fontSize: 14),
           ),
           content: SizedBox(
-            width: 360,
+            width: 400,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -598,6 +615,19 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                           style: const TextStyle(color: kWarning, fontSize: 11)),
                     ]),
                   ),
+                DropdownButtonFormField<String>(
+                  value: selectedSubmodule,
+                  dropdownColor: kSurface,
+                  isExpanded: true,
+                  style: const TextStyle(color: kText, fontSize: 12),
+                  decoration: const InputDecoration(labelText: 'Sottomodulo', isDense: true),
+                  items: submoduleOptions.map((e) => DropdownMenuItem(
+                    value: e.$1,
+                    child: Text(e.$2, overflow: TextOverflow.ellipsis),
+                  )).toList(),
+                  onChanged: (v) => setDlg(() => selectedSubmodule = v ?? selectedSubmodule),
+                ),
+                const SizedBox(height: 8),
                 DropdownButtonFormField<String?>(
                   value: selectedInstructor,
                   dropdownColor: kSurface,
@@ -610,6 +640,18 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                   ],
                   onChanged: (v) => setDlg(() => selectedInstructor = v),
                 ),
+                if (selectedSubmodule != lesson.submoduleCode) ...[
+                  const SizedBox(height: 4),
+                  CheckboxListTile(
+                    value: recompile,
+                    onChanged: (v) => setDlg(() => recompile = v ?? true),
+                    title: const Text('Rigenera lezioni non confermate dal giorno dopo',
+                        style: TextStyle(color: kText, fontSize: 12)),
+                    controlAffinity: ListTileControlAffinity.leading,
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ],
               ],
             ),
           ),
@@ -621,9 +663,29 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
             ElevatedButton(
               onPressed: () async {
                 Navigator.pop(ctx);
-                await _scheduleService.updateLesson(
-                    lesson.copyWith(instructorId: selectedInstructor));
-                _refreshWeek();
+                final subChanged = selectedSubmodule != lesson.submoduleCode;
+                int newModuleNum = lesson.moduleNumber;
+                if (subChanged) {
+                  for (final m in _typeInfo!.modules) {
+                    if (m.submodules.any((s) => s.code == selectedSubmodule)) {
+                      newModuleNum = m.number;
+                      break;
+                    }
+                  }
+                }
+                await _scheduleService.updateLesson(lesson.copyWith(
+                  instructorId: selectedInstructor,
+                  submoduleCode: selectedSubmodule,
+                  moduleNumber: newModuleNum,
+                  topic: selectedSubmodule,
+                ));
+                if (subChanged && recompile) {
+                  final nextDay = lesson.date.add(const Duration(days: 1));
+                  await _scheduleService.deleteUnconfirmedLessonsFrom(_selected!.id, nextDay);
+                  await _generateRemaining();
+                } else {
+                  _refreshWeek();
+                }
               },
               child: const Text('Salva'),
             ),
@@ -682,18 +744,24 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
         for (final s in m.submodules) s.code: s.name,
     };
 
-    final subConfT  = <String, int>{};
-    final subConfP  = <String, int>{};
-    final subSchedT = <String, int>{};
-    final subSchedP = <String, int>{};
-    for (final l in _allCourseLessons) {
+    // Build progressive ordinal per lesson (sorted by date+slot, within submodule+type group)
+    final sortedAll = [..._allCourseLessons]
+        ..sort((a, b) {
+          final dc = a.date.compareTo(b.date);
+          return dc != 0 ? dc : a.timeSlot.compareTo(b.timeSlot);
+        });
+    final cntT = <String, int>{};
+    final cntP = <String, int>{};
+    final lessonOrdinals = <String, int>{};
+    for (final l in sortedAll) {
+      if (l.timeSlot == 0) continue;
       final nc = _normSubCode(l.submoduleCode);
       if (l.type != 'pratica') {
-        subSchedT[nc] = (subSchedT[nc] ?? 0) + 1;
-        if (l.confirmed) subConfT[nc] = (subConfT[nc] ?? 0) + 1;
+        cntT[nc] = (cntT[nc] ?? 0) + 1;
+        lessonOrdinals[l.id] = cntT[nc]!;
       } else {
-        subSchedP[nc] = (subSchedP[nc] ?? 0) + 1;
-        if (l.confirmed) subConfP[nc] = (subConfP[nc] ?? 0) + 1;
+        cntP[nc] = (cntP[nc] ?? 0) + 1;
+        lessonOrdinals[l.id] = cntP[nc]!;
       }
     }
     final subPlanT = <String, int>{};
@@ -701,10 +769,8 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
     for (final m in _typeInfo?.modules ?? <ModuleInfo>[]) {
       for (final s in m.submodules) {
         final nc = _normSubCode(s.code);
-        final t = s.theoryHours > 0 ? s.theoryHours : (subSchedT[nc] ?? 0);
-        final p = s.practicalHours > 0 ? s.practicalHours : (subSchedP[nc] ?? 0);
-        if (((subPlanT[nc] ?? 0)) < t) subPlanT[nc] = t;
-        if (((subPlanP[nc] ?? 0)) < p) subPlanP[nc] = p;
+        subPlanT[nc] = (subPlanT[nc] ?? 0) + s.theoryHours;
+        subPlanP[nc] = (subPlanP[nc] ?? 0) + s.practicalHours;
       }
     }
     final instrNames = <String, String>{
@@ -897,7 +963,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                                       ),
                                     )
                                   : _lessonCell(lesson, subNameMap, instrNames,
-                                      confT: subSchedT, confP: subSchedP,
+                                      ordinals: lessonOrdinals,
                                       planT: subPlanT, planP: subPlanP),
                             );
                           }),
@@ -933,8 +999,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
     ScheduledLesson lesson,
     Map<String, String> subNames,
     Map<String, String> instrNames, {
-    required Map<String, int> confT,
-    required Map<String, int> confP,
+    required Map<String, int> ordinals,
     required Map<String, int> planT,
     required Map<String, int> planP,
   }) {
@@ -945,7 +1010,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
 
     final displayTopic = '$nc – ${subNames[nc] ?? lesson.topic}';
 
-    final conf = isTheory ? (confT[nc] ?? 0) : (confP[nc] ?? 0);
+    final conf = ordinals[lesson.id] ?? 1;
     final plan = isTheory ? (planT[nc] ?? 0) : (planP[nc] ?? 0);
     final typeLabel = isTheory ? 'T' : 'P';
     final hoursStr = plan > 0 ? '$typeLabel $conf/$plan h' : '$typeLabel ${conf}h';

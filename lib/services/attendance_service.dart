@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import '../models/reference_models.dart';
 import '../models/schedule_models.dart';
 import 'gh_db_service.dart';
@@ -129,7 +131,8 @@ class AttendanceService {
     final result = <int, Map<String, int>>{};
     final moduleKeys = {...confirmedByModule.keys, ...absentByModule.keys};
     for (final moduleNum in moduleKeys) {
-      final total = plannedHours[moduleNum] ?? confirmedByModule[moduleNum] ?? 0;
+      final confirmedH = confirmedByModule[moduleNum] ?? 0;
+      final total = max(plannedHours[moduleNum] ?? 0, confirmedH);
       final absent = absentByModule[moduleNum] ?? 0;
       final recovered = recoveredByModule[moduleNum] ?? 0;
       final unrecovered = (absent - recovered).clamp(0, absent);
