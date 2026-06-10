@@ -868,7 +868,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                             if (isWeekend) {
                               return TableCell(
                                 child: Container(
-                                  height: 90,
+                                  height: 120,
                                   color: kBorder.withOpacity(0.04),
                                   child: const Center(
                                     child: Text('—', style: TextStyle(color: kBorder, fontSize: 10)),
@@ -878,7 +878,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                             }
                             if (day.weekday == DateTime.friday && slot.slot > 3) {
                               return const TableCell(
-                                child: SizedBox(height: 90, child: Center(
+                                child: SizedBox(height: 120, child: Center(
                                   child: Text('—', style: TextStyle(color: kBorder)),
                                 )),
                               );
@@ -891,13 +891,13 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                                   ? InkWell(
                                       onTap: () => _addLesson(day, slot.slot),
                                       child: Container(
-                                        height: 90,
+                                        height: 120,
                                         alignment: Alignment.center,
                                         child: const Icon(Icons.add, color: kBorder, size: 16),
                                       ),
                                     )
                                   : _lessonCell(lesson, subNameMap, instrNames,
-                                      confT: subConfT, confP: subConfP,
+                                      confT: subSchedT, confP: subSchedP,
                                       planT: subPlanT, planP: subPlanP),
                             );
                           }),
@@ -966,7 +966,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
         message: tooltipMsg,
         waitDuration: const Duration(milliseconds: 500),
         child: Container(
-        height: 100,
+        height: 120,
         margin: const EdgeInsets.all(2),
         padding: const EdgeInsets.all(6),
         decoration: BoxDecoration(
@@ -1001,7 +1001,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
             Expanded(
               child: Text(displayTopic,
                   style: TextStyle(color: color, fontSize: 10),
-                  maxLines: 3,
+                  maxLines: 4,
                   overflow: TextOverflow.ellipsis),
             ),
             Row(children: [
