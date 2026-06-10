@@ -167,10 +167,11 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
           final availableSubs = module?.submodules.where((s) {
             // Unconstrained submodules (no reference hours) are always available
             if (s.theoryHours == 0 && s.practicalHours == 0) return true;
-            final schedT = doneT[s.code] ?? 0;
-            final schedP = doneP[s.code] ?? 0;
-            final cT = confT[s.code] ?? 0;
-            final cP = confP[s.code] ?? 0;
+            final nc = _normSubCode(s.code);
+            final schedT = doneT[nc] ?? 0;
+            final schedP = doneP[nc] ?? 0;
+            final cT = confT[nc] ?? 0;
+            final cP = confP[nc] ?? 0;
             // Exclude if all scheduled lessons are confirmed (director considers it done)
             if ((schedT + schedP) > 0 && cT >= schedT && cP >= schedP) return false;
             // Include if reference hours remain
@@ -179,9 +180,9 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
 
           if (selectedSubmodule == null && availableSubs.isNotEmpty) {
             selectedSubmodule = availableSubs.first.code;
-            // Auto-select type based on what's remaining
             final first = availableSubs.first;
-            if (first.theoryHours > 0 && (first.theoryHours - (doneT[first.code] ?? 0)) <= 0) type = 'pratica';
+            final fnc = _normSubCode(first.code);
+            if (first.theoryHours > 0 && (first.theoryHours - (doneT[fnc] ?? 0)) <= 0) type = 'pratica';
             else type = 'teoria';
           }
 
@@ -189,8 +190,9 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
               (s) => s.code == selectedSubmodule,
               orElse: () => availableSubs.isNotEmpty ? availableSubs.first : module!.submodules.first);
           final unconstrained = selSub.theoryHours == 0 && selSub.practicalHours == 0;
-          final remT = unconstrained ? 1 : (selSub.theoryHours    - (doneT[selSub.code] ?? 0));
-          final remP = unconstrained ? 1 : (selSub.practicalHours - (doneP[selSub.code] ?? 0));
+          final selNc = _normSubCode(selSub.code);
+          final remT = unconstrained ? 1 : (selSub.theoryHours    - (doneT[selNc] ?? 0));
+          final remP = unconstrained ? 1 : (selSub.practicalHours - (doneP[selNc] ?? 0));
 
           return AlertDialog(
             backgroundColor: kCard,
@@ -245,11 +247,12 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                       style: const TextStyle(color: kText),
                       decoration: const InputDecoration(labelText: 'Sottomodulo', isDense: true),
                       items: availableSubs.map((s) {
+                        final snc = _normSubCode(s.code);
                         final free = s.theoryHours == 0 && s.practicalHours == 0;
-                        final rT = s.theoryHours    - (doneT[s.code] ?? 0);
-                        final rP = s.practicalHours - (doneP[s.code] ?? 0);
+                        final rT = s.theoryHours    - (doneT[snc] ?? 0);
+                        final rP = s.practicalHours - (doneP[snc] ?? 0);
                         final tag = free
-                            ? 'T:${doneT[s.code]??0}h P:${doneP[s.code]??0}h'
+                            ? 'T:${doneT[snc]??0}h P:${doneP[snc]??0}h'
                             : [if (rT > 0) '${rT}T', if (rP > 0) '${rP}P'].join(' ');
                         return DropdownMenuItem(
                           value: s.code,
@@ -261,10 +264,11 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                         selectedSubmodule = v;
                         if (v != null) {
                           final s = availableSubs.firstWhere((x) => x.code == v);
+                          final vnc = _normSubCode(v);
                           if (s.theoryHours == 0 && s.practicalHours == 0) {
                             type = 'teoria';
                           } else {
-                            type = (s.theoryHours - (doneT[v] ?? 0)) > 0 ? 'teoria' : 'pratica';
+                            type = (s.theoryHours - (doneT[vnc] ?? 0)) > 0 ? 'teoria' : 'pratica';
                           }
                         }
                       }),
@@ -692,16 +696,17 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
         if (l.confirmed) subConfP[nc] = (subConfP[nc] ?? 0) + 1;
       }
     }
-    final subPlanT = <String, int>{
-      for (final m in _typeInfo?.modules ?? <ModuleInfo>[])
-        for (final s in m.submodules)
-          s.code: s.theoryHours > 0 ? s.theoryHours : (subSchedT[s.code] ?? 0),
-    };
-    final subPlanP = <String, int>{
-      for (final m in _typeInfo?.modules ?? <ModuleInfo>[])
-        for (final s in m.submodules)
-          s.code: s.practicalHours > 0 ? s.practicalHours : (subSchedP[s.code] ?? 0),
-    };
+    final subPlanT = <String, int>{};
+    final subPlanP = <String, int>{};
+    for (final m in _typeInfo?.modules ?? <ModuleInfo>[]) {
+      for (final s in m.submodules) {
+        final nc = _normSubCode(s.code);
+        final t = s.theoryHours > 0 ? s.theoryHours : (subSchedT[nc] ?? 0);
+        final p = s.practicalHours > 0 ? s.practicalHours : (subSchedP[nc] ?? 0);
+        if (((subPlanT[nc] ?? 0)) < t) subPlanT[nc] = t;
+        if (((subPlanP[nc] ?? 0)) < p) subPlanP[nc] = p;
+      }
+    }
     final instrNames = <String, String>{
       for (final u in _userService.getInstructors()) u.id: u.cognome,
     };
