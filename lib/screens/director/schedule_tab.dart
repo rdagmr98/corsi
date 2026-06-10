@@ -567,18 +567,35 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
         .where((u) => _selected!.instructorIds.contains(u.id))
         .toList();
 
-    // Build submodule list filtered by lesson type (teoria/pratica)
     final isTheory = lesson.isTheory;
-    final submoduleOptions = <(String, String)>[];
+
+    // Raccoglie codici sottomodulo con lezioni non confermate da questa data+slot in poi
+    final remainingCodes = _allCourseLessons.where((l) {
+      if (l.confirmed) return false;
+      if (isTheory ? !l.isTheory : l.isTheory) return false;
+      final sameDay = l.date.year == lesson.date.year &&
+          l.date.month == lesson.date.month &&
+          l.date.day == lesson.date.day;
+      if (sameDay) return l.timeSlot >= lesson.timeSlot;
+      return l.date.isAfter(lesson.date);
+    }).map((l) => l.submoduleCode).toSet();
+
+    // Mappa codice → (numero modulo, nome) dal reference
+    final refSubInfo = <String, (int, String)>{};
     for (final m in _typeInfo!.modules) {
       for (final s in m.submodules) {
-        final hasHours = isTheory ? s.theoryHours > 0 : s.practicalHours > 0;
-        if (hasHours) submoduleOptions.add((s.code, 'M${m.number} ${s.code} – ${s.name}'));
+        refSubInfo[s.code] = (m.number, s.name);
       }
     }
-    // If current submodule not in list, add it to avoid invalid dropdown value
-    if (!submoduleOptions.any((e) => e.$1 == lesson.submoduleCode)) {
-      submoduleOptions.insert(0, (lesson.submoduleCode, lesson.submoduleCode));
+
+    // Costruisce opzioni: sempre il sottomodulo corrente + quelli futuri non confermati
+    final submoduleOptions = <(String, String)>[];
+    final seenCodes = <String>{};
+    for (final code in [lesson.submoduleCode, ...remainingCodes]) {
+      if (!seenCodes.add(code)) continue;
+      final info = refSubInfo[code];
+      final label = info != null ? 'M${info.$1} $code – ${info.$2}' : code;
+      submoduleOptions.add((code, label));
     }
 
     String? selectedInstructor = lesson.instructorId;
