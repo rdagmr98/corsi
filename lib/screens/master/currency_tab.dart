@@ -56,6 +56,20 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
         .toList()..sort();
   }
 
+  // ── Ore confermate per istruttore (tutte le lezioni confirmed) ───────────
+  Map<String, int> _confirmedHoursMap(bool theory) {
+    final result = <String, int>{};
+    for (final raw in _db.schedules) {
+      final instr = raw['instructorId'] as String?;
+      if (instr == null) continue;
+      if (raw['confirmed'] != true) continue;
+      if (raw['timeSlot'] == 0) continue;
+      final isT = raw['type'] != 'pratica';
+      if (isT == theory) result[instr] = (result[instr] ?? 0) + 1;
+    }
+    return result;
+  }
+
   // ── Ore insegnamento per anno (rolling) ───────────────────────────────────
   List<Map<String, dynamic>> _teachingByYear(String uid) {
     final byYear = <int, double>{};
@@ -689,7 +703,10 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
         ),
       ),
       Expanded(
-        child: ListView.builder(
+        child: Builder(builder: (context) {
+          final theoryH  = _confirmedHoursMap(true);
+          final practiceH = _confirmedHoursMap(false);
+          return ListView.builder(
           padding: const EdgeInsets.symmetric(horizontal: 24),
           itemCount: filtered.length,
           itemBuilder: (_, i) {
@@ -697,8 +714,6 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
             final instr  = r.instr;
             final teachH = r.teachH;
             final profH  = r.profH;
-            final tMods  = _theoryMods(instr.id);
-            final pMods  = _practiceMods(instr.id);
             final goT    = r.goT;
             final goP    = r.goP;
             final go     = r.go;
@@ -747,9 +762,9 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Row(children: [
-                        _chip('T: ${tMods.length}', kPrimary),
+                        _chip('T: ${theoryH[instr.id] ?? 0}h', kPrimary),
                         const SizedBox(width: 4),
-                        _chip('P: ${pMods.length}', kAccent),
+                        _chip('P: ${practiceH[instr.id] ?? 0}h', kAccent),
                       ]),
                     ),
                     IconButton(
@@ -764,7 +779,8 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
               ),
             );
           },
-        ),
+        );
+        }),
       ),
     ]);
   }
