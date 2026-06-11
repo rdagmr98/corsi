@@ -127,7 +127,7 @@ class _DirectorOverviewTabState extends ConsumerState<DirectorOverviewTab> {
                   ),
                   Column(
                     children: [
-                      Text('${(progress * 100).toStringAsFixed(0)}%',
+                      Text('${(progress * 100).clamp(0, 100).toStringAsFixed(0)}%',
                           style: const TextStyle(color: kPrimary, fontSize: 32, fontWeight: FontWeight.bold)),
                       const Text('completato', style: TextStyle(color: kTextDim, fontSize: 11)),
                     ],
@@ -167,8 +167,11 @@ class _DirectorOverviewTabState extends ConsumerState<DirectorOverviewTab> {
                 style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 12),
             ...typeInfo.modules.map((m) {
-              final done = taughtHours[m.number] ?? 0.0;
+              final rawDone = taughtHours[m.number] ?? 0.0;
               final total = m.totalHours.toDouble();
+              // Le ore oltre il piano sono recuperi: il contatore resta al massimo
+              // al monte ore ufficiale del modulo.
+              final done = total > 0 && rawDone > total ? total : rawDone;
               final p = total > 0 ? done / total : 0.0;
               return Padding(
                 padding: const EdgeInsets.only(bottom: 8),

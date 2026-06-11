@@ -52,17 +52,16 @@ GitHub Actions (`.github/workflows/deploy.yml`) deploya automaticamente su push 
 
 ---
 
-## STATO SESSIONE — aggiornato 2026-06-09
+## STATO SESSIONE — aggiornato 2026-06-11
 
-### Ultime modifiche (commit 7563af8)
-1. **Scheduling constraint**: `_addLesson` e `generateRemainingSchedule` usano tutte le lezioni schedulate (non solo confirmed)
-2. **Fix totalHours==0**: skip modulo solo se `m.totalHours > 0`; `moduleCapacity = 9999` se 0
-3. **Timeslot label**: `softWrap: false` — non va più a capo
-4. **Double submodule**: rimosso `${l.submoduleCode} –` dal topic nelle lezioni admin
-5. **Denominatore presenze**: `course_detail_screen` usa `confirmed` (non `total`/planned) per il 10%
-6. **GO / NO GO**: `my_hours_screen` mostra "GO"/"NO GO" invece di "IDONEO"/"NON IDONEO"
-7. **Estensione B1→MIL**: `Course.extensionTypeId`, `getEffectiveCourseType()`, pulsante `military_tech` nell'admin, badge "+MIL"
-8. **Filtri presenze frequentatore**: chip Tutte/Presenze/Assenze/Recuperi + recovery window con lezioni mancanti per modulo
+### Ultime modifiche
+1. **`ScheduleService.normalizeSubCode` (statico)**: normalizzazione unica dei codici sottomodulo — toglie suffisso pratica 'P'/'p' minuscola (bug: schedules.json ha codici tipo '12.2p') e collassa codici a 3 componenti ('12.7.1'→'12.7'). Usato in: generatore, lookup AMC, `_lessonCell`, `my_schedule_screen`, `attendee_attendance_screen` (le vecchie normCode locali gestivano solo 'P' maiuscola → contatori sdoppiati tipo 67/50).
+2. **Cap ore al piano ufficiale**: tutti i contatori X/Y (schedule_tab `_lessonCell` con marker "(rec.)", my_schedule_screen, attendee_attendance_screen, overview_tab header % e righe modulo) non superano mai il monte ore del programma — le ore extra sono recuperi.
+3. **Performance salvataggi — `GhDbService` write queue**: `saveSchedules/Records/Grades/Updates` ora aggiornano la cache in modo ottimistico e accodano la PUT in background con coalescing per file (N salvataggi rapidi → 1-2 PUT). `pendingSaves`/`saveError` (ValueNotifier statici) + spinner/icona errore accanto al refresh in schedule_tab. `reloadAll()` fa `flushPending()` prima di `init()`. 409 → `_refreshSha` via directory listing (non clobbera la cache ottimistica). users/courses/reference/amc restano sincroni.
+4. **Suggerimento istruttori qualificati**: `qualifiedInstructorIds(subCode, type)` su griglie AMC theoryGrid/practiceGrid; dropdown istruttore in `_addLesson` e `_editLessonInstructor` filtrato per materia+tipo, ordinato GO prima (badge verde GO / rosso NO GO, criterio identico a currency_tab: override || (6h ins. + 35h agg. + DAA valida)). Fallback a tutti se griglia vuota.
+5. **Validazione del direttore**: pulsante "Valida ora" in `_editLessonInstructor` (conferma la singola ora al posto dell'istruttore, confirmed_by = direttore) + `confirmLessons` bulk in ScheduleService + pulsante "Valida N" nell'intestazione di ogni giorno del calendario (conferma tutte le ore non confermate con istruttore assegnato del giorno).
+6. **"Salva e continua"** in `_addLesson`: salva la lezione e riapre il dialog sullo slot libero successivo (`_nextFreeSlot`: salta weekend, festività escluse, slot occupati, ven >3) con stesso modulo/sottomodulo/tipo/istruttore preimpostati.
+7. **Percentuali presenze/assenze ovunque**: "Pres. X% · Ass. Y%" (pres = (confirmed−absent)/confirmed, ass = absent/confirmed) in attendance_tab (card frequentatore + righe modulo), course_detail_screen (presenze admin), attendee_attendance_screen (stat "Assenza" nel riepilogo + righe modulo).
 
 ### TODO pendenti
 *(nessuno al momento)*

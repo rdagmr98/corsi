@@ -4,9 +4,12 @@ import 'package:intl/intl.dart';
 import '../../models/course_models.dart';
 import '../../models/reference_models.dart';
 import '../../models/schedule_models.dart';
+import '../../models/user_models.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/attendance_service.dart';
 import '../../services/course_service.dart';
+import '../../services/gh_db_service.dart';
+import '../../services/grade_service.dart';
 import '../../services/reference_service.dart';
 import '../../services/schedule_service.dart';
 import '../../services/user_service.dart';
@@ -26,6 +29,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
   final _scheduleService = ScheduleService();
   final _attendanceService = AttendanceService();
   final _userService = UserService();
+  final _gradeService = GradeService();
 
   List<Course> _courses = [];
   Course? _selected;
@@ -61,10 +65,72 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
     });
   }
 
-  String _normSubCode(String code) {
-    String c = code.endsWith('P') ? code.substring(0, code.length - 1) : code;
-    final parts = c.split('.');
-    return parts.length >= 3 ? '${parts[0]}.${parts[1]}' : c;
+  String _normSubCode(String code) => ScheduleService.normalizeSubCode(code);
+
+  /// GO/NO GO per istruttore (stessa formula di currency_tab):
+  /// override, oppure ≥6h insegnamento/anno + ≥35h agg. professionale/2 anni
+  /// + DAA non scaduta.
+  Map<String, bool> _computeGoMap(List<AppUser> instructors) {
+    final now = DateTime.now();
+    return {
+      for (final u in instructors)
+        u.id: u.goOverride ||
+            (_gradeService.getTeachingHoursRollingYear(u.id) >= 6 &&
+                _gradeService.getProfessionalUpdateHoursLast2Years(u.id) >= 35 &&
+                (u.daaExpiry == null || u.daaExpiry!.isAfter(now))),
+    };
+  }
+
+  /// Voci del menu istruttore: solo gli abilitati AMC per quel sottomodulo e
+  /// tipo (teoria/pratica), GO prima dei NO GO, poi per cognome. Se la griglia
+  /// AMC non ha nessuno per quel codice, mostra tutti gli istruttori del corso.
+  List<DropdownMenuItem<String?>> _instructorItems({
+    required List<AppUser> instructors,
+    required String submoduleCode,
+    required String type,
+    required Map<String, bool> goMap,
+    String? current,
+  }) {
+    final qualified = _scheduleService.qualifiedInstructorIds(submoduleCode, type);
+    var list = instructors.where((i) => qualified.contains(i.id)).toList();
+    if (list.isEmpty) list = List.of(instructors);
+    if (current != null && !list.any((i) => i.id == current)) {
+      list.addAll(instructors.where((i) => i.id == current));
+    }
+    list.sort((a, b) {
+      final ga = (goMap[a.id] ?? false) ? 0 : 1;
+      final gb = (goMap[b.id] ?? false) ? 0 : 1;
+      if (ga != gb) return ga - gb;
+      return a.cognome.toLowerCase().compareTo(b.cognome.toLowerCase());
+    });
+    return [
+      const DropdownMenuItem(value: null, child: Text('— Da assegnare —')),
+      ...list.map((i) {
+        final go = goMap[i.id] ?? false;
+        return DropdownMenuItem<String?>(
+          value: i.id,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                decoration: BoxDecoration(
+                  color: (go ? kAccent : kError).withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(3),
+                ),
+                child: Text(go ? 'GO' : 'NO GO',
+                    style: TextStyle(
+                        color: go ? kAccent : kError,
+                        fontSize: 9,
+                        fontWeight: FontWeight.bold)),
+              ),
+              const SizedBox(width: 6),
+              Flexible(child: Text(i.fullName, overflow: TextOverflow.ellipsis)),
+            ],
+          ),
+        );
+      }),
+    ];
   }
 
   Future<void> _reload() async {
@@ -106,7 +172,14 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
     _load();
   }
 
-  Future<void> _addLesson(DateTime date, int slot) async {
+  Future<void> _addLesson(
+    DateTime date,
+    int slot, {
+    int? presetModule,
+    String? presetSubmodule,
+    String? presetType,
+    String? presetInstructor,
+  }) async {
     if (_selected == null || _typeInfo == null) return;
     final instructors = _userService.getInstructors()
         .where((u) => _selected!.instructorIds.contains(u.id))
@@ -120,10 +193,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
     final confP = <String, int>{};
     final doneTotalByModule = <int, int>{};
     for (final l in doneLessons) {
-      String c = l.submoduleCode;
-      if (c.endsWith('P')) c = c.substring(0, c.length - 1);
-      final parts = c.split('.');
-      if (parts.length >= 3) c = '${parts[0]}.${parts[1]}';
+      final c = _normSubCode(l.submoduleCode);
       if (l.isTheory) {
         doneT[c] = (doneT[c] ?? 0) + 1;
         if (l.confirmed) confT[c] = (confT[c] ?? 0) + 1;
@@ -150,10 +220,15 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
       return;
     }
 
-    int? selectedModule = availableModules.first.number;
-    String? selectedSubmodule;
-    String type = 'teoria';
-    String? selectedInstructor;
+    int? selectedModule = presetModule != null &&
+            availableModules.any((m) => m.number == presetModule)
+        ? presetModule
+        : availableModules.first.number;
+    String? selectedSubmodule = presetSubmodule;
+    String type = presetType ?? 'teoria';
+    String? selectedInstructor =
+        instructors.any((i) => i.id == presetInstructor) ? presetInstructor : null;
+    final goMap = _computeGoMap(instructors);
 
     await showDialog(
       context: context,
@@ -178,6 +253,11 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
             return (s.theoryHours - schedT) > 0 || (s.practicalHours - schedP) > 0;
           }).toList() ?? [];
 
+          if (selectedSubmodule != null &&
+              !availableSubs.any((s) => s.code == selectedSubmodule)) {
+            // preset (Salva e continua) non più disponibile: passa al prossimo
+            selectedSubmodule = null;
+          }
           if (selectedSubmodule == null && availableSubs.isNotEmpty) {
             selectedSubmodule = availableSubs.first.code;
             final first = availableSubs.first;
@@ -193,6 +273,8 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
           final selNc = _normSubCode(selSub.code);
           final remT = unconstrained ? 1 : (selSub.theoryHours    - (doneT[selNc] ?? 0));
           final remP = unconstrained ? 1 : (selSub.practicalHours - (doneP[selNc] ?? 0));
+          if (type == 'teoria' && remT <= 0 && remP > 0) type = 'pratica';
+          if (type == 'pratica' && remP <= 0 && remT > 0) type = 'teoria';
 
           return AlertDialog(
             backgroundColor: kCard,
@@ -291,13 +373,16 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                   DropdownButtonFormField<String?>(
                     value: selectedInstructor,
                     dropdownColor: kSurface,
+                    isExpanded: true,
                     style: const TextStyle(color: kText),
                     decoration: const InputDecoration(labelText: 'Istruttore', isDense: true),
-                    items: [
-                      const DropdownMenuItem(value: null, child: Text('— Da assegnare —')),
-                      ...instructors.map(
-                          (i) => DropdownMenuItem(value: i.id, child: Text(i.fullName))),
-                    ],
+                    items: _instructorItems(
+                      instructors: instructors,
+                      submoduleCode: selSub.code,
+                      type: type,
+                      goMap: goMap,
+                      current: selectedInstructor,
+                    ),
                     onChanged: (v) => setDlg(() => selectedInstructor = v),
                   ),
                 ],
@@ -307,6 +392,40 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
               TextButton(
                 onPressed: () => Navigator.pop(ctx),
                 child: const Text('Annulla', style: TextStyle(color: kTextDim)),
+              ),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  Navigator.pop(ctx);
+                  if (selectedModule == null) return;
+                  await _scheduleService.addLesson(
+                    courseId: _selected!.id,
+                    moduleNumber: selectedModule!,
+                    submoduleCode: selectedSubmodule ?? '',
+                    topic: selSub.name,
+                    type: type,
+                    date: date,
+                    timeSlot: slot,
+                    instructorId: selectedInstructor,
+                  );
+                  _refreshWeek();
+                  final next = _nextFreeSlot(date, slot);
+                  if (next == null) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                          content: Text('Nessuno slot libero successivo trovato.')));
+                    }
+                    return;
+                  }
+                  if (mounted) {
+                    _addLesson(next.$1, next.$2,
+                        presetModule: selectedModule,
+                        presetSubmodule: selectedSubmodule,
+                        presetType: type,
+                        presetInstructor: selectedInstructor);
+                  }
+                },
+                icon: const Icon(Icons.fast_forward, size: 14),
+                label: const Text('Salva e continua'),
               ),
               ElevatedButton(
                 onPressed: () async {
@@ -331,6 +450,40 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
         },
       ),
     );
+  }
+
+  /// Prossimo slot libero dopo [slot] di [date]: stesso giorno se possibile,
+  /// altrimenti primo slot del giorno lavorativo successivo (saltando weekend,
+  /// giorni esclusi e venerdì oltre la 3ª ora).
+  (DateTime, int)? _nextFreeSlot(DateTime date, int slot) {
+    if (_typeInfo == null) return null;
+    final excluded = _selected?.excludedDates ?? const [];
+    String fmt(DateTime x) =>
+        '${x.year}-${x.month.toString().padLeft(2, '0')}-${x.day.toString().padLeft(2, '0')}';
+    bool occupied(DateTime day, int s) =>
+        _allCourseLessons.any((l) => _sameDay(l.date, day) && l.timeSlot == s);
+
+    var d = DateTime(date.year, date.month, date.day);
+    var after = slot;
+    for (var i = 0; i < 366; i++) {
+      final daySlots = _typeInfo!.schedule
+          .slotsForWeekday(d.weekday)
+          .map((t) => t.slot)
+          .where((s) => d.weekday != DateTime.friday || s <= 3)
+          .toList()
+        ..sort();
+      for (final s in daySlots) {
+        if (s <= after) continue;
+        if (!occupied(d, s)) return (d, s);
+      }
+      do {
+        d = DateTime(d.year, d.month, d.day + 1);
+      } while (d.weekday == DateTime.saturday ||
+          d.weekday == DateTime.sunday ||
+          excluded.contains(fmt(d)));
+      after = 0;
+    }
+    return null;
   }
 
   Future<void> _showExcludedDates() async {
@@ -601,6 +754,8 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
     String? selectedInstructor = lesson.instructorId;
     String selectedSubmodule = lesson.submoduleCode;
     bool recompile = true;
+    final goMap = _computeGoMap(instructors);
+    final lessonType = isTheory ? 'teoria' : 'pratica';
 
     await showDialog(
       context: context,
@@ -648,13 +803,16 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                 DropdownButtonFormField<String?>(
                   value: selectedInstructor,
                   dropdownColor: kSurface,
+                  isExpanded: true,
                   style: const TextStyle(color: kText),
                   decoration: const InputDecoration(labelText: 'Istruttore', isDense: true),
-                  items: [
-                    const DropdownMenuItem(value: null, child: Text('— Da assegnare —')),
-                    ...instructors.map(
-                        (i) => DropdownMenuItem(value: i.id, child: Text(i.fullName))),
-                  ],
+                  items: _instructorItems(
+                    instructors: instructors,
+                    submoduleCode: selectedSubmodule,
+                    type: lessonType,
+                    goMap: goMap,
+                    current: selectedInstructor,
+                  ),
                   onChanged: (v) => setDlg(() => selectedInstructor = v),
                 ),
                 if (selectedSubmodule != lesson.submoduleCode) ...[
@@ -677,6 +835,28 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
               onPressed: () => Navigator.pop(ctx),
               child: const Text('Annulla', style: TextStyle(color: kTextDim)),
             ),
+            if (!lesson.confirmed)
+              OutlinedButton.icon(
+                onPressed: selectedInstructor == null
+                    ? null
+                    : () async {
+                        Navigator.pop(ctx);
+                        if (selectedInstructor != lesson.instructorId) {
+                          await _scheduleService.updateLesson(
+                              lesson.copyWith(instructorId: selectedInstructor));
+                        }
+                        final user = ref.read(authProvider).currentUser;
+                        await _scheduleService.confirmLesson(
+                            lesson.id, user?.id ?? '');
+                        _refreshWeek();
+                      },
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: kAccent),
+                  foregroundColor: kAccent,
+                ),
+                icon: const Icon(Icons.task_alt, size: 14),
+                label: const Text('Valida ora'),
+              ),
             ElevatedButton(
               onPressed: () async {
                 Navigator.pop(ctx);
@@ -852,6 +1032,27 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                 ),
               ],
               IconButton(icon: const Icon(Icons.refresh, color: kTextDim), onPressed: _reload),
+              ValueListenableBuilder<int>(
+                valueListenable: GhDbService.pendingSaves,
+                builder: (_, n, __) => n > 0
+                    ? const Tooltip(
+                        message: 'Salvataggio in corso…',
+                        child: SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2)),
+                      )
+                    : ValueListenableBuilder<String?>(
+                        valueListenable: GhDbService.saveError,
+                        builder: (_, err, __) => err == null
+                            ? const SizedBox(width: 14)
+                            : Tooltip(
+                                message: err,
+                                child: const Icon(Icons.cloud_off,
+                                    color: kError, size: 16),
+                              ),
+                      ),
+              ),
             ],
           ),
         ),
@@ -870,10 +1071,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                       decoration: const BoxDecoration(color: kSurface),
                       children: [
                         _headerCell('Ora'),
-                        ...weekDays.map((d) => _headerCell(
-                          DateFormat('EEE dd/MM', 'it').format(d),
-                          highlight: _isToday(d),
-                        )),
+                        ...weekDays.map(_dayHeaderCell),
                       ],
                     ),
                     // Riga recupero (slot 0) — sempre visibile
@@ -1012,6 +1210,93 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
         )),
   );
 
+  /// Intestazione giorno con pulsante "Valida N" quando ci sono ore non
+  /// confermate con istruttore assegnato: il direttore le conferma in blocco.
+  Widget _dayHeaderCell(DateTime d) {
+    final pending = _weekLessons
+        .where((l) =>
+            _sameDay(l.date, d) &&
+            l.timeSlot > 0 &&
+            !l.confirmed &&
+            l.instructorId != null)
+        .toList();
+    final highlight = _isToday(d);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: highlight ? kPrimary.withOpacity(0.15) : null,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(DateFormat('EEE dd/MM', 'it').format(d),
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: highlight ? kPrimary : kText,
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+              )),
+          if (pending.isNotEmpty)
+            Tooltip(
+              message:
+                  'Conferma le ${pending.length} ore del giorno con istruttore assegnato\nper conto degli istruttori',
+              child: InkWell(
+                onTap: () => _validateDay(d, pending),
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.task_alt, size: 11, color: kAccent),
+                      const SizedBox(width: 3),
+                      Text('Valida ${pending.length}',
+                          style: const TextStyle(
+                              color: kAccent,
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _validateDay(DateTime day, List<ScheduledLesson> pending) async {
+    final user = ref.read(authProvider).currentUser;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: kCard,
+        title: const Text('Valida giornata',
+            style: TextStyle(color: kText, fontSize: 14)),
+        content: Text(
+          'Confermare ${pending.length} ore di lezione di '
+          '${DateFormat('EEEE dd/MM/yyyy', 'it').format(day)} per conto degli istruttori assegnati?',
+          style: const TextStyle(color: kText, fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annulla', style: TextStyle(color: kTextDim)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: kAccent),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Valida'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await _scheduleService.confirmLessons(
+        pending.map((l) => l.id).toList(), user?.id ?? '');
+    _refreshWeek();
+  }
+
   Widget _lessonCell(
     ScheduledLesson lesson,
     Map<String, String> subNames,
@@ -1027,10 +1312,16 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
 
     final displayTopic = '$nc – ${subNames[nc] ?? lesson.topic}';
 
-    final conf = ordinals[lesson.id] ?? 1;
+    final rawOrd = ordinals[lesson.id] ?? 1;
     final plan = isTheory ? (planT[nc] ?? 0) : (planP[nc] ?? 0);
+    // Le ore oltre il piano ufficiale sono recuperi: il contatore non deve
+    // mai superare il monte ore del programma.
+    final isExtra = plan > 0 && rawOrd > plan;
+    final conf = isExtra ? plan : rawOrd;
     final typeLabel = isTheory ? 'T' : 'P';
-    final hoursStr = plan > 0 ? '$typeLabel $conf/$plan h' : '$typeLabel ${conf}h';
+    final hoursStr = plan > 0
+        ? '$typeLabel $conf/$plan h${isExtra ? ' (rec.)' : ''}'
+        : '$typeLabel ${rawOrd}h';
     final instrName = lesson.instructorId != null
         ? (instrNames[lesson.instructorId!] ?? '?')
         : null;

@@ -59,11 +59,7 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
     final recordMap = {for (final r in records) r.scheduleId: r};
     final typeInfo  = _refService.getEffectiveCourseType(course.courseTypeId, course.extensionTypeId);
 
-    String normCode(String code) {
-      String c = code.endsWith('P') ? code.substring(0, code.length - 1) : code;
-      final parts = c.split('.');
-      return parts.length >= 3 ? '${parts[0]}.${parts[1]}' : c;
-    }
+    String normCode(String code) => ScheduleService.normalizeSubCode(code);
 
     final subNames = <String, String>{
       for (final m in typeInfo?.modules ?? [])
@@ -104,6 +100,7 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
     final totalRecovered = modStats.values.fold(0, (s, m) => s + (m['recovered'] ?? 0));
     final totalUnrec     = modStats.values.fold(0, (s, m) => s + (m['unrecovered'] ?? 0));
     final globalPct      = totalConfirmed > 0 ? (totalConfirmed - totalUnrec) / totalConfirmed : 1.0;
+    final globalAbsPct   = totalConfirmed > 0 ? totalAbsent / totalConfirmed : 0.0;
     final anyWarn        = modStats.values.any((m) {
       final c = m['confirmed'] ?? 0;
       return c > 0 && (m['unrecovered'] ?? 0) / c > 0.10;
@@ -204,6 +201,11 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
                                 '${(globalPct * 100).toStringAsFixed(0)}%',
                                 'Presenza',
                                 globalPct >= 0.90 ? kAccent : kError,
+                              ),
+                              _stat(
+                                '${(globalAbsPct * 100).toStringAsFixed(0)}%',
+                                'Assenza',
+                                totalAbsent > 0 ? kError : kAccent,
                               ),
                             ],
                           ),
@@ -337,8 +339,10 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
 
                     final isTheory = l.type != 'pratica';
                     final nc = normCode(l.submoduleCode);
-                    final conf = isTheory ? (subConfT[nc] ?? 0) : (subConfP[nc] ?? 0);
+                    final rawConf = isTheory ? (subConfT[nc] ?? 0) : (subConfP[nc] ?? 0);
                     final plan = isTheory ? (subPlanT[nc] ?? 0) : (subPlanP[nc] ?? 0);
+                    // Ore oltre il piano = recuperi: il contatore non supera il piano.
+                    final conf = plan > 0 && rawConf > plan ? plan : rawConf;
                     final typeLabel = isTheory ? 'T' : 'P';
                     final hoursStr = plan > 0 ? '· $typeLabel $conf/$plan h' : '· $typeLabel ${conf}h';
 
@@ -449,6 +453,11 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
       final pct   = conf > 0 ? (conf - unrec) / conf : 1.0;
       final warn  = conf > 0 && unrec / conf > 0.10;
       final color = warn ? kError : (pct >= 0.90 ? kAccent : kWarning);
+      final presPct = conf > 0
+          ? ((conf - absent) / conf * 100).toStringAsFixed(0)
+          : '100';
+      final absPct =
+          conf > 0 ? (absent / conf * 100).toStringAsFixed(0) : '0';
 
       return Card(
         color: kSurface,
@@ -483,8 +492,8 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
                           overflow: TextOverflow.ellipsis),
                     Text(
                       absent == 0
-                          ? 'Nessuna assenza su $conf lezioni'
-                          : '$absent ass. · $rec rec. · $unrec non rec. / $conf lez.',
+                          ? 'Pres. 100% · Ass. 0% — nessuna assenza su $conf lezioni'
+                          : 'Pres. $presPct% · Ass. $absPct% — $absent ass. · $rec rec. · $unrec non rec. / $conf lez.',
                       style: TextStyle(color: warn ? kError : kTextDim, fontSize: 10),
                     ),
                     if (warn)

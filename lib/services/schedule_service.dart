@@ -5,6 +5,17 @@ import 'gh_db_service.dart';
 class ScheduleService {
   final _db = GhDbService();
 
+  /// Normalizza un codice sottomodulo per confrontarlo col programma ufficiale:
+  /// suffisso pratica rimosso ('7.3P', '12.2p' → '7.3', '12.2'),
+  /// codici a 3 componenti collassati ('12.7.1' → '12.7').
+  static String normalizeSubCode(String code) {
+    var c = code.trim();
+    if (c.endsWith('P') || c.endsWith('p')) c = c.substring(0, c.length - 1);
+    final parts = c.split('.');
+    if (parts.length >= 3) c = '${parts[0]}.${parts[1]}';
+    return c;
+  }
+
   List<ScheduledLesson> getAllLessons() =>
       _db.schedules.map(ScheduledLesson.fromJson).toList();
 
@@ -41,7 +52,7 @@ class ScheduleService {
 
     bool isAmcAuthorized(ScheduledLesson l) {
       final grid = l.isTheory ? theoryGrid : practiceGrid;
-      return grid[l.submoduleCode]?.contains(instructorId) ?? false;
+      return grid[normalizeSubCode(l.submoduleCode)]?.contains(instructorId) ?? false;
     }
 
     return getAllLessons().where((l) {
@@ -50,6 +61,22 @@ class ScheduleService {
       return false;
     }).toList()
       ..sort((a, b) => a.date.compareTo(b.date));
+  }
+
+  /// IDs degli istruttori abilitati AMC per [submoduleCode] e [type]
+  /// ('teoria' → theoryGrid, altrimenti practiceGrid). Confronto su codici
+  /// normalizzati così le varianti 'P'/'p'/3-componenti trovano la riga giusta.
+  Set<String> qualifiedInstructorIds(String submoduleCode, String type) {
+    final grid = (_db.amcData[type == 'teoria' ? 'theoryGrid' : 'practiceGrid']
+        as Map? ?? {});
+    final target = normalizeSubCode(submoduleCode);
+    final ids = <String>{};
+    grid.forEach((k, v) {
+      if (normalizeSubCode(k as String) == target) {
+        ids.addAll(List<String>.from(v as List));
+      }
+    });
+    return ids;
   }
 
   List<ScheduledLesson> getLessonsForInstructorToday(String instructorId) {
@@ -75,7 +102,7 @@ class ScheduleService {
 
     bool isAmcAuthorized(ScheduledLesson l) {
       final grid = l.isTheory ? theoryGrid : practiceGrid;
-      return grid[l.submoduleCode]?.contains(instructorId) ?? false;
+      return grid[normalizeSubCode(l.submoduleCode)]?.contains(instructorId) ?? false;
     }
 
     return getAllLessons().where((l) {
@@ -140,17 +167,26 @@ class ScheduleService {
     await _db.saveSchedules(schedules);
   }
 
-  Future<void> confirmLesson(String lessonId, String confirmedBy) async {
-    final schedules = _db.schedules.toList();
-    final idx = schedules.indexWhere((s) => s['id'] == lessonId);
-    if (idx < 0) return;
-    schedules[idx] = {
-      ...schedules[idx],
-      'confirmed': true,
-      'confirmed_by': confirmedBy,
-      'updated_at': DateTime.now().toIso8601String(),
-    };
-    await _db.saveSchedules(schedules);
+  Future<void> confirmLesson(String lessonId, String confirmedBy) =>
+      confirmLessons([lessonId], confirmedBy);
+
+  /// Conferma più lezioni in un solo salvataggio (validazione giornata intera).
+  Future<void> confirmLessons(List<String> lessonIds, String confirmedBy) async {
+    if (lessonIds.isEmpty) return;
+    final ids = lessonIds.toSet();
+    final nowIso = DateTime.now().toIso8601String();
+    var changed = false;
+    final schedules = _db.schedules.map((s) {
+      if (!ids.contains(s['id'])) return s;
+      changed = true;
+      return {
+        ...s,
+        'confirmed': true,
+        'confirmed_by': confirmedBy,
+        'updated_at': nowIso,
+      };
+    }).toList();
+    if (changed) await _db.saveSchedules(schedules);
   }
 
   Future<void> deleteLesson(String lessonId) async {
@@ -305,10 +341,7 @@ class ScheduleService {
     final doneP = <String, int>{};
     final doneTotalByModule = <int, int>{};
     for (final l in allLessons.where((l) => l.timeSlot > 0)) {
-      String c = l.submoduleCode;
-      if (c.endsWith('P')) c = c.substring(0, c.length - 1);
-      final parts = c.split('.');
-      if (parts.length >= 3) c = '${parts[0]}.${parts[1]}';
+      final c = normalizeSubCode(l.submoduleCode);
       if (l.isTheory) doneT[c] = (doneT[c] ?? 0) + 1;
       else            doneP[c] = (doneP[c] ?? 0) + 1;
       doneTotalByModule[l.moduleNumber] = (doneTotalByModule[l.moduleNumber] ?? 0) + 1;
@@ -325,11 +358,12 @@ class ScheduleService {
 
       for (final sub in m.submodules) {
         if (moduleCapacity <= 0) break;
-        final subDone = (doneT[sub.code] ?? 0) + (doneP[sub.code] ?? 0);
+        final nc = normalizeSubCode(sub.code);
+        final subDone = (doneT[nc] ?? 0) + (doneP[nc] ?? 0);
         final subPlanned = sub.theoryHours + sub.practicalHours;
         final subRemaining = (subPlanned - subDone).clamp(0, moduleCapacity);
-        final remT = (sub.theoryHours    - (doneT[sub.code] ?? 0)).clamp(0, subRemaining);
-        final remP = (sub.practicalHours - (doneP[sub.code] ?? 0)).clamp(0, (subRemaining - remT).clamp(0, 9999));
+        final remT = (sub.theoryHours    - (doneT[nc] ?? 0)).clamp(0, subRemaining);
+        final remP = (sub.practicalHours - (doneP[nc] ?? 0)).clamp(0, (subRemaining - remT).clamp(0, 9999));
         moduleCapacity -= remT + remP;
 
         void addBlocks(int rem, String t) {

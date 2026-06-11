@@ -236,6 +236,13 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
         final totalAbsent = modStats.values.fold(0, (s, m) => s + (m['absent'] ?? 0));
         final totalUnrec = modStats.values.fold(0, (s, m) => s + (m['unrecovered'] ?? 0));
         final totalPlanned = typeInfo?.modules.fold<int>(0, (s, m) => s + (m.totalHours as int)) ?? 0;
+        final totalConfirmed = modStats.values.fold(0, (s, m) => s + (m['confirmed'] ?? 0));
+        final presPct = totalConfirmed > 0
+            ? ((totalConfirmed - totalAbsent) / totalConfirmed * 100).toStringAsFixed(0)
+            : '100';
+        final absPct = totalConfirmed > 0
+            ? (totalAbsent / totalConfirmed * 100).toStringAsFixed(0)
+            : '0';
         final anyWarn = typeInfo != null && modStats.entries.any((e) {
           final tot = e.value['confirmed'] ?? 0;
           final unr = e.value['unrecovered'] ?? 0;
@@ -257,7 +264,7 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
             ),
             title: Text(a.fullName, style: const TextStyle(color: kText, fontSize: 13)),
             subtitle: Text(
-              '$totalAbsent ore ass. · $totalUnrec non rec. su $totalPlanned ore prev.',
+              'Pres. $presPct% · Ass. $absPct% — $totalAbsent ore ass. · $totalUnrec non rec. su $totalPlanned ore prev.',
               style: TextStyle(color: anyWarn ? kError : kTextDim, fontSize: 11),
             ),
             children: typeInfo == null ? [] : typeInfo.modules
@@ -270,6 +277,11 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
               final unrecovered = stats['unrecovered'] ?? 0;
               final pct = total > 0 ? unrecovered / total : 0.0;
               final warn = pct > 0.10;
+              final mPresPct = total > 0
+                  ? ((total - absent) / total * 100).toStringAsFixed(0)
+                  : '100';
+              final mAbsPct =
+                  total > 0 ? (absent / total * 100).toStringAsFixed(0) : '0';
               return ListTile(
                 dense: true,
                 contentPadding: const EdgeInsets.fromLTRB(24, 0, 8, 0),
@@ -285,8 +297,8 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
                 title: Text(mod.name, style: const TextStyle(color: kText, fontSize: 12), overflow: TextOverflow.ellipsis),
                 subtitle: Text(
                   absent == 0
-                      ? 'Nessuna assenza su $total ore prev.'
-                      : '$absent ass. · $recovered rec. · $unrecovered non rec. / $total ore prev.'
+                      ? 'Pres. 100% · Ass. 0% — nessuna assenza su $total ore prev.'
+                      : 'Pres. $mPresPct% · Ass. $mAbsPct% — $absent ass. · $recovered rec. · $unrecovered non rec. / $total ore prev.'
                           '${warn ? '  ⚠ LIMITE 10%' : ''}',
                   style: TextStyle(color: warn ? kError : kTextDim, fontSize: 11),
                 ),

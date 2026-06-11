@@ -41,11 +41,7 @@ class _InstructorScheduleScreenState extends ConsumerState<InstructorScheduleScr
 
   @override
   Widget build(BuildContext context) {
-    String normCode(String code) {
-      String c = code.endsWith('P') ? code.substring(0, code.length - 1) : code;
-      final parts = c.split('.');
-      return parts.length >= 3 ? '${parts[0]}.${parts[1]}' : c;
-    }
+    String normCode(String code) => ScheduleService.normalizeSubCode(code);
 
     final courseTypeMap = <String, String>{
       for (final c in _courseService.getAllCourses()) c.id: c.courseTypeId,
@@ -143,8 +139,11 @@ class _InstructorScheduleScreenState extends ConsumerState<InstructorScheduleScr
                       final plan = planMap[nc];
                       final schedT = subSchedTPerType[typeId]?[nc] ?? 0;
                       final schedP = subSchedPPerType[typeId]?[nc] ?? 0;
-                      final schedCount = isTheory ? schedT : schedP;
+                      final rawSched = isTheory ? schedT : schedP;
                       final planCount = isTheory ? (plan?.t ?? 0) : (plan?.p ?? 0);
+                      // Ore oltre il piano = recuperi: il contatore non supera il piano.
+                      final schedCount =
+                          planCount > 0 && rawSched > planCount ? planCount : rawSched;
                       final typeLabel = isTheory ? 'T' : 'P';
                       final hoursStr = planCount > 0
                           ? '$typeLabel $schedCount/$planCount h'

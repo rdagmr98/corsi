@@ -155,6 +155,13 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
     final totalAbsent = modStats.values.fold(0, (s, m) => s + (m['absent'] ?? 0));
     final totalUnrecovered = modStats.values.fold(0, (s, m) => s + (m['unrecovered'] ?? 0));
     final totalPlannedHours = typeInfo?.modules.fold(0, (s, m) => s + m.totalHours) ?? 0;
+    final totalConfirmed = modStats.values.fold(0, (s, m) => s + (m['confirmed'] ?? 0));
+    final presPct = totalConfirmed > 0
+        ? ((totalConfirmed - totalAbsent) / totalConfirmed * 100).toStringAsFixed(0)
+        : '100';
+    final absPct = totalConfirmed > 0
+        ? (totalAbsent / totalConfirmed * 100).toStringAsFixed(0)
+        : '0';
     final anyWarning = typeInfo != null &&
         modStats.entries.any((e) {
           final confirmed = e.value['confirmed'] ?? 0;
@@ -181,7 +188,7 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
         title: Text(a.fullName,
             style: const TextStyle(color: kText, fontWeight: FontWeight.w500, fontSize: 14)),
         subtitle: Text(
-          '$totalAbsent ore ass. · $totalUnrecovered non rec. su $totalPlannedHours ore prev.',
+          'Pres. $presPct% · Ass. $absPct% — $totalAbsent ore ass. · $totalUnrecovered non rec. su $totalPlannedHours ore prev.',
           style: TextStyle(
               color: anyWarning ? kError : kTextDim, fontSize: 12),
         ),
@@ -244,6 +251,12 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
     // 10% threshold on confirmed lessons (what actually happened, not planned)
     final pct  = confirmed > 0 ? unrecovered / confirmed : 0.0;
     final warn = pct > 0.10;
+    final presPct = confirmed > 0
+        ? ((confirmed - absent) / confirmed * 100).toStringAsFixed(0)
+        : '100';
+    final absPct = confirmed > 0
+        ? (absent / confirmed * 100).toStringAsFixed(0)
+        : '0';
 
     return ListTile(
       dense: true,
@@ -265,13 +278,13 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
           overflow: TextOverflow.ellipsis),
       subtitle: warn
           ? Text(
-              '$unrecovered non rec. / $confirmed lez. — ${(pct * 100).toStringAsFixed(1)}%  ⚠ LIMITE 10%',
+              'Pres. $presPct% · Ass. $absPct% — $unrecovered non rec. / $confirmed lez. — ${(pct * 100).toStringAsFixed(1)}%  ⚠ LIMITE 10%',
               style: const TextStyle(color: kError, fontSize: 11),
             )
           : Text(
               absent == 0
-                  ? 'Nessuna assenza su $confirmed lezioni'
-                  : '$absent ass. · $recovered rec. · $unrecovered non rec. / $confirmed lez.',
+                  ? 'Pres. 100% · Ass. 0% — nessuna assenza su $confirmed lezioni'
+                  : 'Pres. $presPct% · Ass. $absPct% — $absent ass. · $recovered rec. · $unrecovered non rec. / $confirmed lez.',
               style: const TextStyle(color: kTextDim, fontSize: 11),
             ),
       trailing: Row(
