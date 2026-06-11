@@ -191,7 +191,7 @@ class _AttendeeGradesScreenState extends ConsumerState<AttendeeGradesScreen> {
                                     color: kPrimary.withOpacity(0.12),
                                     borderRadius: BorderRadius.circular(6),
                                   ),
-                                  child: Text('M${module.number}',
+                                  child: Text('M${module.displayCode}',
                                       style: const TextStyle(color: kPrimary, fontSize: 11, fontWeight: FontWeight.bold)),
                                 ),
                                 const SizedBox(width: 8),

@@ -30,6 +30,9 @@ class SubmoduleInfo {
 
 class ModuleInfo {
   final int number;
+  // Etichetta da mostrare al posto del numero (es. '11A' per il modulo 11,
+  // '11B' per il modulo 18). Se assente si mostra il numero.
+  final String? label;
   final String name;
   final int theoryHours;
   final int practicalHours;
@@ -39,6 +42,7 @@ class ModuleInfo {
 
   const ModuleInfo({
     required this.number,
+    this.label,
     required this.name,
     required this.theoryHours,
     required this.practicalHours,
@@ -49,8 +53,11 @@ class ModuleInfo {
 
   int get totalHours => theoryHours + practicalHours;
 
+  String get displayCode => label ?? '$number';
+
   factory ModuleInfo.fromJson(Map<String, dynamic> j) => ModuleInfo(
     number: j['number'] as int,
+    label: j['label'] as String?,
     name: j['name'] as String,
     theoryHours: j['theoryHours'] as int? ?? 0,
     practicalHours: j['practicalHours'] as int? ?? 0,

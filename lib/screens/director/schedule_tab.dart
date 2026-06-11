@@ -312,7 +312,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                     items: availableModules
                         .map((m) => DropdownMenuItem(
                               value: m.number,
-                              child: Text('M${m.number} - ${m.name}',
+                              child: Text('M${m.displayCode} - ${m.name}',
                                   overflow: TextOverflow.ellipsis),
                             ))
                         .toList(),
@@ -654,7 +654,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                   style: const TextStyle(color: kText),
                   decoration: const InputDecoration(isDense: true),
                   items: typeInfo.modules
-                      .map((m) => DropdownMenuItem(value: m.number, child: Text('M${m.number} – ${m.name}', overflow: TextOverflow.ellipsis)))
+                      .map((m) => DropdownMenuItem(value: m.number, child: Text('M${m.displayCode} – ${m.name}', overflow: TextOverflow.ellipsis)))
                       .toList(),
                   onChanged: (v) => setDlg(() => selectedModule = v),
                 ),
@@ -763,7 +763,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
         builder: (ctx, setDlg) => AlertDialog(
           backgroundColor: kCard,
           title: Text(
-            'M${lesson.moduleNumber} · ${lesson.submoduleCode}',
+            'M${_refService.moduleLabel(lesson.moduleNumber)} · ${lesson.submoduleCode}',
             style: const TextStyle(color: kText, fontSize: 14),
           ),
           content: SizedBox(
@@ -1361,7 +1361,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                     style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.bold)),
               ),
               const SizedBox(width: 4),
-              Text('M${lesson.moduleNumber}',
+              Text('M${_refService.moduleLabel(lesson.moduleNumber)}',
                   style: const TextStyle(color: kTextDim, fontSize: 9)),
               const Spacer(),
               if (lesson.confirmed) Icon(Icons.check_circle, color: color, size: 10),

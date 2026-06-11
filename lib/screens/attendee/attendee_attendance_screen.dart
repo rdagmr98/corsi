@@ -247,7 +247,7 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
                           ...recoveryWindow.entries.map((e) => Padding(
                             padding: const EdgeInsets.only(top: 4),
                             child: Text(
-                              '• M${e.key}: ancora ${e.value} lezione${e.value > 1 ? 'i' : 'e'} da recuperare',
+                              '• M${_refService.moduleLabel(e.key)}: ancora ${e.value} lezione${e.value > 1 ? 'i' : 'e'} da recuperare',
                               style: const TextStyle(color: kError, fontSize: 11),
                             ),
                           )),
@@ -306,7 +306,7 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
                               leading: const Icon(Icons.replay, color: kPrimary, size: 20),
                               title: Text(
                                 modNum != null
-                                    ? 'Recupero M$modNum – ${modNames[modNum] ?? ''}'
+                                    ? 'Recupero M${_refService.moduleLabel(modNum)} – ${modNames[modNum] ?? ''}'
                                     : 'Recupero',
                                 style: const TextStyle(color: kText, fontSize: 12),
                                 maxLines: 1,
@@ -387,7 +387,7 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
                       child: ListTile(
                         dense: true,
                         leading: Icon(statusIcon, color: statusColor, size: 20),
-                        title: Text('M${l.moduleNumber} $displayTopic',
+                        title: Text('M${_refService.moduleLabel(l.moduleNumber)} $displayTopic',
                             style: const TextStyle(color: kText, fontSize: 12),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis),
@@ -476,7 +476,7 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
                   color: color.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(6),
                 ),
-                child: Text('M$mod',
+                child: Text('M${_refService.moduleLabel(mod)}',
                     style: TextStyle(
                         color: color, fontSize: 11, fontWeight: FontWeight.bold)),
               ),

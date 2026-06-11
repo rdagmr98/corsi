@@ -5,6 +5,7 @@ import '../../models/course_models.dart';
 import '../../models/schedule_models.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/course_service.dart';
+import '../../services/reference_service.dart';
 import '../../services/schedule_service.dart';
 import '../../theme.dart';
 
@@ -19,6 +20,7 @@ class AttendeeScheduleScreen extends ConsumerStatefulWidget {
 class _AttendeeScheduleScreenState extends ConsumerState<AttendeeScheduleScreen> {
   final _courseService = CourseService();
   final _scheduleService = ScheduleService();
+  final _refService = ReferenceService();
 
   List<Course> _courses = [];
   Course? _selected;
@@ -133,7 +135,7 @@ class _AttendeeScheduleScreenState extends ConsumerState<AttendeeScheduleScreen>
                                   ],
                                 ),
                                 title: Text(l.topic, style: const TextStyle(color: kText, fontSize: 13)),
-                                subtitle: Text('M${l.moduleNumber}', style: const TextStyle(color: kTextDim, fontSize: 11)),
+                                subtitle: Text('M${_refService.moduleLabel(l.moduleNumber)}', style: const TextStyle(color: kTextDim, fontSize: 11)),
                                 trailing: l.confirmed
                                     ? const Icon(Icons.check_circle, color: kAccent, size: 16)
                                     : null,

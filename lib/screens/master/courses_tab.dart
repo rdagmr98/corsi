@@ -248,7 +248,7 @@ class _CoursesTabState extends ConsumerState<CoursesTab> {
       );
       return;
     }
-    final modCodes = milType.modules.map((m) => 'M${m.number}').join(', ');
+    final modCodes = milType.modules.map((m) => 'M${m.displayCode}').join(', ');
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(

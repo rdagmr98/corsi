@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import '../../models/course_models.dart';
 import '../../models/grade_models.dart';
+import '../../models/reference_models.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/course_service.dart';
 import '../../services/grade_service.dart';
@@ -44,90 +46,268 @@ class _DirectorGradesTabState extends ConsumerState<DirectorGradesTab> {
     _load();
   }
 
-  Future<void> _addGrade(Course course, String attendeeId, int moduleNumber) async {
-    double score = 0;
-    AssessmentType type = AssessmentType.accertamento;
-    final notesCtrl = TextEditingController();
+  // Dialog di inserimento/modifica voto con input da tastiera (0–30, virgola o punto).
+  Future<void> _gradeDialog(Course course, String attendeeId, int moduleNumber,
+      {Grade? existing}) async {
+    AssessmentType type = existing?.assessmentType ?? AssessmentType.accertamento;
+    final scoreCtrl = TextEditingController(
+        text: existing == null
+            ? ''
+            : (existing.score % 1 == 0
+                ? existing.score.toStringAsFixed(0)
+                : existing.score.toStringAsFixed(1)));
+    final notesCtrl = TextEditingController(text: existing?.notes ?? '');
+
+    double? parseScore() {
+      final v = double.tryParse(scoreCtrl.text.trim().replaceAll(',', '.'));
+      if (v == null || v < 0 || v > 30) return null;
+      return v;
+    }
+
+    Future<void> save(BuildContext ctx) async {
+      final score = parseScore();
+      if (score == null) return;
+      Navigator.pop(ctx);
+      if (existing == null) {
+        await _gradeService.addGrade(
+          courseId: course.id,
+          attendeeId: attendeeId,
+          moduleNumber: moduleNumber,
+          type: type,
+          score: score,
+          enteredBy: widget.userId,
+          notes: notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim(),
+        );
+      } else {
+        await _gradeService.updateGrade(existing.copyWith(
+          type: type.value,
+          score: score,
+          notes: notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim(),
+        ));
+      }
+      if (mounted) setState(() {});
+    }
 
     await showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDlg) => AlertDialog(
-          backgroundColor: kCard,
-          title: const Text('Inserisci voto', style: TextStyle(color: kText)),
-          content: SizedBox(
-            width: 320,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                DropdownButtonFormField<AssessmentType>(
-                  value: type,
-                  dropdownColor: kSurface,
-                  style: const TextStyle(color: kText),
-                  decoration: const InputDecoration(labelText: 'Tipo', isDense: true),
-                  items: [
-                    DropdownMenuItem(value: AssessmentType.accertamento, child: Text(AssessmentType.accertamento.label)),
-                    DropdownMenuItem(value: AssessmentType.esame, child: Text(AssessmentType.esame.label)),
-                  ],
-                  onChanged: (v) => setDlg(() => type = v ?? type),
-                ),
-                const SizedBox(height: 16),
-                Text('Voto: ${score.toStringAsFixed(1)}/30',
-                    style: const TextStyle(color: kText, fontWeight: FontWeight.bold)),
-                Slider(
-                  value: score,
-                  min: 0,
-                  max: 30,
-                  divisions: 60,
-                  label: score.toStringAsFixed(1),
-                  activeColor: score >= 22.5 ? kAccent : kError,
-                  onChanged: (v) => setDlg(() => score = v),
-                ),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      score >= 22.5 ? 'SUFFICIENTE' : 'INSUFFICIENTE',
-                      style: TextStyle(
-                        color: score >= 22.5 ? kAccent : kError,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                      ),
+        builder: (ctx, setDlg) {
+          final score = parseScore();
+          return AlertDialog(
+            backgroundColor: kCard,
+            title: Text(existing == null ? 'Inserisci voto' : 'Modifica voto',
+                style: const TextStyle(color: kText)),
+            content: SizedBox(
+              width: 320,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  DropdownButtonFormField<AssessmentType>(
+                    value: type,
+                    dropdownColor: kSurface,
+                    style: const TextStyle(color: kText),
+                    decoration: const InputDecoration(labelText: 'Tipo', isDense: true),
+                    items: [
+                      DropdownMenuItem(value: AssessmentType.accertamento, child: Text(AssessmentType.accertamento.label)),
+                      DropdownMenuItem(value: AssessmentType.esame, child: Text(AssessmentType.esame.label)),
+                    ],
+                    onChanged: (v) => setDlg(() => type = v ?? type),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: scoreCtrl,
+                    autofocus: true,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    style: const TextStyle(color: kText, fontSize: 20, fontWeight: FontWeight.bold),
+                    decoration: const InputDecoration(
+                      labelText: 'Voto (0–30)',
+                      hintText: 'es. 24,5',
+                      isDense: true,
                     ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: notesCtrl,
-                  style: const TextStyle(color: kText),
-                  decoration: const InputDecoration(labelText: 'Note (opzionale)', isDense: true),
-                ),
+                    onChanged: (_) => setDlg(() {}),
+                    onSubmitted: (_) => save(ctx),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    score == null
+                        ? (scoreCtrl.text.trim().isEmpty ? ' ' : 'Valore non valido (0–30)')
+                        : (score >= 22.5 ? 'SUFFICIENTE' : 'INSUFFICIENTE'),
+                    style: TextStyle(
+                      color: score != null && score >= 22.5 ? kAccent : kError,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: notesCtrl,
+                    style: const TextStyle(color: kText),
+                    decoration: const InputDecoration(labelText: 'Note (opzionale)', isDense: true),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Annulla', style: TextStyle(color: kTextDim)),
+              ),
+              ElevatedButton(
+                onPressed: score == null ? null : () => save(ctx),
+                child: Text(existing == null ? 'Salva' : 'Aggiorna'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Future<bool> _confirmDeleteGrade(Grade g) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: kCard,
+        title: const Text('Elimina voto', style: TextStyle(color: kText)),
+        content: Text(
+          'Eliminare il voto ${g.score.toStringAsFixed(1)} (${g.assessmentType.label}) '
+          'del ${DateFormat('dd/MM/yyyy').format(g.date)}?',
+          style: const TextStyle(color: kTextDim),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annulla', style: TextStyle(color: kTextDim)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: kError),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Elimina'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await _gradeService.deleteGrade(g.id);
+      if (mounted) setState(() {});
+      return true;
+    }
+    return false;
+  }
+
+  // Dettaglio voti del modulo: tipo (accertamento/esame), voto, data, note,
+  // con modifica/eliminazione e aggiunta.
+  Future<void> _moduleGradesDialog(
+      Course course, String attendeeId, String attendeeName, ModuleInfo module) async {
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlg) {
+          final grades = _gradeService
+              .getGradesForAttendee(course.id, attendeeId)
+              .where((g) => g.moduleNumber == module.number)
+              .toList();
+          return AlertDialog(
+            backgroundColor: kCard,
+            title: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('M${module.displayCode} — $attendeeName',
+                    style: const TextStyle(color: kText, fontSize: 15)),
+                Text(module.name,
+                    style: const TextStyle(color: kTextDim, fontSize: 11),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis),
               ],
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Annulla', style: TextStyle(color: kTextDim)),
+            content: SizedBox(
+              width: 440,
+              child: grades.isEmpty
+                  ? const Text('Nessun voto registrato.', style: TextStyle(color: kTextDim, fontSize: 13))
+                  : Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: grades.map((g) {
+                        final isEsame = g.assessmentType == AssessmentType.esame;
+                        final typeColor = isEsame ? kWarning : kPrimary;
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 86,
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: typeColor.withOpacity(0.12),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                alignment: Alignment.center,
+                                child: Text(g.assessmentType.label,
+                                    style: TextStyle(color: typeColor, fontSize: 10)),
+                              ),
+                              const SizedBox(width: 10),
+                              SizedBox(
+                                width: 44,
+                                child: Text(
+                                  g.score.toStringAsFixed(1),
+                                  style: TextStyle(
+                                    color: g.isPassing ? kAccent : kError,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(DateFormat('dd/MM/yyyy').format(g.date),
+                                        style: const TextStyle(color: kTextDim, fontSize: 11)),
+                                    if (g.notes != null && g.notes!.isNotEmpty)
+                                      Text(g.notes!,
+                                          style: const TextStyle(color: kTextDim, fontSize: 10),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis),
+                                  ],
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.edit, color: kTextDim, size: 18),
+                                tooltip: 'Modifica voto',
+                                onPressed: () async {
+                                  await _gradeDialog(course, attendeeId, module.number, existing: g);
+                                  setDlg(() {});
+                                },
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete_outline, color: kError, size: 18),
+                                tooltip: 'Elimina voto',
+                                onPressed: () async {
+                                  final deleted = await _confirmDeleteGrade(g);
+                                  if (deleted) setDlg(() {});
+                                },
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                    ),
             ),
-            ElevatedButton(
-              onPressed: () async {
-                Navigator.pop(ctx);
-                await _gradeService.addGrade(
-                  courseId: course.id,
-                  attendeeId: attendeeId,
-                  moduleNumber: moduleNumber,
-                  type: type,
-                  score: score,
-                  enteredBy: widget.userId,
-                  notes: notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim(),
-                );
-                _reload();
-              },
-              child: const Text('Salva'),
-            ),
-          ],
-        ),
+            actions: [
+              TextButton.icon(
+                icon: const Icon(Icons.add, size: 16),
+                label: const Text('Aggiungi voto'),
+                onPressed: () async {
+                  await _gradeDialog(course, attendeeId, module.number);
+                  setDlg(() {});
+                },
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Chiudi', style: TextStyle(color: kTextDim)),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -199,8 +379,8 @@ class _DirectorGradesTabState extends ConsumerState<DirectorGradesTab> {
                                 _cell('#', header: true),
                                 _cell('Frequentatore', header: true),
                                 ...typeInfo.modules.map((m) => Tooltip(
-                                  message: 'M${m.number} - ${m.name}',
-                                  child: _cell('M${m.number}', header: true),
+                                  message: 'M${m.displayCode} - ${m.name}',
+                                  child: _cell('M${m.displayCode}', header: true),
                                 )),
                                 _cell('Media', header: true),
                               ],
@@ -237,7 +417,9 @@ class _DirectorGradesTabState extends ConsumerState<DirectorGradesTab> {
                                     final s = summary[m.number];
                                     return TableCell(
                                       child: InkWell(
-                                        onTap: () => _addGrade(course, a.id, m.number),
+                                        onTap: () => s == null || !s.hasGrades
+                                            ? _gradeDialog(course, a.id, m.number)
+                                            : _moduleGradesDialog(course, a.id, a.fullName, m),
                                         child: Container(
                                           padding: const EdgeInsets.all(4),
                                           alignment: Alignment.center,

@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../config/gh_config.dart';
 import 'crypto_service.dart';
+import 'reference_service.dart';
 
 class GhDbService {
   static final GhDbService _instance = GhDbService._internal();
@@ -47,6 +48,7 @@ class GhDbService {
 
   Future<void> init() async {
     _cache.clear();
+    ReferenceService.invalidateLabelCache();
     await Future.wait([
       _loadFile('reference.json'),
       _loadFile('users.json'),

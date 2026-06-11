@@ -19,10 +19,11 @@ GitHub Actions (`.github/workflows/deploy.yml`) deploya automaticamente su push 
 - PII cifrata AES-CBC: cognome/nome come `ENC:...`
 
 ## Struttura tipi corso (reference.json)
-- `b1`: M1-M17, 1994h — b1mil NON include b1, sono solo i 4 moduli MIL aggiuntivi
-- `b2`: M1,2,3,4,5,6,7,8,9,10,13,14, 1760h
+- `b1`: M1-M12,M15-M17 + M18, 2044h. Il modulo 11 è stato sdoppiato: number 11 = label "11A" (T114/P30), number 18 = label "11B" (T6/P5). Ordine moduli: 1-10, 11, 18, 12, 15, 16, 17.
+- `b2`: M1,2,3,4,5,6,7,8,9,10,13,14, 1755h (M13 practicalHours allineato a 174 = somma sottomoduli; se il programma ufficiale dice 179 va corretto un sottomodulo)
 - `b1mil`: **SOLO** M50,M51,M53,M54, 138h (da aggiungere a b1, non sostituisce)
 - `b2mil`: **SOLO** M50,M51,M53,M54,M55, 130h (da aggiungere a b2, non sostituisce)
+- I moduli possono avere `label` (es. "11A"): nell'app si mostra via `ModuleInfo.displayCode` o `ReferenceService.moduleLabel(int)` — MAI `'M${number}'` direttamente.
 
 ## Corsi attivi nel DB
 - BTC2 (`d3d468d5`): completato. 1031 assenze + 172 recuperi importati via Python il 2026-06-08.
@@ -52,9 +53,15 @@ GitHub Actions (`.github/workflows/deploy.yml`) deploya automaticamente su push 
 
 ---
 
-## STATO SESSIONE — aggiornato 2026-06-11
+## STATO SESSIONE — aggiornato 2026-06-12
 
-### Ultime modifiche
+### Ultime modifiche (2026-06-12)
+1. **Split M11 → 11A/11B (b1, corsi-data)**: reference.json — modulo 11 = "11A" Turbine (T114/P30, sottomoduli 11A.*), nuovo modulo 18 = "11B" Piston (T6/P5, sottomoduli 11B.*). 82 lezioni in schedules.json migrate a module_number 18. Campo `label` su ModuleInfo + `displayCode` + `ReferenceService.moduleLabel(int)` (cache statica invalidata in `GhDbService.init()`). Etichette applicate in TUTTI gli schermi (director/instructor/attendee/master) e nel PDF export.
+2. **b2 M13**: practicalHours 179→174 (allineato alla somma sottomoduli, il generatore pianifica per sottomodulo). Anomalie note lasciate: 13.19 "Oxygen systems" duplicato T0/P0, 13.17 P19 non multiplo di 5. Verificati tutti e 4 i tipi corso: zero discrepanze modulo/sottomoduli.
+3. **Voti rework (grades_tab director)**: inserimento da tastiera (TextField autofocus, virgola o punto, validazione 0-30 live, Enter salva) al posto dello Slider; tap su cella con voti → dialog lista voti con chip Accertamento (kPrimary) / Esame (kWarning), modifica e cancella (con conferma) per il direttore, pulsante "Aggiungi voto". `Grade.copyWith`, `GradeService.updateGrade/deleteGrade`. Dopo scritture basta `setState` (cache ottimistica).
+4. **Admin parity (course_detail_screen)**: etichette moduli (displayCode/moduleLabel), cap ore "done/total h" nel riepilogo, tab Voti con celle cliccabili → dialog dettaglio voti in sola lettura (stessi chip del dir), soglie colori corrette a 22.5/30 (prima erano 75/60 su scala 100, sbagliate).
+
+### Sessione precedente (2026-06-11)
 1. **`ScheduleService.normalizeSubCode` (statico)**: normalizzazione unica dei codici sottomodulo — toglie suffisso pratica 'P'/'p' minuscola (bug: schedules.json ha codici tipo '12.2p') e collassa codici a 3 componenti ('12.7.1'→'12.7'). Usato in: generatore, lookup AMC, `_lessonCell`, `my_schedule_screen`, `attendee_attendance_screen` (le vecchie normCode locali gestivano solo 'P' maiuscola → contatori sdoppiati tipo 67/50).
 2. **Cap ore al piano ufficiale**: tutti i contatori X/Y (schedule_tab `_lessonCell` con marker "(rec.)", my_schedule_screen, attendee_attendance_screen, overview_tab header % e righe modulo) non superano mai il monte ore del programma — le ore extra sono recuperi.
 3. **Performance salvataggi — `GhDbService` write queue**: `saveSchedules/Records/Grades/Updates` ora aggiornano la cache in modo ottimistico e accodano la PUT in background con coalescing per file (N salvataggi rapidi → 1-2 PUT). `pendingSaves`/`saveError` (ValueNotifier statici) + spinner/icona errore accanto al refresh in schedule_tab. `reloadAll()` fa `flushPending()` prima di `init()`. 409 → `_refreshSha` via directory listing (non clobbera la cache ottimistica). users/courses/reference/amc restano sincroni.

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../models/course_models.dart';
+import '../../models/grade_models.dart';
 import '../../models/schedule_models.dart';
 import '../../models/user_models.dart';
 import '../../providers/auth_provider.dart';
@@ -137,8 +138,10 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
       Text('Avanzamento per modulo', style: const TextStyle(color: kText, fontSize: 14, fontWeight: FontWeight.bold)),
       const SizedBox(height: 12),
       ...modules.map((m) {
-        final done = confirmedByMod[m.number] ?? 0;
+        final rawDone = confirmedByMod[m.number] ?? 0;
         final total = m.totalHours;
+        // Le ore oltre il monte previsto sono recuperi: il contatore resta al cap.
+        final done = total > 0 && rawDone > total ? total : rawDone;
         final pct = total > 0 ? (done / total).clamp(0.0, 1.0) : 0.0;
         final col = moduleColor(m.number);
         return Padding(
@@ -152,7 +155,7 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
                   color: col.withOpacity(0.15),
                   borderRadius: BorderRadius.circular(4),
                 ),
-                child: Text('M${m.number}', style: TextStyle(color: col, fontSize: 10, fontWeight: FontWeight.bold)),
+                child: Text('M${m.displayCode}', style: TextStyle(color: col, fontSize: 10, fontWeight: FontWeight.bold)),
               ),
               const SizedBox(width: 8),
               Expanded(child: Text(m.name, style: const TextStyle(color: kText, fontSize: 12), overflow: TextOverflow.ellipsis)),
@@ -202,7 +205,7 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
               padding: const EdgeInsets.symmetric(vertical: 3),
               alignment: Alignment.center,
               decoration: BoxDecoration(color: col.withOpacity(0.15), borderRadius: BorderRadius.circular(4)),
-              child: Text('M${l.moduleNumber}', style: TextStyle(color: col, fontSize: 10, fontWeight: FontWeight.bold)),
+              child: Text('M${_refService.moduleLabel(l.moduleNumber)}', style: TextStyle(color: col, fontSize: 10, fontWeight: FontWeight.bold)),
             ),
             const SizedBox(width: 8),
             SizedBox(width: 80, child: Text(DateFormat('dd/MM/yy').format(l.date), style: const TextStyle(color: kTextDim, fontSize: 11))),
@@ -291,7 +294,7 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
                     color: (warn ? kError : kPrimary).withOpacity(0.15),
                     borderRadius: BorderRadius.circular(6),
                   ),
-                  child: Text('M${mod.number}',
+                  child: Text('M${mod.displayCode}',
                       style: TextStyle(color: warn ? kError : kPrimary, fontSize: 11, fontWeight: FontWeight.bold)),
                 ),
                 title: Text(mod.name, style: const TextStyle(color: kText, fontSize: 12), overflow: TextOverflow.ellipsis),
@@ -338,7 +341,10 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
               decoration: const BoxDecoration(color: kSurface),
               children: [
                 _tCell('Frequentatore', bold: true),
-                ...modules.map((m) => _tCell('M${m.number}', bold: true)),
+                ...modules.map((m) => Tooltip(
+                      message: 'M${m.displayCode} - ${m.name}',
+                      child: _tCell('M${m.displayCode}', bold: true),
+                    )),
                 _tCell('Media', bold: true),
               ],
             ),
@@ -351,18 +357,106 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
                   final ms = summary[m.number];
                   if (ms == null || !ms.hasGrades) return _tCell('—');
                   final avg = ms.weightedAverage;
-                  return _tCell(avg.toStringAsFixed(1),
-                      color: avg >= 75 ? kAccent : (avg >= 60 ? kWarning : kError));
+                  return InkWell(
+                    onTap: () => _moduleGradesDialog(a, m),
+                    child: _tCell(avg.toStringAsFixed(1),
+                        color: avg >= 22.5 ? kAccent : kError),
+                  );
                 }),
                 _tCell(
                   grad > 0 ? grad.toStringAsFixed(1) : '—',
-                  color: grad >= 75 ? kAccent : (grad >= 60 ? kWarning : (grad > 0 ? kError : kTextDim)),
+                  color: grad >= 22.5 ? kAccent : (grad > 0 ? kError : kTextDim),
                   bold: grad > 0,
                 ),
               ]);
             }),
           ],
         ),
+      ),
+    );
+  }
+
+  // Dettaglio voti del modulo (sola lettura): stessa vista del direttore.
+  void _moduleGradesDialog(AppUser a, dynamic module) {
+    final grades = _gradeService
+        .getGradesForAttendee(_course.id, a.id)
+        .where((g) => g.moduleNumber == module.number)
+        .toList()
+      ..sort((g1, g2) => g1.date.compareTo(g2.date));
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: kCard,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('M${module.displayCode} — ${a.fullName}',
+                style: const TextStyle(color: kText, fontSize: 16, fontWeight: FontWeight.bold)),
+            Text('${module.name}',
+                style: const TextStyle(color: kTextDim, fontSize: 12)),
+          ],
+        ),
+        content: SizedBox(
+          width: 420,
+          child: grades.isEmpty
+              ? const Text('Nessun voto', style: TextStyle(color: kTextDim))
+              : Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: grades.map((g) {
+                    final isEsame = g.assessmentType == AssessmentType.esame;
+                    final typeColor = isEsame ? kWarning : kPrimary;
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Row(children: [
+                        Container(
+                          width: 86,
+                          alignment: Alignment.center,
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: typeColor.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(g.assessmentType.label,
+                              style: TextStyle(color: typeColor, fontSize: 10)),
+                        ),
+                        const SizedBox(width: 8),
+                        SizedBox(
+                          width: 44,
+                          child: Text(
+                            g.score.toStringAsFixed(1),
+                            style: TextStyle(
+                              color: g.isPassing ? kAccent : kError,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(DateFormat('dd/MM/yyyy').format(g.date),
+                                  style: const TextStyle(color: kTextDim, fontSize: 11)),
+                              if (g.notes != null && g.notes!.isNotEmpty)
+                                Text(g.notes!,
+                                    style: const TextStyle(color: kTextDim, fontSize: 10),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis),
+                            ],
+                          ),
+                        ),
+                      ]),
+                    );
+                  }).toList(),
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Chiudi', style: TextStyle(color: kTextDim)),
+          ),
+        ],
       ),
     );
   }

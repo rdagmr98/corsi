@@ -38,6 +38,25 @@ class ReferenceService {
     );
   }
 
+  // Etichetta di un modulo dato il numero interno (es. 11 → '11A', 18 → '11B').
+  // Cache statica: la mappa numero→label è identica per tutti i tipi corso.
+  static Map<int, String>? _labelCache;
+
+  String moduleLabel(int number) {
+    if (_labelCache == null) {
+      final cache = <int, String>{};
+      for (final ct in getCourseTypes()) {
+        for (final m in ct.modules) {
+          if (m.label != null) cache[m.number] = m.label!;
+        }
+      }
+      _labelCache = cache;
+    }
+    return _labelCache![number] ?? '$number';
+  }
+
+  static void invalidateLabelCache() => _labelCache = null;
+
   GradingRules getGradingRules() {
     final j = _ref['grading'] as Map<String, dynamic>?;
     if (j == null) return const GradingRules(scale: 30, passThreshold: 0.75, passScore: 22.5, assessmentWeight: 1, examWeight: 2);

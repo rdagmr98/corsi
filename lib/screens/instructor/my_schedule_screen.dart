@@ -176,7 +176,7 @@ class _InstructorScheduleScreenState extends ConsumerState<InstructorScheduleScr
                             ),
                           ),
                           title: Text(displayTopic, style: const TextStyle(color: kText, fontSize: 13)),
-                          subtitle: Text('M${l.moduleNumber} · ${isTheory ? "Teoria" : "Pratica"} · $hoursStr',
+                          subtitle: Text('M${_refService.moduleLabel(l.moduleNumber)} · ${isTheory ? "Teoria" : "Pratica"} · $hoursStr',
                               style: const TextStyle(color: kTextDim, fontSize: 11)),
                           trailing: l.confirmed
                               ? const Icon(Icons.check_circle, color: kAccent, size: 18)

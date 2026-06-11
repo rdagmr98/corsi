@@ -107,7 +107,7 @@ class PdfExportService {
         _dateFmt.format(l.date),
         '${l.timeSlot}',
         l.isTheory ? 'T' : 'P',
-        'M${l.moduleNumber}${mod != null ? ' – ${mod.name}' : ''}',
+        'M${mod?.displayCode ?? l.moduleNumber}${mod != null ? ' – ${mod.name}' : ''}',
         '${l.submoduleCode}: ${l.topic}',
         instructorMap[l.instructorId]?.fullName ?? '—',
       ];
@@ -143,7 +143,7 @@ class PdfExportService {
     // One row per attendee; columns: name + per-module score (best) + graduation score
     final headers = [
       'Frequentatore',
-      ...modsWithGrades.map((m) => 'M${m.number}'),
+      ...modsWithGrades.map((m) => 'M${m.displayCode}'),
       'Media',
     ];
 
@@ -181,7 +181,7 @@ class PdfExportService {
     final modsWithData = modules.where((m) => m.totalHours > 0).toList();
     final headers = [
       'Frequentatore',
-      ...modsWithData.map((m) => 'M${m.number}'),
+      ...modsWithData.map((m) => 'M${m.displayCode}'),
       'Totale',
     ];
 

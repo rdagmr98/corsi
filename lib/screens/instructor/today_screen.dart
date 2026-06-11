@@ -5,6 +5,7 @@ import '../../models/schedule_models.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/attendance_service.dart';
 import '../../services/course_service.dart';
+import '../../services/reference_service.dart';
 import '../../services/schedule_service.dart';
 import '../../services/user_service.dart';
 import '../../theme.dart';
@@ -22,6 +23,7 @@ class _InstructorTodayScreenState extends ConsumerState<InstructorTodayScreen> {
   final _attendanceService = AttendanceService();
   final _courseService = CourseService();
   final _userService = UserService();
+  final _refService = ReferenceService();
   List<ScheduledLesson> _todayLessons = [];
 
   @override
@@ -209,7 +211,7 @@ class _InstructorTodayScreenState extends ConsumerState<InstructorTodayScreen> {
                                   ),
                                 ),
                                 const SizedBox(width: 8),
-                                Text('M${lesson.moduleNumber}', style: const TextStyle(color: kTextDim, fontSize: 12)),
+                                Text('M${_refService.moduleLabel(lesson.moduleNumber)}', style: const TextStyle(color: kTextDim, fontSize: 12)),
                                 const Spacer(),
                                 Text('${lesson.timeSlot}ª ora', style: const TextStyle(color: kTextDim, fontSize: 12)),
                                 if (lesson.confirmed)

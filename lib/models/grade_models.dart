@@ -39,6 +39,19 @@ class Grade {
   AssessmentType get assessmentType => AssessmentTypeExt.fromString(type);
   bool get isPassing => score >= 22.5;
 
+  Grade copyWith({String? type, double? score, DateTime? date, String? notes}) => Grade(
+    id: id,
+    courseId: courseId,
+    attendeeId: attendeeId,
+    moduleNumber: moduleNumber,
+    type: type ?? this.type,
+    score: score ?? this.score,
+    date: date ?? this.date,
+    enteredBy: enteredBy,
+    notes: notes ?? this.notes,
+    createdAt: createdAt,
+  );
+
   factory Grade.fromJson(Map<String, dynamic> j) => Grade(
     id: j['id'] as String,
     courseId: j['course_id'] as String,

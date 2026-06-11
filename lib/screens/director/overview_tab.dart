@@ -179,7 +179,7 @@ class _DirectorOverviewTabState extends ConsumerState<DirectorOverviewTab> {
                   children: [
                     SizedBox(
                       width: 40,
-                      child: Text('M${m.number}', style: const TextStyle(color: kTextDim, fontSize: 12)),
+                      child: Text('M${m.displayCode}', style: const TextStyle(color: kTextDim, fontSize: 12)),
                     ),
                     Expanded(
                       child: Column(

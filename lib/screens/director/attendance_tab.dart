@@ -267,7 +267,7 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
           color: (warn ? kError : kPrimary).withOpacity(0.15),
           borderRadius: BorderRadius.circular(6),
         ),
-        child: Text('M${mod.number}',
+        child: Text('M${mod.displayCode}',
             style: TextStyle(
                 color: warn ? kError : kPrimary,
                 fontSize: 11,
@@ -321,7 +321,7 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Modulo: M$moduleNumber',
+              Text('Modulo: M${_refService.moduleLabel(moduleNumber)}',
                   style: const TextStyle(color: kTextDim, fontSize: 13)),
               const SizedBox(height: 12),
               const Text('Data recupero:',
@@ -389,7 +389,7 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: kCard,
-        title: Text('Recuperi M$moduleNumber — $name',
+        title: Text('Recuperi M${_refService.moduleLabel(moduleNumber)} — $name',
             style: const TextStyle(color: kText)),
         content: SizedBox(
           width: 400,
@@ -509,7 +509,7 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
-                    'M${l.moduleNumber} · ${l.submoduleCode} · S${l.timeSlot}',
+                    'M${_refService.moduleLabel(l.moduleNumber)} · ${l.submoduleCode} · S${l.timeSlot}',
                     style: const TextStyle(color: kPrimary, fontSize: 10),
                   ),
                 ),
