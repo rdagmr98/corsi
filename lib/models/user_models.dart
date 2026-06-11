@@ -36,6 +36,8 @@ class AppUser {
   final bool isActive;
   final bool goOverride;
   final DateTime? daaExpiry;
+  // Qualifiche AMC (id da reference.amcRules.qualifications); null = mai compilate.
+  final List<String>? qualifications;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -49,6 +51,7 @@ class AppUser {
     this.isActive = true,
     this.goOverride = false,
     this.daaExpiry,
+    this.qualifications,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -70,6 +73,9 @@ class AppUser {
     daaExpiry: j['daaa_expiry'] != null
         ? DateTime.tryParse(j['daaa_expiry'] as String)
         : null,
+    qualifications: j['qualifications'] != null
+        ? List<String>.from(j['qualifications'] as List)
+        : null,
     createdAt: DateTime.parse(
       j['created_at'] as String? ?? DateTime.now().toIso8601String(),
     ),
@@ -88,6 +94,7 @@ class AppUser {
     'is_active': isActive,
     'go_override': goOverride,
     if (daaExpiry != null) 'daaa_expiry': daaExpiry!.toIso8601String().substring(0, 10),
+    if (qualifications != null) 'qualifications': qualifications,
     'created_at': createdAt.toIso8601String(),
     'updated_at': updatedAt.toIso8601String(),
   };
@@ -103,6 +110,7 @@ class AppUser {
     bool? isActive,
     bool? goOverride,
     Object? daaExpiry = _s,
+    Object? qualifications = _s,
   }) => AppUser(
     id: id,
     nome: nome ?? this.nome,
@@ -113,6 +121,9 @@ class AppUser {
     isActive: isActive ?? this.isActive,
     goOverride: goOverride ?? this.goOverride,
     daaExpiry: identical(daaExpiry, _s) ? this.daaExpiry : daaExpiry as DateTime?,
+    qualifications: identical(qualifications, _s)
+        ? this.qualifications
+        : qualifications as List<String>?,
     createdAt: createdAt,
     updatedAt: DateTime.now(),
   );

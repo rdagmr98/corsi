@@ -42,6 +42,7 @@ class UserService {
     required String password,
     required UserRole role,
     String? email,
+    List<String>? qualifications,
   }) async {
     final users = _db.users.toList();
     final now = DateTime.now().toIso8601String();
@@ -55,6 +56,7 @@ class UserService {
       'password_hash': GhDbService.hashPassword(password),
       'role': role.value,
       'is_active': true,
+      if (qualifications != null) 'qualifications': qualifications,
       'created_at': now,
       'updated_at': now,
     };
@@ -89,6 +91,13 @@ class UserService {
 
   Future<void> deleteUser(String userId) async {
     final users = _db.users.where((u) => u['id'] != userId).toList();
+    await _db.saveUsers(users);
+  }
+
+  Future<void> deleteUsers(Iterable<String> userIds) async {
+    final ids = userIds.toSet();
+    if (ids.isEmpty) return;
+    final users = _db.users.where((u) => !ids.contains(u['id'])).toList();
     await _db.saveUsers(users);
   }
 

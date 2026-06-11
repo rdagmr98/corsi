@@ -134,7 +134,52 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
       confirmedByMod[l.moduleNumber] = (confirmedByMod[l.moduleNumber] ?? 0) + 1;
     }
 
+    // Completamento complessivo: ore confermate (cappate al monte ore di
+    // ogni modulo, le eccedenze sono recuperi) su ore totali del programma.
+    int totalPlanned = 0;
+    int totalDone = 0;
+    for (final m in modules) {
+      final int t = m.totalHours;
+      final raw = confirmedByMod[m.number] ?? 0;
+      totalPlanned += t;
+      totalDone += t > 0 && raw > t ? t : raw;
+    }
+    final overallPct = totalPlanned > 0 ? totalDone / totalPlanned : 0.0;
+
     return ListView(padding: const EdgeInsets.all(20), children: [
+      Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: kCard,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: kPrimary.withOpacity(0.3)),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            const Expanded(
+              child: Text('Completamento corso',
+                  style: TextStyle(color: kText, fontSize: 14, fontWeight: FontWeight.bold)),
+            ),
+            Text('${(overallPct * 100).toStringAsFixed(1)}%',
+                style: TextStyle(
+                    color: overallPct >= 1 ? kAccent : kPrimary,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold)),
+          ]),
+          const SizedBox(height: 8),
+          LinearProgressIndicator(
+            value: overallPct.clamp(0.0, 1.0),
+            color: overallPct >= 1 ? kAccent : kPrimary,
+            backgroundColor: kSurface,
+            minHeight: 7,
+            borderRadius: BorderRadius.circular(4),
+          ),
+          const SizedBox(height: 6),
+          Text('$totalDone / $totalPlanned ore confermate',
+              style: const TextStyle(color: kTextDim, fontSize: 11)),
+        ]),
+      ),
+      const SizedBox(height: 20),
       Text('Avanzamento per modulo', style: const TextStyle(color: kText, fontSize: 14, fontWeight: FontWeight.bold)),
       const SizedBox(height: 12),
       ...modules.map((m) {

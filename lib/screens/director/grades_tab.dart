@@ -50,6 +50,7 @@ class _DirectorGradesTabState extends ConsumerState<DirectorGradesTab> {
   Future<void> _gradeDialog(Course course, String attendeeId, int moduleNumber,
       {Grade? existing}) async {
     AssessmentType type = existing?.assessmentType ?? AssessmentType.accertamento;
+    DateTime gradeDate = existing?.date ?? DateTime.now();
     final scoreCtrl = TextEditingController(
         text: existing == null
             ? ''
@@ -76,12 +77,14 @@ class _DirectorGradesTabState extends ConsumerState<DirectorGradesTab> {
           type: type,
           score: score,
           enteredBy: widget.userId,
+          date: gradeDate,
           notes: notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim(),
         );
       } else {
         await _gradeService.updateGrade(existing.copyWith(
           type: type.value,
           score: score,
+          date: gradeDate,
           notes: notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim(),
         ));
       }
@@ -112,6 +115,33 @@ class _DirectorGradesTabState extends ConsumerState<DirectorGradesTab> {
                       DropdownMenuItem(value: AssessmentType.esame, child: Text(AssessmentType.esame.label)),
                     ],
                     onChanged: (v) => setDlg(() => type = v ?? type),
+                  ),
+                  const SizedBox(height: 12),
+                  InkWell(
+                    onTap: () async {
+                      final picked = await showDatePicker(
+                        context: ctx,
+                        initialDate: gradeDate,
+                        firstDate: DateTime(2020),
+                        lastDate: DateTime.now().add(const Duration(days: 365)),
+                        locale: const Locale('it'),
+                      );
+                      if (picked != null) setDlg(() => gradeDate = picked);
+                    },
+                    child: InputDecorator(
+                      decoration: const InputDecoration(labelText: 'Data', isDense: true),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              DateFormat('dd/MM/yyyy').format(gradeDate),
+                              style: const TextStyle(color: kText),
+                            ),
+                          ),
+                          const Icon(Icons.calendar_today, size: 16, color: kTextDim),
+                        ],
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 16),
                   TextField(

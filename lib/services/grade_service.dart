@@ -39,6 +39,7 @@ class GradeService {
     required AssessmentType type,
     required double score,
     required String enteredBy,
+    DateTime? date,
     String? notes,
   }) async {
     final grades = _db.grades.toList();
@@ -51,7 +52,7 @@ class GradeService {
       'module_number': moduleNumber,
       'type': type.value,
       'score': score,
-      'date': now.toIso8601String().split('T').first,
+      'date': (date ?? now).toIso8601String().split('T').first,
       'entered_by': enteredBy,
       'notes': notes,
       'created_at': now.toIso8601String(),

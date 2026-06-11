@@ -286,7 +286,9 @@ class _CoursesTabState extends ConsumerState<CoursesTab> {
           backgroundColor: const Color(0xFF1A2A3A),
           title: const Text('Archivia corso', style: TextStyle(color: Colors.white)),
           content: const Text(
-            'Verrà generato e scaricato il PDF con tutti i dati probanti del corso.\n\nProcedere?',
+            'Verrà generato e scaricato il PDF con tutti i dati probanti del corso.\n\n'
+            'Gli account dei frequentatori del corso verranno eliminati '
+            '(esclusi quelli iscritti ad altri corsi non archiviati).\n\nProcedere?',
             style: TextStyle(color: Colors.white70),
           ),
           actions: [
@@ -335,7 +337,29 @@ class _CoursesTabState extends ConsumerState<CoursesTab> {
     if (newStatus == 'active') await _courseService.activateCourse(c.id);
     else if (newStatus == 'completed') await _courseService.completeCourse(c.id);
     else await _courseService.updateCourse(c.copyWith(status: newStatus));
+
+    if (newStatus == 'archived') await _deleteArchivedAttendees(c);
     _reload();
+  }
+
+  // Elimina gli account dei frequentatori di un corso archiviato,
+  // tranne quelli ancora iscritti ad altri corsi non archiviati.
+  Future<void> _deleteArchivedAttendees(Course c) async {
+    final otherCourses =
+        _courseService.getAllCourses().where((o) => o.id != c.id && o.status != 'archived');
+    final stillEnrolled = <String>{
+      for (final o in otherCourses) ...o.attendeeIds,
+    };
+    final toDelete = c.attendeeIds.where((id) => !stillEnrolled.contains(id)).toList();
+    await _userService.deleteUsers(toDelete);
+    if (toDelete.isNotEmpty && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Eliminati ${toDelete.length} account frequentatori'),
+          backgroundColor: kAccent,
+        ),
+      );
+    }
   }
 
   @override

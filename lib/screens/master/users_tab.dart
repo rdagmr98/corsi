@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../models/reference_models.dart';
 import '../../models/user_models.dart';
 import '../../providers/auth_provider.dart';
+import '../../services/amc_service.dart';
+import '../../services/reference_service.dart';
 import '../../services/user_service.dart';
 import '../../theme.dart';
 
@@ -14,6 +17,7 @@ class UsersTab extends ConsumerStatefulWidget {
 
 class _UsersTabState extends ConsumerState<UsersTab> {
   final _userService = UserService();
+  final _refService = ReferenceService();
   List<AppUser> _users = [];
   UserRole? _filterRole;
 
@@ -49,6 +53,15 @@ class _UsersTabState extends ConsumerState<UsersTab> {
     final passwordCtrl = TextEditingController();
     UserRole selectedRole = user?.userRole ?? UserRole.attendee;
 
+    // Qualifiche AMC (solo istruttori): regole ANNESSO MTOE-P-3-1.
+    final allQuals = _refService.amcQualifications();
+    final qualGroups = <String, List<AmcQualification>>{};
+    for (final q in allQuals) {
+      qualGroups.putIfAbsent(q.group, () => []).add(q);
+    }
+    final selQuals = <String>{...?user?.qualifications};
+    bool qualsTouched = false;
+
     await showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -58,38 +71,113 @@ class _UsersTabState extends ConsumerState<UsersTab> {
               style: const TextStyle(color: kText)),
           content: SizedBox(
             width: 440,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  children: [
-                    Expanded(child: _field('Cognome', cognomeCtrl)),
-                    const SizedBox(width: 12),
-                    Expanded(child: _field('Nome', nomeCtrl)),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(child: _field('Cognome', cognomeCtrl)),
+                      const SizedBox(width: 12),
+                      Expanded(child: _field('Nome', nomeCtrl)),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  _field('Email', emailCtrl, hint: 'opzionale'),
+                  const SizedBox(height: 12),
+                  _field('Username', usernameCtrl),
+                  const SizedBox(height: 12),
+                  _field(
+                    user == null ? 'Password' : 'Nuova password (lascia vuoto per non cambiare)',
+                    passwordCtrl,
+                    obscure: true,
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<UserRole>(
+                    value: selectedRole,
+                    dropdownColor: kSurface,
+                    style: const TextStyle(color: kText),
+                    decoration: const InputDecoration(labelText: 'Ruolo', isDense: true),
+                    items: UserRole.values
+                        .map((r) => DropdownMenuItem(value: r, child: Text(r.label)))
+                        .toList(),
+                    onChanged: (v) => setDlg(() => selectedRole = v ?? selectedRole),
+                  ),
+                  if (selectedRole == UserRole.instructor && allQuals.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    const Divider(color: kBorder, height: 1),
+                    const SizedBox(height: 12),
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text('Qualifiche istruttore (AMC)',
+                          style: TextStyle(
+                              color: kText, fontSize: 13, fontWeight: FontWeight.w600)),
+                    ),
+                    const SizedBox(height: 4),
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'I sottomoduli insegnabili vengono assegnati in automatico secondo l\'ANNESSO MTOE-P-3-1.',
+                        style: TextStyle(color: kTextDim, fontSize: 11),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    for (final entry in qualGroups.entries) ...[
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(entry.key,
+                            style: const TextStyle(
+                                color: kTextDim,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600)),
+                      ),
+                      const SizedBox(height: 4),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [
+                            for (final q in entry.value)
+                              FilterChip(
+                                label: Text(q.label,
+                                    style: TextStyle(
+                                        fontSize: 11,
+                                        color: selQuals.contains(q.id)
+                                            ? Colors.white
+                                            : kTextDim)),
+                                selected: selQuals.contains(q.id),
+                                selectedColor: kPrimary,
+                                checkmarkColor: Colors.white,
+                                backgroundColor: kSurface,
+                                visualDensity: VisualDensity.compact,
+                                onSelected: (v) => setDlg(() {
+                                  qualsTouched = true;
+                                  v ? selQuals.add(q.id) : selQuals.remove(q.id);
+                                }),
+                              ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: kSurface,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        'Sottomoduli insegnabili: '
+                        '${_refService.teachableSubmodules(selQuals, theory: true).length} teoria · '
+                        '${_refService.teachableSubmodules(selQuals, theory: false).length} pratica',
+                        style: const TextStyle(color: kAccent, fontSize: 12),
+                      ),
+                    ),
                   ],
-                ),
-                const SizedBox(height: 12),
-                _field('Email', emailCtrl, hint: 'opzionale'),
-                const SizedBox(height: 12),
-                _field('Username', usernameCtrl),
-                const SizedBox(height: 12),
-                _field(
-                  user == null ? 'Password' : 'Nuova password (lascia vuoto per non cambiare)',
-                  passwordCtrl,
-                  obscure: true,
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<UserRole>(
-                  value: selectedRole,
-                  dropdownColor: kSurface,
-                  style: const TextStyle(color: kText),
-                  decoration: const InputDecoration(labelText: 'Ruolo', isDense: true),
-                  items: UserRole.values
-                      .map((r) => DropdownMenuItem(value: r, child: Text(r.label)))
-                      .toList(),
-                  onChanged: (v) => setDlg(() => selectedRole = v ?? selectedRole),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           actions: [
@@ -105,26 +193,41 @@ class _UsersTabState extends ConsumerState<UsersTab> {
                 final username = usernameCtrl.text.trim();
                 final password = passwordCtrl.text.trim();
                 if (nome.isEmpty || cognome.isEmpty || username.isEmpty) return;
+                final isInstructor = selectedRole == UserRole.instructor;
                 if (user == null) {
                   if (password.isEmpty) return;
-                  await _userService.createUser(
+                  final created = await _userService.createUser(
                     nome: nome,
                     cognome: cognome,
                     email: emailCtrl.text.trim().isEmpty ? null : emailCtrl.text.trim(),
                     username: username,
                     password: password,
                     role: selectedRole,
+                    qualifications: isInstructor ? selQuals.toList() : null,
                   );
+                  if (isInstructor) {
+                    await AmcService().applyQualifications(created.id, selQuals);
+                  }
                 } else {
+                  // Le griglie AMC si toccano solo se le qualifiche sono state
+                  // compilate (ora o in passato): gli istruttori storici senza
+                  // qualifiche registrate restano gestiti a mano.
+                  final setQuals =
+                      isInstructor && (qualsTouched || user.qualifications != null);
                   await _userService.updateUser(user.copyWith(
                     nome: nome,
                     cognome: cognome,
                     email: emailCtrl.text.trim().isEmpty ? null : emailCtrl.text.trim(),
                     username: username,
                     role: selectedRole.value,
+                    qualifications:
+                        setQuals ? selQuals.toList() : user.qualifications,
                   ));
                   if (password.isNotEmpty) {
                     await _userService.updatePassword(user.id, password);
+                  }
+                  if (setQuals) {
+                    await AmcService().applyQualifications(user.id, selQuals);
                   }
                 }
                 _reload();

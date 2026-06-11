@@ -171,6 +171,25 @@ class GradingRules {
   );
 }
 
+// Qualifica istruttore secondo l'ANNESSO MTOE-P-3-1 (regole AMC).
+class AmcQualification {
+  final String id;
+  final String label;
+  final String group;
+
+  const AmcQualification({
+    required this.id,
+    required this.label,
+    required this.group,
+  });
+
+  factory AmcQualification.fromJson(Map<String, dynamic> j) => AmcQualification(
+    id: j['id'] as String,
+    label: j['label'] as String,
+    group: j['group'] as String? ?? '',
+  );
+}
+
 class InstructorCurrencyRules {
   final int teachingHoursPerYear;
   final int professionalUpdateHoursPer2Years;

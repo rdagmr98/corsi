@@ -189,26 +189,35 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
     final doneLessons = _allCourseLessons;
     final doneT = <String, int>{};
     final doneP = <String, int>{};
-    final confT = <String, int>{};
-    final confP = <String, int>{};
     final doneTotalByModule = <int, int>{};
     for (final l in doneLessons) {
       final c = _normSubCode(l.submoduleCode);
       if (l.isTheory) {
         doneT[c] = (doneT[c] ?? 0) + 1;
-        if (l.confirmed) confT[c] = (confT[c] ?? 0) + 1;
       } else {
         doneP[c] = (doneP[c] ?? 0) + 1;
-        if (l.confirmed) confP[c] = (confP[c] ?? 0) + 1;
       }
       doneTotalByModule[l.moduleNumber] = (doneTotalByModule[l.moduleNumber] ?? 0) + 1;
     }
 
-    // Only offer modules where confirmed total < planned total (skip constraint when ref hours = 0)
+    // Un sottomodulo è proponibile finché restano ore del programma da
+    // pianificare (T o P), confermate o no. Quelli senza monte ore (0/0)
+    // sono sempre proponibili.
+    List<SubmoduleInfo> subsFor(ModuleInfo m) => m.submodules.where((s) {
+      if (s.theoryHours == 0 && s.practicalHours == 0) return true;
+      final nc = _normSubCode(s.code);
+      return (s.theoryHours - (doneT[nc] ?? 0)) > 0 ||
+          (s.practicalHours - (doneP[nc] ?? 0)) > 0;
+    }).toList();
+
+    // Moduli proponibili: almeno un sottomodulo con ore residue. Se il modulo
+    // non ha sottomoduli a programma si ricade sul monte ore del modulo.
     final availableModules = _typeInfo!.modules.where((m) {
-      if (m.totalHours == 0) return true;
-      final done = doneTotalByModule[m.number] ?? 0;
-      return done < m.totalHours;
+      if (m.submodules.isEmpty) {
+        return m.totalHours == 0 ||
+            (doneTotalByModule[m.number] ?? 0) < m.totalHours;
+      }
+      return subsFor(m).isNotEmpty;
     }).toList();
 
     if (availableModules.isEmpty) {
@@ -239,19 +248,8 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                   orElse: () => availableModules.first)
               : null;
 
-          final availableSubs = module?.submodules.where((s) {
-            // Unconstrained submodules (no reference hours) are always available
-            if (s.theoryHours == 0 && s.practicalHours == 0) return true;
-            final nc = _normSubCode(s.code);
-            final schedT = doneT[nc] ?? 0;
-            final schedP = doneP[nc] ?? 0;
-            final cT = confT[nc] ?? 0;
-            final cP = confP[nc] ?? 0;
-            // Exclude if all scheduled lessons are confirmed (director considers it done)
-            if ((schedT + schedP) > 0 && cT >= schedT && cP >= schedP) return false;
-            // Include if reference hours remain
-            return (s.theoryHours - schedT) > 0 || (s.practicalHours - schedP) > 0;
-          }).toList() ?? [];
+          final availableSubs =
+              module == null ? <SubmoduleInfo>[] : subsFor(module);
 
           if (selectedSubmodule != null &&
               !availableSubs.any((s) => s.code == selectedSubmodule)) {
@@ -266,13 +264,15 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
             else type = 'teoria';
           }
 
-          final selSub = availableSubs.firstWhere(
-              (s) => s.code == selectedSubmodule,
-              orElse: () => availableSubs.isNotEmpty ? availableSubs.first : module!.submodules.first);
-          final unconstrained = selSub.theoryHours == 0 && selSub.practicalHours == 0;
-          final selNc = _normSubCode(selSub.code);
-          final remT = unconstrained ? 1 : (selSub.theoryHours    - (doneT[selNc] ?? 0));
-          final remP = unconstrained ? 1 : (selSub.practicalHours - (doneP[selNc] ?? 0));
+          final SubmoduleInfo? selSub = availableSubs.isEmpty
+              ? null
+              : availableSubs.firstWhere((s) => s.code == selectedSubmodule,
+                  orElse: () => availableSubs.first);
+          final unconstrained = selSub == null ||
+              (selSub.theoryHours == 0 && selSub.practicalHours == 0);
+          final selNc = selSub == null ? '' : _normSubCode(selSub.code);
+          final remT = unconstrained ? 1 : (selSub!.theoryHours    - (doneT[selNc] ?? 0));
+          final remP = unconstrained ? 1 : (selSub!.practicalHours - (doneP[selNc] ?? 0));
           if (type == 'teoria' && remT <= 0 && remP > 0) type = 'pratica';
           if (type == 'pratica' && remP <= 0 && remT > 0) type = 'teoria';
 
@@ -307,6 +307,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                   DropdownButtonFormField<int>(
                     value: selectedModule,
                     dropdownColor: kSurface,
+                    isExpanded: true,
                     style: const TextStyle(color: kText),
                     decoration: const InputDecoration(labelText: 'Modulo', isDense: true),
                     items: availableModules
@@ -326,6 +327,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                     DropdownButtonFormField<String>(
                       value: selectedSubmodule,
                       dropdownColor: kSurface,
+                      isExpanded: true,
                       style: const TextStyle(color: kText),
                       decoration: const InputDecoration(labelText: 'Sottomodulo', isDense: true),
                       items: availableSubs.map((s) {
@@ -335,10 +337,10 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                         final rP = s.practicalHours - (doneP[snc] ?? 0);
                         final tag = free
                             ? 'T:${doneT[snc]??0}h P:${doneP[snc]??0}h'
-                            : [if (rT > 0) '${rT}T', if (rP > 0) '${rP}P'].join(' ');
+                            : [if (rT > 0) 'restano ${rT}T', if (rP > 0) '${rP}P'].join(' ');
                         return DropdownMenuItem(
                           value: s.code,
-                          child: Text('${s.code} - ${s.name}  ($tag)',
+                          child: Text('${s.code} ($tag) - ${s.name}',
                               overflow: TextOverflow.ellipsis),
                         );
                       }).toList(),
@@ -378,7 +380,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                     decoration: const InputDecoration(labelText: 'Istruttore', isDense: true),
                     items: _instructorItems(
                       instructors: instructors,
-                      submoduleCode: selSub.code,
+                      submoduleCode: selSub?.code ?? '',
                       type: type,
                       goMap: goMap,
                       current: selectedInstructor,
@@ -401,7 +403,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                     courseId: _selected!.id,
                     moduleNumber: selectedModule!,
                     submoduleCode: selectedSubmodule ?? '',
-                    topic: selSub.name,
+                    topic: selSub?.name ?? module?.name ?? '',
                     type: type,
                     date: date,
                     timeSlot: slot,
@@ -435,7 +437,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                     courseId: _selected!.id,
                     moduleNumber: selectedModule!,
                     submoduleCode: selectedSubmodule ?? '',
-                    topic: selSub.name,
+                    topic: selSub?.name ?? module?.name ?? '',
                     type: type,
                     date: date,
                     timeSlot: slot,
@@ -747,7 +749,9 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
     for (final code in [lesson.submoduleCode, ...remainingCodes]) {
       if (!seenCodes.add(code)) continue;
       final info = refSubInfo[code];
-      final label = info != null ? 'M${info.$1} $code – ${info.$2}' : code;
+      final label = info != null
+          ? 'M${_refService.moduleLabel(info.$1)} $code – ${info.$2}'
+          : code;
       submoduleOptions.add((code, label));
     }
 

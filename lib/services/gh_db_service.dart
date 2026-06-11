@@ -300,6 +300,9 @@ class GhDbService {
   Map<String, dynamic> get amcData =>
       (_getData('amc.json') as Map<String, dynamic>?) ?? {};
 
+  Future<void> saveAmc(Map<String, dynamic> data) =>
+      _writeFile('amc.json', data, 'aggiornamento AMC');
+
   List<Map<String, dynamic>> get users =>
       List<Map<String, dynamic>>.from(_getData('users.json') as List? ?? []);
 

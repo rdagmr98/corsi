@@ -68,4 +68,38 @@ class ReferenceService {
     if (j == null) return const InstructorCurrencyRules(teachingHoursPerYear: 6, professionalUpdateHoursPer2Years: 35);
     return InstructorCurrencyRules.fromJson(j);
   }
+
+  // ── Regole AMC (ANNESSO MTOE-P-3-1): qualifica → sottomoduli insegnabili ──
+  Map<String, dynamic> get _amcRules =>
+      _ref['amcRules'] as Map<String, dynamic>? ?? {};
+
+  List<AmcQualification> amcQualifications() {
+    final list = _amcRules['qualifications'] as List? ?? [];
+    return list
+        .map((j) => AmcQualification.fromJson(j as Map<String, dynamic>))
+        .toList();
+  }
+
+  Map<String, List<String>> _ruleMap(bool theory) {
+    final raw = _amcRules[theory ? 'theory' : 'practice']
+            as Map<String, dynamic>? ??
+        {};
+    return raw.map((k, v) => MapEntry(k, List<String>.from(v as List)));
+  }
+
+  /// Codici sottomodulo insegnabili da chi possiede [quals]
+  /// (basta una qualifica tra quelle ammesse per il sottomodulo).
+  Set<String> teachableSubmodules(Iterable<String> quals,
+      {required bool theory}) {
+    final owned = quals.toSet();
+    final rules = _ruleMap(theory);
+    return {
+      for (final e in rules.entries)
+        if (e.value.any(owned.contains)) e.key,
+    };
+  }
+
+  /// Tutti i codici coperti dalle regole AMC (gestiti in automatico).
+  Set<String> amcRuleCodes({required bool theory}) =>
+      _ruleMap(theory).keys.toSet();
 }
