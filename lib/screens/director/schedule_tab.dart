@@ -211,15 +211,21 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
     }).toList();
 
     // Moduli proponibili: stesso criterio del generatore — il modulo è chiuso
-    // quando le ore pianificate raggiungono il suo monte ore complessivo,
-    // anche se qualche sottomodulo (es. 0/0) risulterebbe ancora aperto.
+    // quando ogni sottomodulo ha raggiunto il proprio monte ore. I moduli con
+    // soli sottomoduli senza monte ore (0/0) si chiudono al raggiungimento
+    // del totale del modulo.
     final availableModules = _typeInfo!.modules.where((m) {
-      if (m.totalHours > 0 &&
+      if (m.submodules.isEmpty) return true;
+      final subs = subsFor(m);
+      if (subs.isEmpty) return false;
+      final onlyFree =
+          subs.every((s) => s.theoryHours == 0 && s.practicalHours == 0);
+      if (onlyFree &&
+          m.totalHours > 0 &&
           (doneTotalByModule[m.number] ?? 0) >= m.totalHours) {
         return false;
       }
-      if (m.submodules.isEmpty) return true;
-      return subsFor(m).isNotEmpty;
+      return true;
     }).toList();
 
     if (availableModules.isEmpty) {
@@ -631,12 +637,18 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
     final typeInfo = _typeInfo;
     if (typeInfo == null) return;
 
-    // Suggerimenti: ore di assenza non ancora recuperate per frequentatore e
-    // modulo — pre-compilano materia e presenti, restano modificabili.
+    // Suggerimenti: SOLO i frequentatori oltre il 10% di assenze non
+    // recuperate rispetto alle ore confermate del corso (quelli che devono
+    // recuperare per rientrare) — pre-compilano materia e presenti,
+    // restano modificabili.
     final allLessons = _scheduleService.getLessonsForCourse(_selected!.id);
+    final totalConfirmed = allLessons.where((l) => l.confirmed).length;
+    final overLimit = _attendanceService.attendeesOverRecoveryLimit(
+        _selected!.id, _selected!.attendeeIds, totalConfirmed);
     final unrecByAttendee = <String, Map<int, int>>{};
     final unrecByModule = <int, int>{};
     for (final a in attendees) {
+      if (!overLimit.contains(a.id)) continue;
       final stats = _attendanceService.computePerModuleStats(
           _selected!.id, a.id, allLessons, modules: typeInfo.modules);
       stats.forEach((mod, s) {
@@ -723,7 +735,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                   if (unrecByModule.isNotEmpty) ...[
                     const SizedBox(height: 6),
                     const Text(
-                      'Suggerimento automatico in base alle assenze non recuperate.',
+                      'Suggeriti solo i frequentatori oltre il 10% di assenze non recuperate sulle ore svolte.',
                       style: TextStyle(color: kTextDim, fontSize: 10, fontStyle: FontStyle.italic),
                     ),
                   ],
@@ -836,6 +848,36 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
     final goMap = _computeGoMap(instructors);
     final lessonType = isTheory ? 'teoria' : 'pratica';
 
+    // Assenze frequentatori per quest'ora: pre-compilate dai record esistenti.
+    final attendees = _userService.getAllUsers()
+        .where((u) => _selected!.attendeeIds.contains(u.id))
+        .toList();
+    final initialAbsent = <String>{
+      for (final r in _attendanceService.getRecordsForLesson(lesson.id))
+        if (!r.present) r.attendeeId,
+    };
+    final absent = <String>{...initialAbsent};
+
+    Future<void> saveAbsences({required bool force}) async {
+      // Su 'Salva' scrive solo se modificate (evita record per lezioni
+      // future); alla validazione registra sempre l'appello completo.
+      if (!force &&
+          absent.length == initialAbsent.length &&
+          absent.containsAll(initialAbsent)) {
+        return;
+      }
+      final user = ref.read(authProvider).currentUser;
+      await _attendanceService.saveAttendance(
+        scheduleId: lesson.id,
+        courseId: _selected!.id,
+        attendeeIds: _selected!.attendeeIds,
+        presence: {
+          for (final id in _selected!.attendeeIds) id: !absent.contains(id),
+        },
+        confirmedBy: user?.id ?? '',
+      );
+    }
+
     await showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -847,7 +889,8 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
           ),
           content: SizedBox(
             width: 400,
-            child: Column(
+            child: SingleChildScrollView(
+              child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 if (_selected!.attendeeIds.length > 15)
@@ -894,6 +937,42 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                   ),
                   onChanged: (v) => setDlg(() => selectedInstructor = v),
                 ),
+                if (attendees.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('Assenti in quest\'ora:',
+                        style: TextStyle(color: kTextDim, fontSize: 12)),
+                  ),
+                  const SizedBox(height: 6),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      children: attendees.map((a) {
+                        final sel = absent.contains(a.id);
+                        return FilterChip(
+                          label: Text(a.fullName,
+                              style: TextStyle(
+                                  color: sel ? Colors.white : kTextDim,
+                                  fontSize: 11)),
+                          selected: sel,
+                          selectedColor: kError.withOpacity(0.8),
+                          checkmarkColor: Colors.white,
+                          backgroundColor: kSurface,
+                          onSelected: (v) => setDlg(() {
+                            if (v) {
+                              absent.add(a.id);
+                            } else {
+                              absent.remove(a.id);
+                            }
+                          }),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ],
                 if (selectedSubmodule != lesson.submoduleCode) ...[
                   const SizedBox(height: 4),
                   CheckboxListTile(
@@ -907,6 +986,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                   ),
                 ],
               ],
+              ),
             ),
           ),
           actions: [
@@ -924,6 +1004,9 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                           await _scheduleService.updateLesson(
                               lesson.copyWith(instructorId: selectedInstructor));
                         }
+                        // La validazione registra sempre l'appello:
+                        // tutti presenti tranne i segnati assenti.
+                        await saveAbsences(force: true);
                         final user = ref.read(authProvider).currentUser;
                         await _scheduleService.confirmLesson(
                             lesson.id, user?.id ?? '');
@@ -955,6 +1038,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                   moduleNumber: newModuleNum,
                   topic: selectedSubmodule,
                 ));
+                await saveAbsences(force: false);
                 if (subChanged && recompile) {
                   final nextDay = lesson.date.add(const Duration(days: 1));
                   await _scheduleService.deleteUnconfirmedLessonsFrom(_selected!.id, nextDay);

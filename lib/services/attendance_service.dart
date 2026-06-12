@@ -41,15 +41,20 @@ class AttendanceService {
       final existing = records.indexWhere(
         (r) => r['schedule_id'] == scheduleId && r['attendee_id'] == attendeeId,
       );
+      final prev = existing >= 0 ? records[existing] : null;
+      final newPresent = presence[attendeeId] ?? false;
       final record = {
-        'id': existing >= 0
-            ? records[existing]['id']
+        'id': prev != null
+            ? prev['id']
             : now.microsecondsSinceEpoch.toRadixString(16) + attendeeId.substring(0, 4),
         'schedule_id': scheduleId,
         'course_id': courseId,
         'attendee_id': attendeeId,
-        'present': presence[attendeeId] ?? false,
-        'justification': null,
+        'present': newPresent,
+        // Una giustificazione registrata resta valida finché lo stato
+        // presente/assente non cambia.
+        'justification':
+            prev != null && prev['present'] == newPresent ? prev['justification'] : null,
         'confirmed_by': confirmedBy,
         'confirmed_at': now.toIso8601String(),
       };
@@ -183,14 +188,16 @@ class AttendanceService {
     await _db.saveRecords(records);
   }
 
-  /// Returns true if at least one attendee in the course has >10% absence rate
-  /// (excluding recoveries) relative to total planned module hours.
-  bool courseHasAttendeesInRecovery(
+  /// Frequentatori OLTRE il limite del 10% di assenze non recuperate
+  /// rispetto a [totalHours] (ore confermate del corso): sono quelli che
+  /// devono recuperare per rientrare nel limite.
+  Set<String> attendeesOverRecoveryLimit(
     String courseId,
     List<String> attendeeIds,
-    int totalPlannedHours,
+    int totalHours,
   ) {
-    if (totalPlannedHours == 0) return false;
+    if (totalHours == 0) return {};
+    final result = <String>{};
     for (final id in attendeeIds) {
       final stats = computeAbsences(courseId, id);
       final absences = stats['absent'] ?? 0;
@@ -198,8 +205,17 @@ class AttendanceService {
           .where((r) => r.courseId == courseId && r.attendeeId == id && r.justification == 'recupero')
           .length;
       final unrecoveredAbsences = absences - recoveries;
-      if (unrecoveredAbsences / totalPlannedHours > 0.10) return true;
+      if (unrecoveredAbsences / totalHours > 0.10) result.add(id);
     }
-    return false;
+    return result;
   }
+
+  /// Returns true if at least one attendee in the course has >10% absence rate
+  /// (excluding recoveries) relative to [totalHours].
+  bool courseHasAttendeesInRecovery(
+    String courseId,
+    List<String> attendeeIds,
+    int totalHours,
+  ) =>
+      attendeesOverRecoveryLimit(courseId, attendeeIds, totalHours).isNotEmpty;
 }

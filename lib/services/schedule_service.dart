@@ -334,37 +334,37 @@ class ScheduleService {
   }) async {
     final allLessons = getLessonsForCourse(courseId);
 
-    // Count confirmed hours per (submoduleCode, type) AND per module total.
+    // Le auto-generate non confermate verranno rimosse e rigenerate: contano
+    // come ore già coperte solo le lezioni che restano (confermate + manuali).
+    final rawSchedules = _db.schedules.toList();
+    final keptIds = <String>{
+      for (final s in rawSchedules)
+        if (s['course_id'] == courseId &&
+            (s['confirmed'] == true || !(s['auto_generated'] as bool? ?? false)))
+          s['id'] as String,
+    };
+
+    // Count kept hours per (submoduleCode, type).
     // Normalize codes to match reference: '7.3P' → '7.3' (P-suffix practical),
     // '12.7.1' → '12.7' (triple-component codes collapsed to two components).
     final doneT = <String, int>{};
     final doneP = <String, int>{};
-    final doneTotalByModule = <int, int>{};
-    for (final l in allLessons.where((l) => l.timeSlot > 0)) {
+    for (final l in allLessons.where((l) => l.timeSlot > 0 && keptIds.contains(l.id))) {
       final c = normalizeSubCode(l.submoduleCode);
       if (l.isTheory) doneT[c] = (doneT[c] ?? 0) + 1;
       else            doneP[c] = (doneP[c] ?? 0) + 1;
-      doneTotalByModule[l.moduleNumber] = (doneTotalByModule[l.moduleNumber] ?? 0) + 1;
     }
 
-    // Build 2–3-hour blocks per module, then interleave round-robin for mixing
+    // Build 2–3-hour blocks per module, then interleave round-robin for mixing.
+    // Ogni sottomodulo viene portato al SUO monte ore (T e P separati): le ore
+    // oltre piano su un sottomodulo (recuperi/ripetizioni) non erodono le ore
+    // ancora da pianificare degli altri sottomoduli dello stesso modulo.
     final moduleBlocks = <int, List<List<(String, int, String)>>>{};
     for (final m in typeInfo.modules) {
-      // Skip entire module if confirmed hours already meet planned total
-      final moduleDone = doneTotalByModule[m.number] ?? 0;
-      if (m.totalHours > 0 && moduleDone >= m.totalHours) continue;
-      // Remaining module capacity to distribute across submodules
-      var moduleCapacity = m.totalHours > 0 ? m.totalHours - moduleDone : 9999;
-
       for (final sub in m.submodules) {
-        if (moduleCapacity <= 0) break;
         final nc = normalizeSubCode(sub.code);
-        final subDone = (doneT[nc] ?? 0) + (doneP[nc] ?? 0);
-        final subPlanned = sub.theoryHours + sub.practicalHours;
-        final subRemaining = (subPlanned - subDone).clamp(0, moduleCapacity);
-        final remT = (sub.theoryHours    - (doneT[nc] ?? 0)).clamp(0, subRemaining);
-        final remP = (sub.practicalHours - (doneP[nc] ?? 0)).clamp(0, (subRemaining - remT).clamp(0, 9999));
-        moduleCapacity -= remT + remP;
+        final remT = (sub.theoryHours    - (doneT[nc] ?? 0)).clamp(0, sub.theoryHours);
+        final remP = (sub.practicalHours - (doneP[nc] ?? 0)).clamp(0, sub.practicalHours);
 
         void addBlocks(int rem, String t) {
           var r = rem;
@@ -401,11 +401,9 @@ class ScheduleService {
     }
 
     // Remove old auto-generated unconfirmed lessons; keep confirmed + manual
-    final rawSchedules = _db.schedules.toList();
     final cleaned = rawSchedules.where((s) {
       if (s['course_id'] != courseId) return true;
-      if (s['confirmed'] == true) return true;
-      return !(s['auto_generated'] as bool? ?? false);
+      return keptIds.contains(s['id']);
     }).toList();
 
     if (queue.isEmpty) {
@@ -431,6 +429,9 @@ class ScheduleService {
 
     final newLessons = <Map<String, dynamic>>[];
     final now = DateTime.now().toIso8601String();
+    // Prefisso timestamp: gli ID restano unici anche tra rigenerazioni
+    // successive (le lezioni confermate di run precedenti non vengono rimosse).
+    final runId = DateTime.now().microsecondsSinceEpoch.toRadixString(16);
     var counter = 0;
     var qi = 0;
 
@@ -442,7 +443,7 @@ class ScheduleService {
       // Recovery slot 0 — Mon–Thu only (weekday 1..4)
       if (hasAttendeesInRecovery && weekday <= DateTime.thursday) {
         newLessons.add({
-          'id': 'gen_rec_${counter++}',
+          'id': 'gen_rec_${runId}_${counter++}',
           'course_id': courseId,
           'module_number': 0,
           'submodule_code': 'RECUPERO',
@@ -462,7 +463,7 @@ class ScheduleService {
         if (qi >= queue.length) break;
         final (code, modNum, lessonType) = queue[qi++];
         newLessons.add({
-          'id': 'gen_${counter++}',
+          'id': 'gen_${runId}_${counter++}',
           'course_id': courseId,
           'module_number': modNum,
           'submodule_code': code,
