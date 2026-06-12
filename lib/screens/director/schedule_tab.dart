@@ -210,13 +210,15 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
           (s.practicalHours - (doneP[nc] ?? 0)) > 0;
     }).toList();
 
-    // Moduli proponibili: almeno un sottomodulo con ore residue. Se il modulo
-    // non ha sottomoduli a programma si ricade sul monte ore del modulo.
+    // Moduli proponibili: stesso criterio del generatore — il modulo è chiuso
+    // quando le ore pianificate raggiungono il suo monte ore complessivo,
+    // anche se qualche sottomodulo (es. 0/0) risulterebbe ancora aperto.
     final availableModules = _typeInfo!.modules.where((m) {
-      if (m.submodules.isEmpty) {
-        return m.totalHours == 0 ||
-            (doneTotalByModule[m.number] ?? 0) < m.totalHours;
+      if (m.totalHours > 0 &&
+          (doneTotalByModule[m.number] ?? 0) >= m.totalHours) {
+        return false;
       }
+      if (m.submodules.isEmpty) return true;
       return subsFor(m).isNotEmpty;
     }).toList();
 
@@ -629,8 +631,35 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
     final typeInfo = _typeInfo;
     if (typeInfo == null) return;
 
-    final selectedAttendees = <String>{};
-    int? selectedModule = typeInfo.modules.isNotEmpty ? typeInfo.modules.first.number : null;
+    // Suggerimenti: ore di assenza non ancora recuperate per frequentatore e
+    // modulo — pre-compilano materia e presenti, restano modificabili.
+    final allLessons = _scheduleService.getLessonsForCourse(_selected!.id);
+    final unrecByAttendee = <String, Map<int, int>>{};
+    final unrecByModule = <int, int>{};
+    for (final a in attendees) {
+      final stats = _attendanceService.computePerModuleStats(
+          _selected!.id, a.id, allLessons, modules: typeInfo.modules);
+      stats.forEach((mod, s) {
+        final u = s['unrecovered'] ?? 0;
+        if (u > 0) {
+          (unrecByAttendee[a.id] ??= {})[mod] = u;
+          unrecByModule[mod] = (unrecByModule[mod] ?? 0) + u;
+        }
+      });
+    }
+    Set<String> suggestedFor(int? mod) => {
+          for (final a in attendees)
+            if (mod != null && (unrecByAttendee[a.id]?[mod] ?? 0) > 0) a.id,
+        };
+
+    int? selectedModule =
+        typeInfo.modules.isNotEmpty ? typeInfo.modules.first.number : null;
+    final candidates = unrecByModule.entries
+        .where((e) => typeInfo.modules.any((m) => m.number == e.key))
+        .toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    if (candidates.isNotEmpty) selectedModule = candidates.first.key;
+    final selectedAttendees = <String>{...suggestedFor(selectedModule)};
     final user = ref.read(authProvider).currentUser;
 
     await showDialog(
@@ -644,42 +673,88 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
           ),
           content: SizedBox(
             width: 400,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Modulo recuperato:', style: TextStyle(color: kTextDim, fontSize: 12)),
-                const SizedBox(height: 6),
-                DropdownButtonFormField<int>(
-                  value: selectedModule,
-                  dropdownColor: kSurface,
-                  style: const TextStyle(color: kText),
-                  decoration: const InputDecoration(isDense: true),
-                  items: typeInfo.modules
-                      .map((m) => DropdownMenuItem(value: m.number, child: Text('M${m.displayCode} – ${m.name}', overflow: TextOverflow.ellipsis)))
-                      .toList(),
-                  onChanged: (v) => setDlg(() => selectedModule = v),
-                ),
-                const SizedBox(height: 12),
-                const Text('Frequentatori presenti al recupero:', style: TextStyle(color: kTextDim, fontSize: 12)),
-                const SizedBox(height: 6),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 4,
-                  children: attendees.map((a) {
-                    final sel = selectedAttendees.contains(a.id);
-                    return FilterChip(
-                      label: Text(a.fullName, style: TextStyle(color: sel ? Colors.white : kTextDim, fontSize: 11)),
-                      selected: sel,
-                      selectedColor: kAccent.withOpacity(0.8),
-                      backgroundColor: kSurface,
-                      onSelected: (v) => setDlg(() {
-                        if (v) selectedAttendees.add(a.id); else selectedAttendees.remove(a.id);
-                      }),
-                    );
-                  }).toList(),
-                ),
-              ],
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Modulo recuperato:', style: TextStyle(color: kTextDim, fontSize: 12)),
+                  const SizedBox(height: 6),
+                  DropdownButtonFormField<int>(
+                    value: selectedModule,
+                    isExpanded: true,
+                    dropdownColor: kSurface,
+                    style: const TextStyle(color: kText),
+                    decoration: const InputDecoration(isDense: true),
+                    items: typeInfo.modules.map((m) {
+                      final u = unrecByModule[m.number] ?? 0;
+                      return DropdownMenuItem(
+                        value: m.number,
+                        child: Row(
+                          children: [
+                            if (u > 0) ...[
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: kWarning.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(3),
+                                ),
+                                child: Text('${u}h',
+                                    style: const TextStyle(
+                                        color: kWarning, fontSize: 9, fontWeight: FontWeight.bold)),
+                              ),
+                              const SizedBox(width: 6),
+                            ],
+                            Flexible(
+                              child: Text('M${m.displayCode} – ${m.name}',
+                                  overflow: TextOverflow.ellipsis),
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                    onChanged: (v) => setDlg(() {
+                      selectedModule = v;
+                      selectedAttendees
+                        ..clear()
+                        ..addAll(suggestedFor(v));
+                    }),
+                  ),
+                  if (unrecByModule.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Suggerimento automatico in base alle assenze non recuperate.',
+                      style: TextStyle(color: kTextDim, fontSize: 10, fontStyle: FontStyle.italic),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  const Text('Frequentatori presenti al recupero:', style: TextStyle(color: kTextDim, fontSize: 12)),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    children: attendees.map((a) {
+                      final sel = selectedAttendees.contains(a.id);
+                      final u = unrecByAttendee[a.id]?[selectedModule] ?? 0;
+                      return FilterChip(
+                        label: Text(
+                          u > 0 ? '${a.fullName} · ${u}h' : a.fullName,
+                          style: TextStyle(
+                              color: sel ? Colors.white : (u > 0 ? kWarning : kTextDim),
+                              fontSize: 11),
+                        ),
+                        selected: sel,
+                        selectedColor: kAccent.withOpacity(0.8),
+                        backgroundColor: kSurface,
+                        side: u > 0 && !sel ? const BorderSide(color: kWarning) : null,
+                        onSelected: (v) => setDlg(() {
+                          if (v) selectedAttendees.add(a.id); else selectedAttendees.remove(a.id);
+                        }),
+                      );
+                    }).toList(),
+                  ),
+                ],
+              ),
             ),
           ),
           actions: [

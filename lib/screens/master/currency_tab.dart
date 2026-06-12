@@ -88,6 +88,15 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
       final yr = DateTime.tryParse(u['date'] as String? ?? '')?.year ?? 0;
       byYear[yr] = (byYear[yr] ?? 0) + ((u['hours'] as num?)?.toDouble() ?? 0);
     }
+    // Le lezioni validate/confermate a calendario contano 1h ciascuna,
+    // come nel totale currency (GradeService.getTeachingHoursRollingYear).
+    for (final raw in _db.schedules) {
+      if (raw['instructor_id'] != uid) continue;
+      if (raw['confirmed'] != true) continue;
+      if ((raw['time_slot'] as int? ?? 0) <= 0) continue;
+      final yr = DateTime.tryParse(raw['date'] as String? ?? '')?.year ?? 0;
+      byYear[yr] = (byYear[yr] ?? 0) + 1;
+    }
     return byYear.entries
         .map((e) => {'year': e.key, 'hours': e.value})
         .toList()

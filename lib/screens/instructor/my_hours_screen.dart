@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../providers/auth_provider.dart';
+import '../../services/course_service.dart';
 import '../../services/grade_service.dart';
 import '../../services/user_service.dart';
 import '../../theme.dart';
@@ -15,8 +16,9 @@ class InstructorHoursScreen extends ConsumerStatefulWidget {
 }
 
 class _InstructorHoursScreenState extends ConsumerState<InstructorHoursScreen> {
-  final _gradeService = GradeService();
-  final _userService  = UserService();
+  final _gradeService  = GradeService();
+  final _userService   = UserService();
+  final _courseService = CourseService();
 
   @override
   void initState() {
@@ -30,7 +32,10 @@ class _InstructorHoursScreenState extends ConsumerState<InstructorHoursScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final teachH  = _gradeService.getTeachingHoursRollingYear(widget.userId);
+    final lessonH = _gradeService.getConfirmedLessonHoursRollingYear(widget.userId);
+    final manualH = _gradeService.getManualTeachingHoursRollingYear(widget.userId);
+    final teachH  = lessonH + manualH;
+    final lessonsByCourse = _gradeService.getConfirmedLessonHoursByCourse(widget.userId);
     final profH   = _gradeService.getProfessionalUpdateHoursLast2Years(widget.userId);
     final updates = _gradeService.getUpdatesForInstructor(widget.userId);
     final me      = _userService.findById(widget.userId);
@@ -48,11 +53,13 @@ class _InstructorHoursScreenState extends ConsumerState<InstructorHoursScreen> {
         child: Column(
           children: [
             _currencyCard(
-              'Ore insegnamento (anno corrente)',
+              'Ore insegnamento (ultimi 365 giorni)',
               teachH,
               6,
               teachOk,
               Icons.school,
+              detail:
+                  '${lessonH.toStringAsFixed(0)}h da lezioni confermate · ${manualH.toStringAsFixed(0)}h da registrazioni manuali',
             ),
             const SizedBox(height: 12),
             _currencyCard(
@@ -66,11 +73,40 @@ class _InstructorHoursScreenState extends ConsumerState<InstructorHoursScreen> {
               const SizedBox(height: 12),
               _daaCard(daaExpiry, daaOk),
             ],
+            if (lessonsByCourse.isNotEmpty) ...[
+              const SizedBox(height: 24),
+              const Row(
+                children: [
+                  Text('Lezioni confermate per corso',
+                      style: TextStyle(color: kText, fontWeight: FontWeight.w600)),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ...lessonsByCourse.entries.map((e) {
+                final course = _courseService.findById(e.key);
+                return Card(
+                  color: kCard,
+                  margin: const EdgeInsets.only(bottom: 6),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  child: ListTile(
+                    leading: const Icon(Icons.menu_book, color: kPrimary, size: 20),
+                    title: Text(course?.title ?? 'Corso',
+                        style: const TextStyle(color: kText, fontSize: 13)),
+                    subtitle: const Text('Ore validate ai fini currency',
+                        style: TextStyle(color: kTextDim, fontSize: 11)),
+                    trailing: Text(
+                      '${e.value.toStringAsFixed(0)}h',
+                      style: const TextStyle(color: kText, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                );
+              }),
+            ],
             const SizedBox(height: 24),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('Storico', style: TextStyle(color: kText, fontWeight: FontWeight.w600)),
+                const Text('Storico registrazioni', style: TextStyle(color: kText, fontWeight: FontWeight.w600)),
                 const SizedBox(),
               ],
             ),
@@ -147,7 +183,8 @@ class _InstructorHoursScreenState extends ConsumerState<InstructorHoursScreen> {
     );
   }
 
-  Widget _currencyCard(String label, double current, double required, bool ok, IconData icon) {
+  Widget _currencyCard(String label, double current, double required, bool ok, IconData icon,
+      {String? detail}) {
     final color = ok ? kAccent : kError;
     final pct = (current / required).clamp(0.0, 1.0);
     return Card(
@@ -194,6 +231,10 @@ class _InstructorHoursScreenState extends ConsumerState<InstructorHoursScreen> {
                 ),
               ],
             ),
+            if (detail != null) ...[
+              const SizedBox(height: 4),
+              Text(detail, style: const TextStyle(color: kTextDim, fontSize: 11)),
+            ],
             const SizedBox(height: 8),
             LinearProgressIndicator(
               value: pct,

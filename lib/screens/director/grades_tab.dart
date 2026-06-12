@@ -264,15 +264,19 @@ class _DirectorGradesTabState extends ConsumerState<DirectorGradesTab> {
                           child: Row(
                             children: [
                               Container(
-                                width: 86,
+                                width: 92,
                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                                 decoration: BoxDecoration(
                                   color: typeColor.withOpacity(0.12),
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                                 alignment: Alignment.center,
-                                child: Text(g.assessmentType.label,
-                                    style: TextStyle(color: typeColor, fontSize: 10)),
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Text(g.assessmentType.label,
+                                      maxLines: 1,
+                                      style: TextStyle(color: typeColor, fontSize: 10)),
+                                ),
                               ),
                               const SizedBox(width: 10),
                               SizedBox(

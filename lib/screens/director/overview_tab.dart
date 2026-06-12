@@ -86,8 +86,20 @@ class _DirectorOverviewTabState extends ConsumerState<DirectorOverviewTab> {
     final taughtHours = _scheduleService.computeModuleHoursTaught(course.id);
     final totalTheory = typeInfo?.totalTheoryHours ?? 0;
     final totalPractical = typeInfo?.totalPracticalHours ?? 0;
-    final doneTotal = taughtHours.values.fold(0.0, (a, b) => a + b);
-    final totalHours = (totalTheory + totalPractical).toDouble();
+    // Stessa formula dell'admin (course_detail_screen): ore confermate cappate
+    // al monte ore di ogni modulo, denominatore = somma monte ore dei moduli.
+    double doneTotal = 0;
+    double totalHours = 0;
+    if (typeInfo != null) {
+      for (final m in typeInfo.modules) {
+        final t = m.totalHours.toDouble();
+        final raw = taughtHours[m.number] ?? 0.0;
+        totalHours += t;
+        doneTotal += t > 0 && raw > t ? t : raw;
+      }
+    } else {
+      doneTotal = taughtHours.values.fold(0.0, (a, b) => a + b);
+    }
     final progress = totalHours > 0 ? doneTotal / totalHours : 0.0;
 
     return SingleChildScrollView(

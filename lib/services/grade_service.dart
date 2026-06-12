@@ -83,12 +83,42 @@ class GradeService {
           .toList()
         ..sort((a, b) => a.date.compareTo(b.date));
 
-  double getTeachingHoursRollingYear(String instructorId) {
+  /// Ore insegnamento da registrazioni manuali (updates.json), ultimi 365 gg.
+  double getManualTeachingHoursRollingYear(String instructorId) {
     final cutoff = DateTime.now().subtract(const Duration(days: 365));
     return getUpdatesForInstructor(instructorId)
         .where((u) => u.isTeaching && u.date.isAfter(cutoff))
         .fold(0.0, (s, u) => s + u.hours);
   }
+
+  /// Ore di lezione validate dal direttore o confermate dall'istruttore
+  /// (1h per lezione a calendario con confirmed=true), per corso,
+  /// ultimi 365 giorni.
+  Map<String, double> getConfirmedLessonHoursByCourse(String instructorId) {
+    final cutoff = DateTime.now().subtract(const Duration(days: 365));
+    final map = <String, double>{};
+    for (final raw in _db.schedules) {
+      if (raw['instructor_id'] != instructorId) continue;
+      if (raw['confirmed'] != true) continue;
+      if (((raw['time_slot'] as num?)?.toInt() ?? 0) <= 0) continue;
+      final d = DateTime.tryParse(raw['date'] as String? ?? '');
+      if (d == null || !d.isAfter(cutoff)) continue;
+      final courseId = raw['course_id'] as String? ?? '';
+      map[courseId] = (map[courseId] ?? 0) + 1;
+    }
+    return map;
+  }
+
+  double getConfirmedLessonHoursRollingYear(String instructorId) =>
+      getConfirmedLessonHoursByCourse(instructorId)
+          .values
+          .fold(0.0, (a, b) => a + b);
+
+  /// Totale ai fini del mantenimento currency: lezioni confermate a
+  /// calendario + registrazioni manuali.
+  double getTeachingHoursRollingYear(String instructorId) =>
+      getConfirmedLessonHoursRollingYear(instructorId) +
+      getManualTeachingHoursRollingYear(instructorId);
 
   double getProfessionalUpdateHoursLast2Years(String instructorId) {
     final cutoff = DateTime.now().subtract(const Duration(days: 730));

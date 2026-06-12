@@ -455,15 +455,19 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
                       padding: const EdgeInsets.only(bottom: 8),
                       child: Row(children: [
                         Container(
-                          width: 86,
+                          width: 92,
                           alignment: Alignment.center,
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                           decoration: BoxDecoration(
                             color: typeColor.withOpacity(0.12),
                             borderRadius: BorderRadius.circular(4),
                           ),
-                          child: Text(g.assessmentType.label,
-                              style: TextStyle(color: typeColor, fontSize: 10)),
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(g.assessmentType.label,
+                                maxLines: 1,
+                                style: TextStyle(color: typeColor, fontSize: 10)),
+                          ),
                         ),
                         const SizedBox(width: 8),
                         SizedBox(
