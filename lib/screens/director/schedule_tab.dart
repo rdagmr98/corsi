@@ -158,6 +158,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
       _selected!.id,
       _selected!.attendeeIds,
       _scheduleService.getLessonsForCourse(_selected!.id),
+      modules: _typeInfo?.modules,
     );
     await _scheduleService.generateRemainingSchedule(
       courseId: _selected!.id,
@@ -640,7 +641,8 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
     // suggerita per prima.
     final allLessons = _scheduleService.getLessonsForCourse(_selected!.id);
     final overLimit = _attendanceService.attendeesOverRecoveryLimit(
-        _selected!.id, _selected!.attendeeIds, allLessons);
+        _selected!.id, _selected!.attendeeIds, allLessons,
+        modules: _typeInfo?.modules);
     final unrecByAttendee = <String, Map<int, int>>{};
     final unrecPByAttendee = <String, Map<int, int>>{};
     final unrecByModule = <int, int>{};

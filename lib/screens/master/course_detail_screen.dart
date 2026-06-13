@@ -310,11 +310,15 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
         final absPct = totalPlanned > 0
             ? (totalAbsent / totalPlanned * 100).toStringAsFixed(0)
             : '0';
+        final modPlanT = <int, int>{};
+        if (typeInfo != null) {
+          for (final m in typeInfo.modules as List) modPlanT[m.number as int] = m.theoryHours as int;
+        }
         final anyWarn = typeInfo != null && modStats.entries.any((e) {
-          final cT     = e.value['confirmedT'] ?? 0;
+          final planT  = modPlanT[e.key] ?? (e.value['confirmedT'] ?? 0);
           final unrecT = e.value['unrecoveredT'] ?? 0;
           final unrecP = e.value['unrecoveredP'] ?? 0;
-          return unrecP > 0 || (cT > 0 && unrecT / cT > 0.10);
+          return unrecP > 0 || (planT > 0 && unrecT / planT > 0.10);
         });
 
         return Card(
@@ -346,7 +350,7 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
               final confirmedT   = stats['confirmedT'] ?? 0;
               final unrecoveredT = stats['unrecoveredT'] ?? 0;
               final unrecoveredP = stats['unrecoveredP'] ?? 0;
-              final pct  = confirmedT > 0 ? unrecoveredT / confirmedT : 0.0;
+              final pct  = mod.theoryHours > 0 ? unrecoveredT / mod.theoryHours : 0.0;
               final warn = unrecoveredP > 0 || pct > 0.10;
               final modPlan = mod.totalHours;
               final mPresPct = modPlan > 0
@@ -373,7 +377,7 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
                       : [
                           'Pres. $mPresPct% · Ass. $mAbsPct% — $unrecovered non rec.',
                           if (unrecoveredP > 0) 'P: $unrecoveredP ⚠ recupero 100%',
-                          if (pct > 0.10) 'T: $unrecoveredT/$confirmedT (${(pct * 100).toStringAsFixed(1)}%) ⚠ >10%',
+                          if (pct > 0.10) 'T: $unrecoveredT/${mod.theoryHours} (${(pct * 100).toStringAsFixed(1)}%) ⚠ >10%',
                         ].join(' — '),
                   style: TextStyle(color: warn ? kError : kTextDim, fontSize: 11),
                 ),

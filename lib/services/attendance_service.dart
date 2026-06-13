@@ -218,34 +218,28 @@ class AttendanceService {
   }
 
   /// Frequentatori fuori limite: pratica con assenze non recuperate al 100%,
-  /// o teoria con >10% assenze non recuperate sulle ore di teoria confermate.
+  /// o teoria con >10% assenze non recuperate sulle ore di teoria PIANIFICATE del modulo.
   Set<String> attendeesOverRecoveryLimit(
     String courseId,
     List<String> attendeeIds,
-    List<ScheduledLesson> allLessons,
-  ) {
-    final confirmed = allLessons
-        .where((l) => l.courseId == courseId && l.confirmed && l.timeSlot > 0)
-        .toList();
+    List<ScheduledLesson> allLessons, {
+    List<ModuleInfo>? modules,
+  }) {
+    final plannedT = modules != null
+        ? {for (final m in modules) m.number: m.theoryHours}
+        : <int, int>{};
     final result = <String>{};
     for (final attendeeId in attendeeIds) {
-      final records = getRecordsForAttendee(courseId, attendeeId);
-      final recordMap = {for (final r in records) r.scheduleId: r};
-      int absentT = 0, absentP = 0, confirmedT = 0;
-      for (final l in confirmed) {
-        if (l.isTheory) confirmedT++;
-        final r = recordMap[l.id];
-        if (r != null && !r.present) {
-          if (l.isTheory) absentT++; else absentP++;
-        }
+      final stats = computePerModuleStats(
+          courseId, attendeeId, allLessons, modules: modules);
+      bool over = false;
+      for (final e in stats.entries) {
+        if ((e.value['unrecoveredP'] ?? 0) > 0) { over = true; break; }
+        final unrecT = e.value['unrecoveredT'] ?? 0;
+        final planT  = plannedT[e.key] ?? (e.value['confirmedT'] ?? 0);
+        if (planT > 0 && unrecT / planT > 0.10) { over = true; break; }
       }
-      final recoveries = records.where((r) => r.justification == 'recupero').length;
-      final recForP = min(recoveries, absentP);
-      final unrecP = absentP - recForP;
-      final unrecT = (absentT - (recoveries - recForP)).clamp(0, absentT);
-      if (unrecP > 0 || (confirmedT > 0 && unrecT / confirmedT > 0.10)) {
-        result.add(attendeeId);
-      }
+      if (over) result.add(attendeeId);
     }
     return result;
   }
@@ -254,7 +248,8 @@ class AttendanceService {
   bool courseHasAttendeesInRecovery(
     String courseId,
     List<String> attendeeIds,
-    List<ScheduledLesson> allLessons,
-  ) =>
-      attendeesOverRecoveryLimit(courseId, attendeeIds, allLessons).isNotEmpty;
+    List<ScheduledLesson> allLessons, {
+    List<ModuleInfo>? modules,
+  }) =>
+      attendeesOverRecoveryLimit(courseId, attendeeIds, allLessons, modules: modules).isNotEmpty;
 }

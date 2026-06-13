@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../models/course_models.dart';
+import '../../models/reference_models.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/attendance_service.dart';
 import '../../services/course_service.dart';
@@ -102,11 +103,14 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
     final totalPlanned   = typeInfo?.modules.fold<int>(0, (s, m) => s + m.totalHours) ?? totalConfirmed;
     final globalPct      = totalPlanned > 0 ? (totalPlanned - totalUnrec) / totalPlanned : 1.0;
     final globalAbsPct   = totalPlanned > 0 ? totalAbsent / totalPlanned : 0.0;
-    final anyWarn        = modStats.values.any((m) {
-      final cT    = m['confirmedT'] ?? 0;
-      final unrecT = m['unrecoveredT'] ?? 0;
-      final unrecP = m['unrecoveredP'] ?? 0;
-      return unrecP > 0 || (cT > 0 && unrecT / cT > 0.10);
+    final modPlanT       = <int, int>{
+      for (final m in typeInfo?.modules ?? <ModuleInfo>[]) m.number: m.theoryHours
+    };
+    final anyWarn        = modStats.entries.any((e) {
+      final planT  = modPlanT[e.key] ?? (e.value['confirmedT'] ?? 0);
+      final unrecT = e.value['unrecoveredT'] ?? 0;
+      final unrecP = e.value['unrecoveredP'] ?? 0;
+      return unrecP > 0 || (planT > 0 && unrecT / planT > 0.10);
     });
 
     final modNames = <int, String>{
@@ -116,12 +120,12 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
     // Recovery window: quanti recuperi mancano per rientrare nei limiti
     final recoveryWindow = <int, int>{};
     for (final e in modStats.entries) {
-      final cT     = e.value['confirmedT'] ?? 0;
+      final planT  = modPlanT[e.key] ?? (e.value['confirmedT'] ?? 0);
       final unrecT = e.value['unrecoveredT'] ?? 0;
       final unrecP = e.value['unrecoveredP'] ?? 0;
-      final needsRecovery = unrecP > 0 || (cT > 0 && unrecT / cT > 0.10);
+      final needsRecovery = unrecP > 0 || (planT > 0 && unrecT / planT > 0.10);
       if (needsRecovery) {
-        final maxAllowedT = cT > 0 ? (cT * 0.10).floor() : 0;
+        final maxAllowedT = planT > 0 ? (planT * 0.10).floor() : 0;
         recoveryWindow[e.key] = unrecP + (unrecT > maxAllowedT ? unrecT - maxAllowedT : 0);
       }
     }
