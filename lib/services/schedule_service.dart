@@ -422,27 +422,42 @@ class ScheduleService {
     // Track current task pointer per submodule during generation
     final taskPtr = <String, int>{};
 
-    // Build blocks per module: teoria = 2-3h, pratica = 4h (o 2 se < 4).
-    // Ogni sottomodulo viene portato al SUO monte ore (T e P separati).
-    final moduleBlocks = <int, List<List<(String, int, String)>>>{};
+    // Build blocks grouped by phase:
+    //   0 – nessuna dipendenza
+    //   1 – perDifferenzaOf == 12 (sottomoduli M11A "per differenza", dopo M12)
+    //   2 – perDifferenzaOf == 11 (sottomoduli M11B, dopo M11A)
+    final blocksByPhase = <int, Map<int, List<List<(String, int, String)>>>>{};
     for (final m in typeInfo.modules) {
+      int modPlanH = 0, modDoneH = 0;
+      for (final sub in m.submodules) {
+        final nc = normalizeSubCode(sub.code);
+        modPlanH += sub.theoryHours + sub.practicalHours;
+        modDoneH += (doneT[nc] ?? 0) + (doneP[nc] ?? 0);
+      }
+      if (modPlanH > 0 && modDoneH >= modPlanH) continue;
+
       for (final sub in m.submodules) {
         final nc = normalizeSubCode(sub.code);
         final remT = (sub.theoryHours    - (doneT[nc] ?? 0)).clamp(0, sub.theoryHours);
         final remP = (sub.practicalHours - (doneP[nc] ?? 0)).clamp(0, sub.practicalHours);
+
+        final phase = sub.perDifferenzaOf == null
+            ? 0
+            : sub.perDifferenzaOf == 12
+                ? 1
+                : 2;
+        final phaseMap = blocksByPhase.putIfAbsent(phase, () => {});
 
         void addBlocks(int rem, String t) {
           var r = rem;
           while (r > 0) {
             final int size;
             if (t == 'pratica') {
-              // pratica: blocchi da 4h (porta via tanto tempo); 2h se resto < 4
               size = r >= 4 ? 4 : (r >= 2 ? 2 : 1);
             } else {
-              // teoria: max 3h consecutive; 2+2 per evitare coda solitaria da 1h
               size = r == 1 ? 1 : (r == 4 ? 2 : (r >= 3 ? 3 : 2));
             }
-            moduleBlocks.putIfAbsent(m.number, () => [])
+            phaseMap.putIfAbsent(m.number, () => [])
                 .add(List.generate(size, (_) => (sub.code, m.number, t)));
             r -= size;
           }
@@ -453,20 +468,24 @@ class ScheduleService {
       }
     }
 
-    // Interleave: one block per module per pass
+    // Interleave per fase (0 → 1 → 2); concatena nella queue finale.
     final queue = <(String, int, String)>[];
-    final modNums = moduleBlocks.keys.toList()..sort();
-    final modIdx  = {for (final k in modNums) k: 0};
-    bool anyLeft = true;
-    while (anyLeft) {
-      anyLeft = false;
-      for (final mod in modNums) {
-        final blocks = moduleBlocks[mod]!;
-        final bi = modIdx[mod]!;
-        if (bi < blocks.length) {
-          queue.addAll(blocks[bi]);
-          modIdx[mod] = bi + 1;
-          anyLeft = true;
+    for (final phase in [0, 1, 2]) {
+      final phaseMods = blocksByPhase[phase] ?? {};
+      if (phaseMods.isEmpty) continue;
+      final phaseModNums = phaseMods.keys.toList()..sort();
+      final phaseIdx = {for (final k in phaseModNums) k: 0};
+      bool anyLeft = true;
+      while (anyLeft) {
+        anyLeft = false;
+        for (final mod in phaseModNums) {
+          final blocks = phaseMods[mod]!;
+          final bi = phaseIdx[mod]!;
+          if (bi < blocks.length) {
+            queue.addAll(blocks[bi]);
+            phaseIdx[mod] = bi + 1;
+            anyLeft = true;
+          }
         }
       }
     }

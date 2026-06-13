@@ -51,6 +51,8 @@ class _UsersTabState extends ConsumerState<UsersTab> {
     final emailCtrl = TextEditingController(text: user?.email ?? '');
     final usernameCtrl = TextEditingController(text: user?.username ?? '');
     final passwordCtrl = TextEditingController();
+    final titoloCtrl = TextEditingController(text: user?.titolo ?? '');
+    final licenzaCtrl = TextEditingController(text: user?.licenza ?? '');
     UserRole selectedRole = user?.userRole ?? UserRole.attendee;
 
     // Qualifiche AMC (solo istruttori): regole ANNESSO MTOE-P-3-1.
@@ -175,6 +177,29 @@ class _UsersTabState extends ConsumerState<UsersTab> {
                         style: const TextStyle(color: kAccent, fontSize: 12),
                       ),
                     ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(child: _field('Titolo abilitazione', titoloCtrl)),
+                        const SizedBox(width: 8),
+                        Expanded(child: _field('Licenza Part-66', licenzaCtrl)),
+                        const SizedBox(width: 8),
+                        TextButton(
+                          onPressed: () {
+                            final cats = <String>{};
+                            for (final q in allQuals) {
+                              if (selQuals.contains(q.id) &&
+                                  q.group.startsWith('Categoria B')) {
+                                cats.add(q.group.replaceFirst('Categoria ', ''));
+                              }
+                            }
+                            final sorted = cats.toList()..sort();
+                            setDlg(() => licenzaCtrl.text = sorted.join(' / '));
+                          },
+                          child: const Text('Auto-popola', style: TextStyle(fontSize: 11)),
+                        ),
+                      ],
+                    ),
                   ],
                 ],
               ),
@@ -204,6 +229,10 @@ class _UsersTabState extends ConsumerState<UsersTab> {
                     password: password,
                     role: selectedRole,
                     qualifications: isInstructor ? selQuals.toList() : null,
+                    titolo: isInstructor && titoloCtrl.text.trim().isNotEmpty
+                        ? titoloCtrl.text.trim() : null,
+                    licenza: isInstructor && licenzaCtrl.text.trim().isNotEmpty
+                        ? licenzaCtrl.text.trim() : null,
                   );
                   if (isInstructor) {
                     await AmcService().applyQualifications(created.id, selQuals);
@@ -222,6 +251,10 @@ class _UsersTabState extends ConsumerState<UsersTab> {
                     role: selectedRole.value,
                     qualifications:
                         setQuals ? selQuals.toList() : user.qualifications,
+                    titolo: isInstructor && titoloCtrl.text.trim().isNotEmpty
+                        ? titoloCtrl.text.trim() : null,
+                    licenza: isInstructor && licenzaCtrl.text.trim().isNotEmpty
+                        ? licenzaCtrl.text.trim() : null,
                   ));
                   if (password.isNotEmpty) {
                     await _userService.updatePassword(user.id, password);

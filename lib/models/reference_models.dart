@@ -19,6 +19,9 @@ class SubmoduleInfo {
   final int? levelB2;
   final List<String> topics;
   final List<PracticalTask> practicalTasks;
+  // Numero del modulo che deve essere completamente schedulato prima di questo.
+  // Usato per l'ordinamento "per differenza" (es. 11A dipende da 12, 11B da 11).
+  final int? perDifferenzaOf;
 
   const SubmoduleInfo({
     required this.code,
@@ -29,6 +32,7 @@ class SubmoduleInfo {
     this.levelB2,
     this.topics = const [],
     this.practicalTasks = const [],
+    this.perDifferenzaOf,
   });
 
   factory SubmoduleInfo.fromJson(Map<String, dynamic> j) => SubmoduleInfo(
@@ -43,6 +47,7 @@ class SubmoduleInfo {
         .whereType<Map<String, dynamic>>()
         .map(PracticalTask.fromJson)
         .toList(),
+    perDifferenzaOf: j['perDifferenzaOf'] as int?,
   );
 }
 

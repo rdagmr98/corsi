@@ -1705,7 +1705,10 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
               if (lesson.confirmed) Icon(Icons.check_circle, color: color, size: 10),
               GestureDetector(
                 onTap: () => _deleteLesson(lesson),
-                child: const Icon(Icons.close, color: kError, size: 10),
+                child: Padding(
+                  padding: const EdgeInsets.all(3),
+                  child: const Icon(Icons.close, color: kError, size: 14),
+                ),
               ),
             ]),
             const SizedBox(height: 2),

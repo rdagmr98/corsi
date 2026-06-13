@@ -43,6 +43,8 @@ class UserService {
     required UserRole role,
     String? email,
     List<String>? qualifications,
+    String? titolo,
+    String? licenza,
   }) async {
     final users = _db.users.toList();
     final now = DateTime.now().toIso8601String();
@@ -57,6 +59,8 @@ class UserService {
       'role': role.value,
       'is_active': true,
       if (qualifications != null) 'qualifications': qualifications,
+      if (titolo != null && titolo.isNotEmpty) 'titolo': titolo,
+      if (licenza != null && licenza.isNotEmpty) 'licenza': licenza,
       'created_at': now,
       'updated_at': now,
     };

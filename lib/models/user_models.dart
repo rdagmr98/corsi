@@ -38,6 +38,9 @@ class AppUser {
   final DateTime? daaExpiry;
   // Qualifiche AMC (id da reference.amcRules.qualifications); null = mai compilate.
   final List<String>? qualifications;
+  // Titolo abilitazione e numero licenza Part-66 (solo istruttori).
+  final String? titolo;
+  final String? licenza;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -52,6 +55,8 @@ class AppUser {
     this.goOverride = false,
     this.daaExpiry,
     this.qualifications,
+    this.titolo,
+    this.licenza,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -76,6 +81,8 @@ class AppUser {
     qualifications: j['qualifications'] != null
         ? List<String>.from(j['qualifications'] as List)
         : null,
+    titolo: j['titolo'] as String?,
+    licenza: j['licenza'] as String?,
     createdAt: DateTime.parse(
       j['created_at'] as String? ?? DateTime.now().toIso8601String(),
     ),
@@ -95,6 +102,8 @@ class AppUser {
     'go_override': goOverride,
     if (daaExpiry != null) 'daaa_expiry': daaExpiry!.toIso8601String().substring(0, 10),
     if (qualifications != null) 'qualifications': qualifications,
+    if (titolo != null) 'titolo': titolo,
+    if (licenza != null) 'licenza': licenza,
     'created_at': createdAt.toIso8601String(),
     'updated_at': updatedAt.toIso8601String(),
   };
@@ -111,6 +120,8 @@ class AppUser {
     bool? goOverride,
     Object? daaExpiry = _s,
     Object? qualifications = _s,
+    Object? titolo = _s,
+    Object? licenza = _s,
   }) => AppUser(
     id: id,
     nome: nome ?? this.nome,
@@ -124,6 +135,8 @@ class AppUser {
     qualifications: identical(qualifications, _s)
         ? this.qualifications
         : qualifications as List<String>?,
+    titolo: identical(titolo, _s) ? this.titolo : titolo as String?,
+    licenza: identical(licenza, _s) ? this.licenza : licenza as String?,
     createdAt: createdAt,
     updatedAt: DateTime.now(),
   );
