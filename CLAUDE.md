@@ -2,6 +2,18 @@
 
 App: `rdagmr98.github.io/corsi/` | Repo app: `rdagmr98/corsi` | Repo dati: `rdagmr98/corsi-data`
 
+## File di riferimento — CONSULTARE SEMPRE quando si toccano dati/regole
+
+| Situazione | File da aprire |
+|------------|----------------|
+| Ore T/P di un modulo/sottomodulo sbagliate | `C:\Users\Gianmarco\Documents\programmi\b1.pdf` (o b2/b1mil/b2mil) |
+| Assenze, recuperi, situazione frequentatori | `C:\Users\Gianmarco\Documents\Controlloistruttori.xlsx` → foglio `assenze 3btc` (R5-R12 = nette oltre soglia; R41-R48 = raw unrecovered) |
+| Chi può insegnare un sottomodulo (AMC) | `C:\Users\Gianmarco\Documents\ANNESSO MTOE-P-3-1.docx` → tabelle T2 (teoria) e T3 (pratica). Font trick: "3.2" in Times New Roman = "3.1" reale |
+| Currency istruttori reale | `Controlloistruttori.xlsx` → fogli `istruttori nell'anno`, `currency per modulo`, `currency 2 anni` |
+| Pianificazione settimanale vs app | `C:\Users\Gianmarco\Documents\BTC\00_ProgSettimanale_TOTALE_V3.xlsx` |
+| Voti graduatoria | `C:\Users\Gianmarco\Documents\voti graduatoria 3btc.xlsx` |
+| Normativa presenze/recuperi | `C:\Users\Gianmarco\Documents\corso formatori\Direttiva_Norme_Svolgimento_Corsi_AVES_Ed._2022.pdf` |
+
 ## Release workflow
 ```
 flutter build web --release --base-href "/corsi/"
