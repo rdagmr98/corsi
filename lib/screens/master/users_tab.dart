@@ -4,9 +4,7 @@ import '../../models/reference_models.dart';
 import '../../models/user_models.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/amc_service.dart';
-import '../../services/gh_db_service.dart';
 import '../../services/reference_service.dart';
-import '../../services/schedule_service.dart';
 import '../../services/user_service.dart';
 import '../../theme.dart';
 
@@ -53,8 +51,6 @@ class _UsersTabState extends ConsumerState<UsersTab> {
     final emailCtrl = TextEditingController(text: user?.email ?? '');
     final usernameCtrl = TextEditingController(text: user?.username ?? '');
     final passwordCtrl = TextEditingController();
-    final titoloCtrl = TextEditingController(text: user?.titolo ?? '');
-    final licenzaCtrl = TextEditingController(text: user?.licenza ?? '');
     UserRole selectedRole = user?.userRole ?? UserRole.attendee;
 
     // Qualifiche AMC (solo istruttori): regole ANNESSO MTOE-P-3-1.
@@ -64,7 +60,6 @@ class _UsersTabState extends ConsumerState<UsersTab> {
       qualGroups.putIfAbsent(q.group, () => []).add(q);
     }
     final selQuals = <String>{...?user?.qualifications};
-    bool qualsTouched = false;
 
     await showDialog(
       context: context,
@@ -118,46 +113,9 @@ class _UsersTabState extends ConsumerState<UsersTab> {
                               color: kText, fontSize: 13, fontWeight: FontWeight.w600)),
                     ),
                     const SizedBox(height: 4),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Expanded(
-                          child: Text(
-                            'I sottomoduli insegnabili vengono assegnati in automatico secondo l\'ANNESSO MTOE-P-3-1.',
-                            style: TextStyle(color: kTextDim, fontSize: 11),
-                          ),
-                        ),
-                        if (user != null) ...[
-                          const SizedBox(width: 8),
-                          TextButton(
-                            style: TextButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                            ),
-                            onPressed: () {
-                              final db = GhDbService();
-                              final taughtT = <String>{};
-                              final taughtP = <String>{};
-                              for (final l in db.schedules) {
-                                if (l['instructor_id'] != user.id) continue;
-                                final nc = ScheduleService.normalizeSubCode(
-                                    l['submodule_code'] as String? ?? '');
-                                if (nc.isEmpty) continue;
-                                if (l['type'] == 'teoria') taughtT.add(nc);
-                                else taughtP.add(nc);
-                              }
-                              final suggested = _refService
-                                  .reverseEngineerQuals(taughtT, taughtP);
-                              setDlg(() {
-                                qualsTouched = true;
-                                selQuals
-                                  ..clear()
-                                  ..addAll(suggested);
-                              });
-                            },
-                            child: const Text('Auto-rileva', style: TextStyle(fontSize: 11)),
-                          ),
-                        ],
-                      ],
+                    const Text(
+                      'I sottomoduli insegnabili vengono assegnati in automatico secondo l\'ANNESSO MTOE-P-3-1.',
+                      style: TextStyle(color: kTextDim, fontSize: 11),
                     ),
                     const SizedBox(height: 10),
                     for (final entry in qualGroups.entries) ...[
@@ -190,7 +148,6 @@ class _UsersTabState extends ConsumerState<UsersTab> {
                                 backgroundColor: kSurface,
                                 visualDensity: VisualDensity.compact,
                                 onSelected: (v) => setDlg(() {
-                                  qualsTouched = true;
                                   v ? selQuals.add(q.id) : selQuals.remove(q.id);
                                 }),
                               ),
@@ -212,14 +169,6 @@ class _UsersTabState extends ConsumerState<UsersTab> {
                         '${_refService.teachableSubmodules(selQuals, theory: false).length} pratica',
                         style: const TextStyle(color: kAccent, fontSize: 12),
                       ),
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(child: _field('Titolo abilitazione', titoloCtrl)),
-                        const SizedBox(width: 8),
-                        Expanded(child: _field('Licenza Part-66', licenzaCtrl)),
-                      ],
                     ),
                   ],
                 ],
@@ -250,37 +199,23 @@ class _UsersTabState extends ConsumerState<UsersTab> {
                     password: password,
                     role: selectedRole,
                     qualifications: isInstructor ? selQuals.toList() : null,
-                    titolo: isInstructor && titoloCtrl.text.trim().isNotEmpty
-                        ? titoloCtrl.text.trim() : null,
-                    licenza: isInstructor && licenzaCtrl.text.trim().isNotEmpty
-                        ? licenzaCtrl.text.trim() : null,
                   );
                   if (isInstructor) {
                     await AmcService().applyQualifications(created.id, selQuals);
                   }
                 } else {
-                  // Le griglie AMC si toccano solo se le qualifiche sono state
-                  // compilate (ora o in passato): gli istruttori storici senza
-                  // qualifiche registrate restano gestiti a mano.
-                  final setQuals =
-                      isInstructor && (qualsTouched || user.qualifications != null);
                   await _userService.updateUser(user.copyWith(
                     nome: nome,
                     cognome: cognome,
                     email: emailCtrl.text.trim().isEmpty ? null : emailCtrl.text.trim(),
                     username: username,
                     role: selectedRole.value,
-                    qualifications:
-                        setQuals ? selQuals.toList() : user.qualifications,
-                    titolo: isInstructor && titoloCtrl.text.trim().isNotEmpty
-                        ? titoloCtrl.text.trim() : null,
-                    licenza: isInstructor && licenzaCtrl.text.trim().isNotEmpty
-                        ? licenzaCtrl.text.trim() : null,
+                    qualifications: isInstructor ? selQuals.toList() : user.qualifications,
                   ));
                   if (password.isNotEmpty) {
                     await _userService.updatePassword(user.id, password);
                   }
-                  if (setQuals) {
+                  if (isInstructor) {
                     await AmcService().applyQualifications(user.id, selQuals);
                   }
                 }
