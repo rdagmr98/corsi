@@ -67,6 +67,11 @@ GitHub Actions (`.github/workflows/deploy.yml`) deploya automaticamente su push 
 
 ## STATO SESSIONE — aggiornato 2026-06-13
 
+### Ultime modifiche (2026-06-13) — sessione 4
+1. **Note slot vuoti (schedule_tab)**: tasto destro/long-press su cella vuota → dialog testo libero per aggiungere nota (es. "Solo 4 ore — visita medica"). Nota visualizzata in giallo con icona sticky_note. Elimina con tasto "Elimina" nel dialog. Dati in `notes.json` (nuovo file corsi-data, caricato da GhDbService). `SlotNote` model, `getNotesForWeek/addNote/deleteNote` in ScheduleService.
+2. **Generatore intelligente**: venerdì filtrato a slot 1-3 (bug fix — prima usava tutti e 6 gli slot). Best-effort rotazione blocco stesso sottomodulo al venerdì (lookahead 40). Pratica in blocchi da 4h (era 2-3h). Teoria max 3h.
+3. **Commit**: `1be99bb`
+
 ### Ultime modifiche (2026-06-13) — sessione 3
 1. **Dialog recupero (schedule_tab)**: pratica suggerita per prima. `unrecPByModule`/`unrecPByAttendee` calcolati separatamente. Dropdown moduli: badge rosso "XP" se ci sono ore di pratica da recuperare, giallo "XT" per teoria. Chip frequentatori: badge "P" rosso + ordinati pratica-first per il modulo selezionato. Testo suggerimento aggiornato. Commit: `305d1b3`
 
