@@ -107,14 +107,15 @@ class _DirectorOverviewTabState extends ConsumerState<DirectorOverviewTab> {
         }
       }
       for (final m in typeInfo.modules) {
-        final t = m.totalHours.toDouble();
-        final raw = taughtHours[m.number] ?? 0.0;
-        totalHours += t;
-        doneTotal += t > 0 && raw > t ? t : raw;
-        final rt = rawT[m.number] ?? 0.0;
-        final rp = rawP[m.number] ?? 0.0;
-        doneTotalT += m.theoryHours > 0 && rt > m.theoryHours ? m.theoryHours.toDouble() : rt;
-        doneTotalP += m.practicalHours > 0 && rp > m.practicalHours ? m.practicalHours.toDouble() : rp;
+        totalHours += m.totalHours;
+        for (final sub in m.submodules) {
+          final nc = ScheduleService.normalizeSubCode(sub.code);
+          final st = (subRawT[nc] ?? 0.0).clamp(0.0, sub.theoryHours.toDouble());
+          final sp = (subRawP[nc] ?? 0.0).clamp(0.0, sub.practicalHours.toDouble());
+          doneTotal += st + sp;
+          doneTotalT += st;
+          doneTotalP += sp;
+        }
       }
     } else {
       doneTotal = taughtHours.values.fold(0.0, (a, b) => a + b);
@@ -200,13 +201,14 @@ class _DirectorOverviewTabState extends ConsumerState<DirectorOverviewTab> {
                 style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 12),
             ...typeInfo.modules.map((m) {
-              final rawDone = taughtHours[m.number] ?? 0.0;
+              double doneT = 0, doneP = 0;
+              for (final sub in m.submodules) {
+                final nc = ScheduleService.normalizeSubCode(sub.code);
+                doneT += (subRawT[nc] ?? 0.0).clamp(0.0, sub.theoryHours.toDouble());
+                doneP += (subRawP[nc] ?? 0.0).clamp(0.0, sub.practicalHours.toDouble());
+              }
               final total = m.totalHours.toDouble();
-              final done = total > 0 && rawDone > total ? total : rawDone;
-              final rawDoneT = rawT[m.number] ?? 0.0;
-              final rawDoneP = rawP[m.number] ?? 0.0;
-              final doneT = m.theoryHours > 0 && rawDoneT > m.theoryHours ? m.theoryHours.toDouble() : rawDoneT;
-              final doneP = m.practicalHours > 0 && rawDoneP > m.practicalHours ? m.practicalHours.toDouble() : rawDoneP;
+              final done = doneT + doneP;
               final pT = total > 0 ? doneT / total : 0.0;
               final pP = total > 0 ? doneP / total : 0.0;
               return GestureDetector(
@@ -326,13 +328,11 @@ class _DirectorOverviewTabState extends ConsumerState<DirectorOverviewTab> {
                 ...subs.map((s) {
                   final sPlanT = (s.theoryHours as num).toDouble();
                   final sPlanP = (s.practicalHours as num).toDouble();
-                  final rawST = subRawT[s.code as String] ?? 0.0;
-                  final rawSP = subRawP[s.code as String] ?? 0.0;
-                  // Se il modulo è completato nel totale, mostra ogni sotto come 100%.
-                  final isModuleDone = (planT + planP) > 0 &&
-                      (doneT + doneP) >= (planT + planP);
-                  final sDoneT = isModuleDone ? sPlanT : (rawST > sPlanT ? sPlanT : rawST);
-                  final sDoneP = isModuleDone ? sPlanP : (rawSP > sPlanP ? sPlanP : rawSP);
+                  final nc = ScheduleService.normalizeSubCode(s.code as String);
+                  final rawST = subRawT[nc] ?? 0.0;
+                  final rawSP = subRawP[nc] ?? 0.0;
+                  final sDoneT = rawST > sPlanT ? sPlanT : rawST;
+                  final sDoneP = rawSP > sPlanP ? sPlanP : rawSP;
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 6),
                     child: Column(

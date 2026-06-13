@@ -428,18 +428,11 @@ class ScheduleService {
     //   2 – perDifferenzaOf == 11 (sottomoduli M11B, dopo M11A)
     final blocksByPhase = <int, Map<int, List<List<(String, int, String)>>>>{};
     for (final m in typeInfo.modules) {
-      int modPlanH = 0, modDoneH = 0;
-      for (final sub in m.submodules) {
-        final nc = normalizeSubCode(sub.code);
-        modPlanH += sub.theoryHours + sub.practicalHours;
-        modDoneH += (doneT[nc] ?? 0) + (doneP[nc] ?? 0);
-      }
-      if (modPlanH > 0 && modDoneH >= modPlanH) continue;
-
       for (final sub in m.submodules) {
         final nc = normalizeSubCode(sub.code);
         final remT = (sub.theoryHours    - (doneT[nc] ?? 0)).clamp(0, sub.theoryHours);
         final remP = (sub.practicalHours - (doneP[nc] ?? 0)).clamp(0, sub.practicalHours);
+        if (remT == 0 && remP == 0) continue;
 
         final phase = sub.perDifferenzaOf == null
             ? 0
