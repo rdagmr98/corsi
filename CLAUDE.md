@@ -67,6 +67,11 @@ GitHub Actions (`.github/workflows/deploy.yml`) deploya automaticamente su push 
 
 ## STATO SESSIONE — aggiornato 2026-06-13
 
+### Ultime modifiche (2026-06-13) — sessione 5
+1. **Fix record recuperi BTC3 (records.json, corsi-data commit 005160e)**: eliminati 63 record sintetici con recovered_module errato (erano in M3/M4 dove nessuno aveva assenze); i 63 record recupero da Excel ora hanno `recovered_module` = module_number della lezione di recupero.
+2. **Soglia recuperi globale (attendance_service.dart, commit 0d342f5)**: `attendeesOverRecoveryLimit` ora usa soglia globale — assenze nette totali > 10% ore totali pianificate del corso (come formula Excel "nette oltre soglia"). Prima era per-modulo (molto più restrittivo). Con ~1680h pianificate (b1), soglia = 168h; GRECO max 81h nette = 4.8% → tutti OK.
+3. **Task ID pratica (sessione precedente)**: aggiunto `task_id` su `ScheduledLesson`, dropdown task nel dialog _addLesson, badge "T{id}" nel calendario, visibile in tutti i ruoli. Auto-assegnazione nella generazione.
+
 ### Ultime modifiche (2026-06-13) — sessione 4
 1. **Note slot vuoti (schedule_tab)**: tasto destro/long-press su cella vuota → dialog testo libero per aggiungere nota (es. "Solo 4 ore — visita medica"). Nota visualizzata in giallo con icona sticky_note. Elimina con tasto "Elimina" nel dialog. Dati in `notes.json` (nuovo file corsi-data, caricato da GhDbService). `SlotNote` model, `getNotesForWeek/addNote/deleteNote` in ScheduleService.
 2. **Generatore intelligente**: venerdì filtrato a slot 1-3 (bug fix — prima usava tutti e 6 gli slot). Best-effort rotazione blocco stesso sottomodulo al venerdì (lookahead 40). Pratica in blocchi da 4h (era 2-3h). Teoria max 3h.
