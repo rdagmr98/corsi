@@ -134,7 +134,9 @@ class _AttendeeScheduleScreenState extends ConsumerState<AttendeeScheduleScreen>
                                     Text(isTheory ? 'T' : 'P', style: TextStyle(color: color, fontSize: 10)),
                                   ],
                                 ),
-                                title: Text(l.topic, style: const TextStyle(color: kText, fontSize: 13)),
+                                title: Text(l.topic,
+                                    style: const TextStyle(color: kText, fontSize: 13),
+                                    maxLines: 2),
                                 subtitle: Text('M${_refService.moduleLabel(l.moduleNumber)}', style: const TextStyle(color: kTextDim, fontSize: 11)),
                                 trailing: l.confirmed
                                     ? const Icon(Icons.check_circle, color: kAccent, size: 16)

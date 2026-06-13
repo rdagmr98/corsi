@@ -394,8 +394,12 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
                         subtitle: Text(
                             '${DateFormat('dd/MM/yyyy').format(l.date)} $hoursStr',
                             style: const TextStyle(color: kTextDim, fontSize: 11)),
-                        trailing: Text(statusText,
-                            style: TextStyle(color: statusColor, fontSize: 11)),
+                        trailing: SizedBox(
+                            width: 96,
+                            child: Text(statusText,
+                                textAlign: TextAlign.right,
+                                maxLines: 2,
+                                style: TextStyle(color: statusColor, fontSize: 11))),
                       ),
                     );
                   },

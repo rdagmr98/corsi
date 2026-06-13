@@ -175,9 +175,12 @@ class _InstructorScheduleScreenState extends ConsumerState<InstructorScheduleScr
                               style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12),
                             ),
                           ),
-                          title: Text(displayTopic, style: const TextStyle(color: kText, fontSize: 13)),
+                          title: Text(displayTopic,
+                              style: const TextStyle(color: kText, fontSize: 13),
+                              maxLines: 2),
                           subtitle: Text('M${_refService.moduleLabel(l.moduleNumber)} · ${isTheory ? "Teoria" : "Pratica"} · $hoursStr',
-                              style: const TextStyle(color: kTextDim, fontSize: 11)),
+                              style: const TextStyle(color: kTextDim, fontSize: 11),
+                              maxLines: 1),
                           trailing: l.confirmed
                               ? const Icon(Icons.check_circle, color: kAccent, size: 18)
                               : const Icon(Icons.schedule, color: kTextDim, size: 18),

@@ -104,21 +104,26 @@ class _AttendeeGradesScreenState extends ConsumerState<AttendeeGradesScreen> {
                         padding: const EdgeInsets.all(16),
                         child: Column(
                           children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
+                            Column(
                               children: [
-                                Text(
-                                  globalAvg.toStringAsFixed(3),
-                                  style: TextStyle(
-                                    color: globalAvg >= 22.5 ? kAccent : kError,
-                                    fontSize: 36,
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text(
+                                      globalAvg.toStringAsFixed(3),
+                                      style: TextStyle(
+                                        color: globalAvg >= 22.5 ? kAccent : kError,
+                                        fontSize: 36,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    const Text(' /30',
+                                        style: TextStyle(color: kTextDim, fontSize: 18)),
+                                  ],
                                 ),
-                                const Text(' /30',
-                                    style: TextStyle(color: kTextDim, fontSize: 18)),
-                                const SizedBox(width: 12),
+                                const SizedBox(height: 2),
                                 const Text('Media ponderata graduatoria',
+                                    textAlign: TextAlign.center,
                                     style: TextStyle(color: kTextDim, fontSize: 11)),
                               ],
                             ),

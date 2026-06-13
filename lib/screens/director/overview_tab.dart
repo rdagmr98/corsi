@@ -91,13 +91,17 @@ class _DirectorOverviewTabState extends ConsumerState<DirectorOverviewTab> {
     double totalHours = 0;
     final rawT = <int, double>{};
     final rawP = <int, double>{};
+    final subRawT = <String, double>{};
+    final subRawP = <String, double>{};
     if (typeInfo != null) {
       for (final l in _scheduleService.getLessonsForCourse(course.id)) {
         if (!l.confirmed) continue;
         if (l.type != 'pratica') {
           rawT[l.moduleNumber] = (rawT[l.moduleNumber] ?? 0) + 1;
+          if (l.submoduleCode.isNotEmpty) subRawT[l.submoduleCode] = (subRawT[l.submoduleCode] ?? 0) + 1;
         } else {
           rawP[l.moduleNumber] = (rawP[l.moduleNumber] ?? 0) + 1;
+          if (l.submoduleCode.isNotEmpty) subRawP[l.submoduleCode] = (subRawP[l.submoduleCode] ?? 0) + 1;
         }
       }
       for (final m in typeInfo.modules) {
@@ -204,7 +208,7 @@ class _DirectorOverviewTabState extends ConsumerState<DirectorOverviewTab> {
               final pT = total > 0 ? doneT / total : 0.0;
               final pP = total > 0 ? doneP / total : 0.0;
               return GestureDetector(
-                onTap: () => _showModuleDetail(context, m, doneT, doneP),
+                onTap: () => _showModuleDetail(context, m, doneT, doneP, subRawT, subRawP),
                 child: Padding(
                   padding: const EdgeInsets.only(bottom: 8),
                   child: Row(
@@ -286,9 +290,11 @@ class _DirectorOverviewTabState extends ConsumerState<DirectorOverviewTab> {
     );
   }
 
-  void _showModuleDetail(BuildContext context, dynamic m, double doneT, double doneP) {
+  void _showModuleDetail(BuildContext context, dynamic m, double doneT, double doneP,
+      Map<String, double> subRawT, Map<String, double> subRawP) {
     final planT = (m.theoryHours as num).toDouble();
     final planP = (m.practicalHours as num).toDouble();
+    final subs = m.submodules as List;
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -298,12 +304,63 @@ class _DirectorOverviewTabState extends ConsumerState<DirectorOverviewTab> {
               style: const TextStyle(color: kPrimary, fontSize: 15, fontWeight: FontWeight.bold)),
           Text(m.name as String, style: const TextStyle(color: kTextDim, fontSize: 12)),
         ]),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          _hoursRow('Totale', (doneT + doneP).toInt(), (planT + planP).toInt(), kText),
-          const Divider(color: kBorder, height: 16),
-          _hoursRow('Teoria', doneT.toInt(), planT.toInt(), kPrimary),
-          if (planP > 0) _hoursRow('Pratica', doneP.toInt(), planP.toInt(), kAccent),
-        ]),
+        content: SizedBox(
+          width: 360,
+          child: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              _hoursRow('Totale', (doneT + doneP).toInt(), (planT + planP).toInt(), kText),
+              const Divider(color: kBorder, height: 16),
+              _hoursRow('Teoria', doneT.toInt(), planT.toInt(), kPrimary),
+              if (planP > 0) _hoursRow('Pratica', doneP.toInt(), planP.toInt(), kAccent),
+              if (subs.isNotEmpty) ...[
+                const Divider(color: kBorder, height: 16),
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('Per sottomodulo',
+                      style: TextStyle(color: kTextDim, fontSize: 11)),
+                ),
+                const SizedBox(height: 4),
+                ...subs.map((s) {
+                  final sPlanT = (s.theoryHours as num).toDouble();
+                  final sPlanP = (s.practicalHours as num).toDouble();
+                  final rawST = subRawT[s.code as String] ?? 0.0;
+                  final rawSP = subRawP[s.code as String] ?? 0.0;
+                  final sDoneT = rawST > sPlanT ? sPlanT : rawST;
+                  final sDoneP = rawSP > sPlanP ? sPlanP : rawSP;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('${s.code}  ${s.name}',
+                            style: const TextStyle(color: kText, fontSize: 11, fontWeight: FontWeight.w500)),
+                        const SizedBox(height: 2),
+                        Row(children: [
+                          const SizedBox(width: 8),
+                          const SizedBox(width: 12, child: Text('T', style: TextStyle(color: kTextDim, fontSize: 11))),
+                          Text('${sDoneT.toInt()} / ${sPlanT.toInt()}h',
+                              style: const TextStyle(color: kPrimary, fontSize: 11)),
+                          const Spacer(),
+                          Text(sPlanT > 0 ? '${(sDoneT / sPlanT * 100).round()}%' : '—',
+                              style: const TextStyle(color: kPrimary, fontSize: 11)),
+                        ]),
+                        if (sPlanP > 0) Row(children: [
+                          const SizedBox(width: 8),
+                          const SizedBox(width: 12, child: Text('P', style: TextStyle(color: kTextDim, fontSize: 11))),
+                          Text('${sDoneP.toInt()} / ${sPlanP.toInt()}h',
+                              style: const TextStyle(color: kAccent, fontSize: 11)),
+                          const Spacer(),
+                          Text('${(sDoneP / sPlanP * 100).round()}%',
+                              style: const TextStyle(color: kAccent, fontSize: 11)),
+                        ]),
+                      ],
+                    ),
+                  );
+                }),
+              ],
+            ]),
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),

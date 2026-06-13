@@ -424,7 +424,7 @@ class _CoursesTabState extends ConsumerState<CoursesTab> {
                         ),
                         title: Row(
                           children: [
-                            Text(c.title, style: const TextStyle(color: kText, fontWeight: FontWeight.w600)),
+                            Flexible(child: Text(c.title, style: const TextStyle(color: kText, fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis)),
                             const SizedBox(width: 8),
                             if (typeInfo != null)
                               Container(

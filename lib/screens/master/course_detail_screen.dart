@@ -132,12 +132,16 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
     final confirmedByMod = <int, int>{};
     final confirmedTByMod = <int, int>{};
     final confirmedPByMod = <int, int>{};
+    final confirmedSubT = <String, int>{};
+    final confirmedSubP = <String, int>{};
     for (final l in confirmed) {
       confirmedByMod[l.moduleNumber] = (confirmedByMod[l.moduleNumber] ?? 0) + 1;
       if (l.isTheory) {
         confirmedTByMod[l.moduleNumber] = (confirmedTByMod[l.moduleNumber] ?? 0) + 1;
+        if (l.submoduleCode.isNotEmpty) confirmedSubT[l.submoduleCode] = (confirmedSubT[l.submoduleCode] ?? 0) + 1;
       } else {
         confirmedPByMod[l.moduleNumber] = (confirmedPByMod[l.moduleNumber] ?? 0) + 1;
+        if (l.submoduleCode.isNotEmpty) confirmedSubP[l.submoduleCode] = (confirmedSubP[l.submoduleCode] ?? 0) + 1;
       }
     }
 
@@ -201,7 +205,7 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
         final pP = total > 0 ? doneP / total : 0.0;
         final col = moduleColor(m.number);
         return GestureDetector(
-          onTap: () => _showModuleDetail(context, m, doneT.toDouble(), doneP.toDouble()),
+          onTap: () => _showModuleDetail(context, m, doneT.toDouble(), doneP.toDouble(), confirmedSubT, confirmedSubP),
           child: Padding(
             padding: const EdgeInsets.only(bottom: 10),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -522,11 +526,13 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
     );
   }
 
-  void _showModuleDetail(BuildContext context, dynamic m, double doneT, double doneP) {
+  void _showModuleDetail(BuildContext context, dynamic m, double doneT, double doneP,
+      Map<String, int> confirmedSubT, Map<String, int> confirmedSubP) {
     final planT = (m.theoryHours as num).toDouble();
     final planP = (m.practicalHours as num).toDouble();
     final planTotal = planT + planP;
     final doneTotal = doneT + doneP;
+    final subs = m.submodules as List;
     Widget row(String label, double done, double plan, Color color) => Padding(
       padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(children: [
@@ -546,12 +552,63 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
               style: const TextStyle(color: kPrimary, fontSize: 15, fontWeight: FontWeight.bold)),
           Text(m.name as String, style: const TextStyle(color: kTextDim, fontSize: 12)),
         ]),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          row('Totale', doneTotal, planTotal, kText),
-          const Divider(color: kBorder, height: 16),
-          row('Teoria', doneT, planT, kPrimary),
-          if (planP > 0) row('Pratica', doneP, planP, kAccent),
-        ]),
+        content: SizedBox(
+          width: 360,
+          child: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              row('Totale', doneTotal, planTotal, kText),
+              const Divider(color: kBorder, height: 16),
+              row('Teoria', doneT, planT, kPrimary),
+              if (planP > 0) row('Pratica', doneP, planP, kAccent),
+              if (subs.isNotEmpty) ...[
+                const Divider(color: kBorder, height: 16),
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('Per sottomodulo',
+                      style: TextStyle(color: kTextDim, fontSize: 11)),
+                ),
+                const SizedBox(height: 4),
+                ...subs.map((s) {
+                  final sPlanT = (s.theoryHours as num).toDouble();
+                  final sPlanP = (s.practicalHours as num).toDouble();
+                  final rawST = (confirmedSubT[s.code as String] ?? 0).toDouble();
+                  final rawSP = (confirmedSubP[s.code as String] ?? 0).toDouble();
+                  final sDoneT = rawST > sPlanT ? sPlanT : rawST;
+                  final sDoneP = rawSP > sPlanP ? sPlanP : rawSP;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('${s.code}  ${s.name}',
+                            style: const TextStyle(color: kText, fontSize: 11, fontWeight: FontWeight.w500)),
+                        const SizedBox(height: 2),
+                        Row(children: [
+                          const SizedBox(width: 8),
+                          const SizedBox(width: 12, child: Text('T', style: TextStyle(color: kTextDim, fontSize: 11))),
+                          Text('${sDoneT.toInt()} / ${sPlanT.toInt()}h',
+                              style: const TextStyle(color: kPrimary, fontSize: 11)),
+                          const Spacer(),
+                          Text(sPlanT > 0 ? '${(sDoneT / sPlanT * 100).round()}%' : '—',
+                              style: const TextStyle(color: kPrimary, fontSize: 11)),
+                        ]),
+                        if (sPlanP > 0) Row(children: [
+                          const SizedBox(width: 8),
+                          const SizedBox(width: 12, child: Text('P', style: TextStyle(color: kTextDim, fontSize: 11))),
+                          Text('${sDoneP.toInt()} / ${sPlanP.toInt()}h',
+                              style: const TextStyle(color: kAccent, fontSize: 11)),
+                          const Spacer(),
+                          Text('${(sDoneP / sPlanP * 100).round()}%',
+                              style: const TextStyle(color: kAccent, fontSize: 11)),
+                        ]),
+                      ],
+                    ),
+                  );
+                }),
+              ],
+            ]),
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
