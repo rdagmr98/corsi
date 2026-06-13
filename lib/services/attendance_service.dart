@@ -111,12 +111,26 @@ class AttendanceService {
     final recordMap = {for (final r in records) r.scheduleId: r};
 
     final Map<int, int> confirmedByModule = {};
+    final Map<int, int> confirmedTByModule = {};
+    final Map<int, int> confirmedPByModule = {};
     final Map<int, int> absentByModule = {};
+    final Map<int, int> absentTByModule = {};
+    final Map<int, int> absentPByModule = {};
     for (final l in confirmedLessons) {
       confirmedByModule[l.moduleNumber] = (confirmedByModule[l.moduleNumber] ?? 0) + 1;
+      if (l.isTheory) {
+        confirmedTByModule[l.moduleNumber] = (confirmedTByModule[l.moduleNumber] ?? 0) + 1;
+      } else {
+        confirmedPByModule[l.moduleNumber] = (confirmedPByModule[l.moduleNumber] ?? 0) + 1;
+      }
       final r = recordMap[l.id];
       if (r != null && !r.present) {
         absentByModule[l.moduleNumber] = (absentByModule[l.moduleNumber] ?? 0) + 1;
+        if (l.isTheory) {
+          absentTByModule[l.moduleNumber] = (absentTByModule[l.moduleNumber] ?? 0) + 1;
+        } else {
+          absentPByModule[l.moduleNumber] = (absentPByModule[l.moduleNumber] ?? 0) + 1;
+        }
       }
     }
 
@@ -137,16 +151,31 @@ class AttendanceService {
     final moduleKeys = {...confirmedByModule.keys, ...absentByModule.keys};
     for (final moduleNum in moduleKeys) {
       final confirmedH = confirmedByModule[moduleNum] ?? 0;
+      final confirmedT = confirmedTByModule[moduleNum] ?? 0;
+      final confirmedP = confirmedPByModule[moduleNum] ?? 0;
       final total = max(plannedHours[moduleNum] ?? 0, confirmedH);
       final absent = absentByModule[moduleNum] ?? 0;
+      final absentT = absentTByModule[moduleNum] ?? 0;
+      final absentP = absentPByModule[moduleNum] ?? 0;
       final recovered = recoveredByModule[moduleNum] ?? 0;
       final unrecovered = (absent - recovered).clamp(0, absent);
+      // Recoveries applied to practice first (stricter rule), then theory
+      final recForP = min(recovered, absentP);
+      final recForT = recovered - recForP;
+      final unrecoveredP = absentP - recForP;
+      final unrecoveredT = (absentT - recForT).clamp(0, absentT);
       result[moduleNum] = {
         'total': total,
-        'confirmed': confirmedByModule[moduleNum] ?? 0,
+        'confirmed': confirmedH,
+        'confirmedT': confirmedT,
+        'confirmedP': confirmedP,
         'absent': absent,
+        'absentT': absentT,
+        'absentP': absentP,
         'recovered': recovered,
         'unrecovered': unrecovered,
+        'unrecoveredT': unrecoveredT,
+        'unrecoveredP': unrecoveredP,
       };
     }
     return result;
@@ -188,34 +217,44 @@ class AttendanceService {
     await _db.saveRecords(records);
   }
 
-  /// Frequentatori OLTRE il limite del 10% di assenze non recuperate
-  /// rispetto a [totalHours] (ore confermate del corso): sono quelli che
-  /// devono recuperare per rientrare nel limite.
+  /// Frequentatori fuori limite: pratica con assenze non recuperate al 100%,
+  /// o teoria con >10% assenze non recuperate sulle ore di teoria confermate.
   Set<String> attendeesOverRecoveryLimit(
     String courseId,
     List<String> attendeeIds,
-    int totalHours,
+    List<ScheduledLesson> allLessons,
   ) {
-    if (totalHours == 0) return {};
+    final confirmed = allLessons
+        .where((l) => l.courseId == courseId && l.confirmed && l.timeSlot > 0)
+        .toList();
     final result = <String>{};
-    for (final id in attendeeIds) {
-      final stats = computeAbsences(courseId, id);
-      final absences = stats['absent'] ?? 0;
-      final recoveries = getAllRecords()
-          .where((r) => r.courseId == courseId && r.attendeeId == id && r.justification == 'recupero')
-          .length;
-      final unrecoveredAbsences = absences - recoveries;
-      if (unrecoveredAbsences / totalHours > 0.10) result.add(id);
+    for (final attendeeId in attendeeIds) {
+      final records = getRecordsForAttendee(courseId, attendeeId);
+      final recordMap = {for (final r in records) r.scheduleId: r};
+      int absentT = 0, absentP = 0, confirmedT = 0;
+      for (final l in confirmed) {
+        if (l.isTheory) confirmedT++;
+        final r = recordMap[l.id];
+        if (r != null && !r.present) {
+          if (l.isTheory) absentT++; else absentP++;
+        }
+      }
+      final recoveries = records.where((r) => r.justification == 'recupero').length;
+      final recForP = min(recoveries, absentP);
+      final unrecP = absentP - recForP;
+      final unrecT = (absentT - (recoveries - recForP)).clamp(0, absentT);
+      if (unrecP > 0 || (confirmedT > 0 && unrecT / confirmedT > 0.10)) {
+        result.add(attendeeId);
+      }
     }
     return result;
   }
 
-  /// Returns true if at least one attendee in the course has >10% absence rate
-  /// (excluding recoveries) relative to [totalHours].
+  /// True se almeno un frequentatore supera il limite assenze (pratica 100%, teoria 10%).
   bool courseHasAttendeesInRecovery(
     String courseId,
     List<String> attendeeIds,
-    int totalHours,
+    List<ScheduledLesson> allLessons,
   ) =>
-      attendeesOverRecoveryLimit(courseId, attendeeIds, totalHours).isNotEmpty;
+      attendeesOverRecoveryLimit(courseId, attendeeIds, allLessons).isNotEmpty;
 }

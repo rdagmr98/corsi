@@ -164,9 +164,10 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
         : '0';
     final anyWarning = typeInfo != null &&
         modStats.entries.any((e) {
-          final confirmed = e.value['confirmed'] ?? 0;
-          final unrecovered = e.value['unrecovered'] ?? 0;
-          return confirmed > 0 && unrecovered / confirmed > 0.10;
+          final cT     = e.value['confirmedT'] ?? 0;
+          final unrecT = e.value['unrecoveredT'] ?? 0;
+          final unrecP = e.value['unrecoveredP'] ?? 0;
+          return unrecP > 0 || (cT > 0 && unrecT / cT > 0.10);
         });
 
     return Card(
@@ -244,13 +245,15 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
     ModuleInfo mod,
     Map<String, int> stats,
   ) {
-    final confirmed  = stats['confirmed'] ?? 0;
-    final absent     = stats['absent'] ?? 0;
-    final recovered  = stats['recovered'] ?? 0;
+    final confirmed   = stats['confirmed'] ?? 0;
+    final confirmedT  = stats['confirmedT'] ?? 0;
+    final absent      = stats['absent'] ?? 0;
+    final recovered   = stats['recovered'] ?? 0;
     final unrecovered = stats['unrecovered'] ?? 0;
-    // 10% threshold on confirmed lessons (what actually happened, not planned)
-    final pct  = confirmed > 0 ? unrecovered / confirmed : 0.0;
-    final warn = pct > 0.10;
+    final unrecoveredT = stats['unrecoveredT'] ?? 0;
+    final unrecoveredP = stats['unrecoveredP'] ?? 0;
+    final pct  = confirmedT > 0 ? unrecoveredT / confirmedT : 0.0;
+    final warn = unrecoveredP > 0 || pct > 0.10;
     final presPct = confirmed > 0
         ? ((confirmed - absent) / confirmed * 100).toStringAsFixed(0)
         : '100';
@@ -278,7 +281,11 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
           overflow: TextOverflow.ellipsis),
       subtitle: warn
           ? Text(
-              'Pres. $presPct% · Ass. $absPct% — $unrecovered non rec. / $confirmed lez. — ${(pct * 100).toStringAsFixed(1)}%  ⚠ LIMITE 10%',
+              [
+                'Ass. $absPct% · $unrecovered non rec.',
+                if (unrecoveredP > 0) 'P: $unrecoveredP ⚠ recupero 100%',
+                if (pct > 0.10) 'T: $unrecoveredT/$confirmedT (${(pct * 100).toStringAsFixed(1)}%) ⚠ >10%',
+              ].join(' — '),
               style: const TextStyle(color: kError, fontSize: 11),
             )
           : Text(

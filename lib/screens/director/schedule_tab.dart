@@ -154,14 +154,10 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
 
   Future<void> _generateRemaining() async {
     if (_selected == null || _typeInfo == null) return;
-    final totalConfirmed = _scheduleService
-        .getLessonsForCourse(_selected!.id)
-        .where((l) => l.confirmed)
-        .length;
     final hasRecovery = _attendanceService.courseHasAttendeesInRecovery(
       _selected!.id,
       _selected!.attendeeIds,
-      totalConfirmed,
+      _scheduleService.getLessonsForCourse(_selected!.id),
     );
     await _scheduleService.generateRemainingSchedule(
       courseId: _selected!.id,
@@ -642,9 +638,8 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
     // recuperare per rientrare) — pre-compilano materia e presenti,
     // restano modificabili.
     final allLessons = _scheduleService.getLessonsForCourse(_selected!.id);
-    final totalConfirmed = allLessons.where((l) => l.confirmed).length;
     final overLimit = _attendanceService.attendeesOverRecoveryLimit(
-        _selected!.id, _selected!.attendeeIds, totalConfirmed);
+        _selected!.id, _selected!.attendeeIds, allLessons);
     final unrecByAttendee = <String, Map<int, int>>{};
     final unrecByModule = <int, int>{};
     for (final a in attendees) {

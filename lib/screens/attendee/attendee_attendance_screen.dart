@@ -102,22 +102,26 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
     final globalPct      = totalConfirmed > 0 ? (totalConfirmed - totalUnrec) / totalConfirmed : 1.0;
     final globalAbsPct   = totalConfirmed > 0 ? totalAbsent / totalConfirmed : 0.0;
     final anyWarn        = modStats.values.any((m) {
-      final c = m['confirmed'] ?? 0;
-      return c > 0 && (m['unrecovered'] ?? 0) / c > 0.10;
+      final cT    = m['confirmedT'] ?? 0;
+      final unrecT = m['unrecoveredT'] ?? 0;
+      final unrecP = m['unrecoveredP'] ?? 0;
+      return unrecP > 0 || (cT > 0 && unrecT / cT > 0.10);
     });
 
     final modNames = <int, String>{
       for (final m in typeInfo?.modules ?? []) m.number: m.name,
     };
 
-    // Recovery window: how many more recoveries each over-limit module needs
+    // Recovery window: quanti recuperi mancano per rientrare nei limiti
     final recoveryWindow = <int, int>{};
     for (final e in modStats.entries) {
-      final confirmed  = e.value['confirmed'] ?? 0;
-      final unrecovered = e.value['unrecovered'] ?? 0;
-      if (confirmed > 0 && unrecovered / confirmed > 0.10) {
-        final maxAllowed = (confirmed * 0.10).floor();
-        recoveryWindow[e.key] = unrecovered - maxAllowed;
+      final cT     = e.value['confirmedT'] ?? 0;
+      final unrecT = e.value['unrecoveredT'] ?? 0;
+      final unrecP = e.value['unrecoveredP'] ?? 0;
+      final needsRecovery = unrecP > 0 || (cT > 0 && unrecT / cT > 0.10);
+      if (needsRecovery) {
+        final maxAllowedT = cT > 0 ? (cT * 0.10).floor() : 0;
+        recoveryWindow[e.key] = unrecP + (unrecT > maxAllowedT ? unrecT - maxAllowedT : 0);
       }
     }
 

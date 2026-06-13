@@ -308,9 +308,10 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
             ? (totalAbsent / totalConfirmed * 100).toStringAsFixed(0)
             : '0';
         final anyWarn = typeInfo != null && modStats.entries.any((e) {
-          final tot = e.value['confirmed'] ?? 0;
-          final unr = e.value['unrecovered'] ?? 0;
-          return tot > 0 && unr / tot > 0.10;
+          final cT     = e.value['confirmedT'] ?? 0;
+          final unrecT = e.value['unrecoveredT'] ?? 0;
+          final unrecP = e.value['unrecoveredP'] ?? 0;
+          return unrecP > 0 || (cT > 0 && unrecT / cT > 0.10);
         });
 
         return Card(
@@ -337,10 +338,13 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
               final stats = modStats[mod.number]!;
               final total = stats['confirmed'] ?? 0;
               final absent = stats['absent'] ?? 0;
-              final recovered = stats['recovered'] ?? 0;
-              final unrecovered = stats['unrecovered'] ?? 0;
-              final pct = total > 0 ? unrecovered / total : 0.0;
-              final warn = pct > 0.10;
+              final recovered    = stats['recovered'] ?? 0;
+              final unrecovered  = stats['unrecovered'] ?? 0;
+              final confirmedT   = stats['confirmedT'] ?? 0;
+              final unrecoveredT = stats['unrecoveredT'] ?? 0;
+              final unrecoveredP = stats['unrecoveredP'] ?? 0;
+              final pct  = confirmedT > 0 ? unrecoveredT / confirmedT : 0.0;
+              final warn = unrecoveredP > 0 || pct > 0.10;
               final mPresPct = total > 0
                   ? ((total - absent) / total * 100).toStringAsFixed(0)
                   : '100';
@@ -362,8 +366,11 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
                 subtitle: Text(
                   absent == 0
                       ? 'Pres. 100% · Ass. 0% — nessuna assenza su $total ore prev.'
-                      : 'Pres. $mPresPct% · Ass. $mAbsPct% — $absent ass. · $recovered rec. · $unrecovered non rec. / $total ore prev.'
-                          '${warn ? '  ⚠ LIMITE 10%' : ''}',
+                      : [
+                          'Pres. $mPresPct% · Ass. $mAbsPct% — $unrecovered non rec.',
+                          if (unrecoveredP > 0) 'P: $unrecoveredP ⚠ recupero 100%',
+                          if (pct > 0.10) 'T: $unrecoveredT/$confirmedT (${(pct * 100).toStringAsFixed(1)}%) ⚠ >10%',
+                        ].join(' — '),
                   style: TextStyle(color: warn ? kError : kTextDim, fontSize: 11),
                 ),
               );
