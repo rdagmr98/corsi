@@ -55,6 +55,9 @@ GitHub Actions (`.github/workflows/deploy.yml`) deploya automaticamente su push 
 
 ## STATO SESSIONE — aggiornato 2026-06-13
 
+### Ultime modifiche (2026-06-13) — sessione 3
+1. **Dialog recupero (schedule_tab)**: pratica suggerita per prima. `unrecPByModule`/`unrecPByAttendee` calcolati separatamente. Dropdown moduli: badge rosso "XP" se ci sono ore di pratica da recuperare, giallo "XT" per teoria. Chip frequentatori: badge "P" rosso + ordinati pratica-first per il modulo selezionato. Testo suggerimento aggiornato. Commit: `305d1b3`
+
 ### Ultime modifiche (2026-06-13) — sessione 2
 1. **Barra bicolore T/P (theme.dart)**: `splitBar(pT, pP, {height})` — teoria kPrimary + pratica kAccent + residuo kSurface. Usata in admin e director.
 2. **Admin course_detail_screen**: chip M11A/11B `width:48 softWrap:false overflow:ellipsis`, barra bicolore `splitBar(pT,pP,height:5)`, tap modulo → dialog Totale/Teoria/Pratica ore+%.
