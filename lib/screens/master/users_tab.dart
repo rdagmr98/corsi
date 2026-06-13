@@ -31,7 +31,7 @@ class _UsersTabState extends ConsumerState<UsersTab> {
 
   Future<void> _reload() async {
     await ref.read(authProvider).reloadDb();
-    _load();
+    if (mounted) _load();
   }
 
   Color _roleColor(UserRole r) => switch (r) {
@@ -74,13 +74,9 @@ class _UsersTabState extends ConsumerState<UsersTab> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Row(
-                    children: [
-                      Expanded(child: _field('Cognome', cognomeCtrl)),
-                      const SizedBox(width: 12),
-                      Expanded(child: _field('Nome', nomeCtrl)),
-                    ],
-                  ),
+                  _field('Cognome', cognomeCtrl),
+                  const SizedBox(height: 12),
+                  _field('Nome', nomeCtrl),
                   const SizedBox(height: 12),
                   _field('Email', emailCtrl, hint: 'opzionale'),
                   const SizedBox(height: 12),
@@ -189,37 +185,40 @@ class _UsersTabState extends ConsumerState<UsersTab> {
                 final password = passwordCtrl.text.trim();
                 if (nome.isEmpty || cognome.isEmpty || username.isEmpty) return;
                 final isInstructor = selectedRole == UserRole.instructor;
-                if (user == null) {
-                  if (password.isEmpty) return;
-                  final created = await _userService.createUser(
-                    nome: nome,
-                    cognome: cognome,
-                    email: emailCtrl.text.trim().isEmpty ? null : emailCtrl.text.trim(),
-                    username: username,
-                    password: password,
-                    role: selectedRole,
-                    qualifications: isInstructor ? selQuals.toList() : null,
-                  );
-                  if (isInstructor) {
-                    await AmcService().applyQualifications(created.id, selQuals);
+                try {
+                  if (user == null) {
+                    if (password.isEmpty) return;
+                    final created = await _userService.createUser(
+                      nome: nome,
+                      cognome: cognome,
+                      email: emailCtrl.text.trim().isEmpty ? null : emailCtrl.text.trim(),
+                      username: username,
+                      password: password,
+                      role: selectedRole,
+                      qualifications: isInstructor ? selQuals.toList() : null,
+                    );
+                    if (isInstructor) {
+                      await AmcService().applyQualifications(created.id, selQuals);
+                    }
+                  } else {
+                    await _userService.updateUser(user.copyWith(
+                      nome: nome,
+                      cognome: cognome,
+                      email: emailCtrl.text.trim().isEmpty ? null : emailCtrl.text.trim(),
+                      username: username,
+                      role: selectedRole.value,
+                      qualifications: isInstructor ? selQuals.toList() : user.qualifications,
+                    ));
+                    if (password.isNotEmpty) {
+                      await _userService.updatePassword(user.id, password);
+                    }
+                    if (isInstructor) {
+                      await AmcService().applyQualifications(user.id, selQuals);
+                    }
                   }
-                } else {
-                  await _userService.updateUser(user.copyWith(
-                    nome: nome,
-                    cognome: cognome,
-                    email: emailCtrl.text.trim().isEmpty ? null : emailCtrl.text.trim(),
-                    username: username,
-                    role: selectedRole.value,
-                    qualifications: isInstructor ? selQuals.toList() : user.qualifications,
-                  ));
-                  if (password.isNotEmpty) {
-                    await _userService.updatePassword(user.id, password);
-                  }
-                  if (isInstructor) {
-                    await AmcService().applyQualifications(user.id, selQuals);
-                  }
+                } finally {
+                  if (mounted) _reload();
                 }
-                _reload();
               },
               child: const Text('Salva'),
             ),
