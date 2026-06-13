@@ -88,3 +88,21 @@ ThemeData buildTheme() => ThemeData.dark().copyWith(
     padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
   ),
 );
+
+/// Barra progresso bicolore: teoria (kPrimary) + pratica (kAccent) + residuo (kSurface).
+Widget splitBar(double pT, double pP, {double height = 4}) => ClipRRect(
+  borderRadius: BorderRadius.circular(height / 2),
+  child: SizedBox(
+    height: height,
+    child: LayoutBuilder(builder: (_, c) {
+      final w = c.maxWidth;
+      final wT = w * pT.clamp(0.0, 1.0);
+      final wP = w * pP.clamp(0.0, (1.0 - pT.clamp(0.0, 1.0)));
+      return Row(children: [
+        if (wT > 0) Container(width: wT, color: kPrimary),
+        if (wP > 0) Container(width: wP, color: kAccent),
+        Expanded(child: Container(color: kSurface)),
+      ]);
+    }),
+  ),
+);

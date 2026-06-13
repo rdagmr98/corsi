@@ -130,8 +130,15 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
   Widget _buildOverview(dynamic typeInfo, List<ScheduledLesson> confirmed) {
     final modules = typeInfo?.modules ?? [];
     final confirmedByMod = <int, int>{};
+    final confirmedTByMod = <int, int>{};
+    final confirmedPByMod = <int, int>{};
     for (final l in confirmed) {
       confirmedByMod[l.moduleNumber] = (confirmedByMod[l.moduleNumber] ?? 0) + 1;
+      if (l.isTheory) {
+        confirmedTByMod[l.moduleNumber] = (confirmedTByMod[l.moduleNumber] ?? 0) + 1;
+      } else {
+        confirmedPByMod[l.moduleNumber] = (confirmedPByMod[l.moduleNumber] ?? 0) + 1;
+      }
     }
 
     // Completamento complessivo: ore confermate (cappate al monte ore di
@@ -184,38 +191,43 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
       const SizedBox(height: 12),
       ...modules.map((m) {
         final rawDone = confirmedByMod[m.number] ?? 0;
+        final rawDoneT = confirmedTByMod[m.number] ?? 0;
+        final rawDoneP = confirmedPByMod[m.number] ?? 0;
         final total = m.totalHours;
-        // Le ore oltre il monte previsto sono recuperi: il contatore resta al cap.
         final done = total > 0 && rawDone > total ? total : rawDone;
-        final pct = total > 0 ? (done / total).clamp(0.0, 1.0) : 0.0;
+        final doneT = m.theoryHours > 0 && rawDoneT > m.theoryHours ? m.theoryHours : rawDoneT;
+        final doneP = m.practicalHours > 0 && rawDoneP > m.practicalHours ? m.practicalHours : rawDoneP;
+        final pT = total > 0 ? doneT / total : 0.0;
+        final pP = total > 0 ? doneP / total : 0.0;
         final col = moduleColor(m.number);
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 10),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Container(
-                width: 40,
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                decoration: BoxDecoration(
-                  color: col.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(4),
+        return GestureDetector(
+          onTap: () => _showModuleDetail(context, m, doneT.toDouble(), doneP.toDouble()),
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Container(
+                  width: 48,
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: col.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text('M${m.displayCode}',
+                      softWrap: false,
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                      style: TextStyle(color: col, fontSize: 10, fontWeight: FontWeight.bold)),
                 ),
-                child: Text('M${m.displayCode}', style: TextStyle(color: col, fontSize: 10, fontWeight: FontWeight.bold)),
-              ),
-              const SizedBox(width: 8),
-              Expanded(child: Text(m.name, style: const TextStyle(color: kText, fontSize: 12), overflow: TextOverflow.ellipsis)),
-              const SizedBox(width: 8),
-              Text('$done / $total h', style: TextStyle(color: done >= total ? kAccent : kTextDim, fontSize: 11)),
+                const SizedBox(width: 8),
+                Expanded(child: Text(m.name, style: const TextStyle(color: kText, fontSize: 12), overflow: TextOverflow.ellipsis)),
+                const SizedBox(width: 8),
+                Text('$done / $total', style: TextStyle(color: done >= total ? kAccent : kTextDim, fontSize: 11)),
+              ]),
+              const SizedBox(height: 4),
+              splitBar(pT, pP, height: 5),
             ]),
-            const SizedBox(height: 4),
-            LinearProgressIndicator(
-              value: pct,
-              color: col,
-              backgroundColor: kSurface,
-              minHeight: 5,
-              borderRadius: BorderRadius.circular(3),
-            ),
-          ]),
+          ),
         );
       }),
     ]);
@@ -504,6 +516,46 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
           TextButton(
             onPressed: () => Navigator.pop(ctx),
             child: const Text('Chiudi', style: TextStyle(color: kTextDim)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showModuleDetail(BuildContext context, dynamic m, double doneT, double doneP) {
+    final planT = (m.theoryHours as num).toDouble();
+    final planP = (m.practicalHours as num).toDouble();
+    final planTotal = planT + planP;
+    final doneTotal = doneT + doneP;
+    Widget row(String label, double done, double plan, Color color) => Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(children: [
+        SizedBox(width: 56, child: Text(label, style: const TextStyle(color: kTextDim, fontSize: 13))),
+        Expanded(child: Text('${done.toInt()} / ${plan.toInt()} ore',
+            style: TextStyle(color: color, fontSize: 14, fontWeight: FontWeight.bold))),
+        Text(plan > 0 ? '${(done / plan * 100).round()}%' : '—',
+            style: TextStyle(color: color, fontSize: 14, fontWeight: FontWeight.bold)),
+      ]),
+    );
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: kCard,
+        title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('M${m.displayCode}',
+              style: const TextStyle(color: kPrimary, fontSize: 15, fontWeight: FontWeight.bold)),
+          Text(m.name as String, style: const TextStyle(color: kTextDim, fontSize: 12)),
+        ]),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          row('Totale', doneTotal, planTotal, kText),
+          const Divider(color: kBorder, height: 16),
+          row('Teoria', doneT, planT, kPrimary),
+          if (planP > 0) row('Pratica', doneP, planP, kAccent),
+        ]),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Chiudi', style: TextStyle(color: kPrimary)),
           ),
         ],
       ),

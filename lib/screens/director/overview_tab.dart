@@ -89,9 +89,9 @@ class _DirectorOverviewTabState extends ConsumerState<DirectorOverviewTab> {
 
     double doneTotal = 0, doneTotalT = 0, doneTotalP = 0;
     double totalHours = 0;
+    final rawT = <int, double>{};
+    final rawP = <int, double>{};
     if (typeInfo != null) {
-      final rawT = <int, double>{};
-      final rawP = <int, double>{};
       for (final l in _scheduleService.getLessonsForCourse(course.id)) {
         if (!l.confirmed) continue;
         if (l.type != 'pratica') {
@@ -183,7 +183,8 @@ class _DirectorOverviewTabState extends ConsumerState<DirectorOverviewTab> {
               _statCard('Ore pratica', '$totalPractical', Icons.handyman),
               const SizedBox(width: 12),
               _statCard('Ore svolte', '${doneTotal.toInt()}', Icons.check_circle_outline,
-                  onTap: () => _showHoursDetail(context, doneTotal, doneTotalT, doneTotalP)),
+                  onTap: () => _showHoursDetail(context, doneTotal, doneTotalT, doneTotalP,
+                      totalHours, totalTheory.toDouble(), totalPractical.toDouble())),
             ],
           ),
           const SizedBox(height: 24),
@@ -195,45 +196,45 @@ class _DirectorOverviewTabState extends ConsumerState<DirectorOverviewTab> {
             ...typeInfo.modules.map((m) {
               final rawDone = taughtHours[m.number] ?? 0.0;
               final total = m.totalHours.toDouble();
-              // Le ore oltre il piano sono recuperi: il contatore resta al massimo
-              // al monte ore ufficiale del modulo.
               final done = total > 0 && rawDone > total ? total : rawDone;
-              final p = total > 0 ? done / total : 0.0;
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Row(
-                  children: [
-                    SizedBox(
-                      width: 52,
-                      child: Text('M${m.displayCode}',
-                          softWrap: false,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(color: kTextDim, fontSize: 12)),
-                    ),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(m.name, style: const TextStyle(color: kText, fontSize: 12)),
-                          const SizedBox(height: 4),
-                          LinearProgressIndicator(
-                            value: p.clamp(0.0, 1.0),
-                            backgroundColor: kSurface,
-                            color: p >= 1.0 ? kAccent : kPrimary,
-                            minHeight: 4,
-                            borderRadius: BorderRadius.circular(2),
-                          ),
-                        ],
+              final rawDoneT = rawT[m.number] ?? 0.0;
+              final rawDoneP = rawP[m.number] ?? 0.0;
+              final doneT = m.theoryHours > 0 && rawDoneT > m.theoryHours ? m.theoryHours.toDouble() : rawDoneT;
+              final doneP = m.practicalHours > 0 && rawDoneP > m.practicalHours ? m.practicalHours.toDouble() : rawDoneP;
+              final pT = total > 0 ? doneT / total : 0.0;
+              final pP = total > 0 ? doneP / total : 0.0;
+              return GestureDetector(
+                onTap: () => _showModuleDetail(context, m, doneT, doneP),
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 52,
+                        child: Text('M${m.displayCode}',
+                            softWrap: false,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: kTextDim, fontSize: 12)),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    SizedBox(
-                      width: 64,
-                      child: Text('${done.toInt()}/${total.toInt()}h',
-                          textAlign: TextAlign.right,
-                          style: const TextStyle(color: kTextDim, fontSize: 11)),
-                    ),
-                  ],
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(m.name, style: const TextStyle(color: kText, fontSize: 12)),
+                            const SizedBox(height: 4),
+                            splitBar(pT, pP, height: 4),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      SizedBox(
+                        width: 60,
+                        child: Text('${done.toInt()}/${total.toInt()}',
+                            textAlign: TextAlign.right,
+                            style: const TextStyle(color: kTextDim, fontSize: 11)),
+                      ),
+                    ],
+                  ),
                 ),
               );
             }),
@@ -259,7 +260,8 @@ class _DirectorOverviewTabState extends ConsumerState<DirectorOverviewTab> {
     CourseStatus.archived => kTextDim,
   };
 
-  void _showHoursDetail(BuildContext context, double total, double theory, double practical) {
+  void _showHoursDetail(BuildContext context, double done, double doneT, double doneP,
+      double planTotal, double planT, double planP) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -268,10 +270,10 @@ class _DirectorOverviewTabState extends ConsumerState<DirectorOverviewTab> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _hoursRow('Totale', total.toInt(), kPrimary),
+            _hoursRow('Totale', done.toInt(), planTotal.toInt(), kText),
             const Divider(color: kBorder, height: 16),
-            _hoursRow('Teoria', theory.toInt(), kPrimary),
-            _hoursRow('Pratica', practical.toInt(), kAccent),
+            _hoursRow('Teoria', doneT.toInt(), planT.toInt(), kPrimary),
+            _hoursRow('Pratica', doneP.toInt(), planP.toInt(), kAccent),
           ],
         ),
         actions: [
@@ -284,13 +286,47 @@ class _DirectorOverviewTabState extends ConsumerState<DirectorOverviewTab> {
     );
   }
 
-  Widget _hoursRow(String label, int value, Color color) => Padding(
+  void _showModuleDetail(BuildContext context, dynamic m, double doneT, double doneP) {
+    final planT = (m.theoryHours as num).toDouble();
+    final planP = (m.practicalHours as num).toDouble();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: kCard,
+        title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('M${m.displayCode}',
+              style: const TextStyle(color: kPrimary, fontSize: 15, fontWeight: FontWeight.bold)),
+          Text(m.name as String, style: const TextStyle(color: kTextDim, fontSize: 12)),
+        ]),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          _hoursRow('Totale', (doneT + doneP).toInt(), (planT + planP).toInt(), kText),
+          const Divider(color: kBorder, height: 16),
+          _hoursRow('Teoria', doneT.toInt(), planT.toInt(), kPrimary),
+          if (planP > 0) _hoursRow('Pratica', doneP.toInt(), planP.toInt(), kAccent),
+        ]),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Chiudi', style: TextStyle(color: kPrimary)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _hoursRow(String label, int done, int plan, Color color) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 4),
     child: Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(label, style: const TextStyle(color: kTextDim, fontSize: 13)),
-        Text('$value h', style: TextStyle(color: color, fontSize: 16, fontWeight: FontWeight.bold)),
+        SizedBox(width: 56, child: Text(label, style: const TextStyle(color: kTextDim, fontSize: 13))),
+        Expanded(
+          child: Text('$done / $plan ore',
+              style: TextStyle(color: color, fontSize: 14, fontWeight: FontWeight.bold)),
+        ),
+        Text(
+          plan > 0 ? '${(done / plan * 100).round()}%' : '—',
+          style: TextStyle(color: color, fontSize: 14, fontWeight: FontWeight.bold),
+        ),
       ],
     ),
   );
