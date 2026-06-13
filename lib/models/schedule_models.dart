@@ -19,6 +19,8 @@ class ScheduledLesson {
   final int timeSlot;
   final String? instructorId;
   final bool confirmed;
+  // int for base tasks (1-112), String for MIL tasks ("1 m"-"25 m"), null if not set
+  final dynamic taskId;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -33,6 +35,7 @@ class ScheduledLesson {
     required this.timeSlot,
     this.instructorId,
     this.confirmed = false,
+    this.taskId,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -51,6 +54,7 @@ class ScheduledLesson {
     timeSlot: j['time_slot'] as int? ?? 1,
     instructorId: j['instructor_id'] as String?,
     confirmed: j['confirmed'] as bool? ?? false,
+    taskId: j['task_id'],
     createdAt: DateTime.parse(
       j['created_at'] as String? ?? DateTime.now().toIso8601String(),
     ),
@@ -70,6 +74,7 @@ class ScheduledLesson {
     'time_slot': timeSlot,
     'instructor_id': instructorId,
     'confirmed': confirmed,
+    if (taskId != null) 'task_id': taskId,
     'created_at': createdAt.toIso8601String(),
     'updated_at': updatedAt.toIso8601String(),
   };
@@ -83,6 +88,7 @@ class ScheduledLesson {
     int? timeSlot,
     Object? instructorId = _s,
     bool? confirmed,
+    Object? taskId = _s,
   }) => ScheduledLesson(
     id: id,
     courseId: courseId,
@@ -94,6 +100,7 @@ class ScheduledLesson {
     timeSlot: timeSlot ?? this.timeSlot,
     instructorId: identical(instructorId, _s) ? this.instructorId : instructorId as String?,
     confirmed: confirmed ?? this.confirmed,
+    taskId: identical(taskId, _s) ? this.taskId : taskId,
     createdAt: createdAt,
     updatedAt: DateTime.now(),
   );

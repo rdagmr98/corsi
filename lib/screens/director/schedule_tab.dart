@@ -244,6 +244,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
     String type = presetType ?? 'teoria';
     String? selectedInstructor =
         instructors.any((i) => i.id == presetInstructor) ? presetInstructor : null;
+    dynamic selectedTaskId;
     final goMap = _computeGoMap(instructors);
 
     await showDialog(
@@ -378,6 +379,48 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                     ],
                     onChanged: (v) => setDlg(() => type = v ?? type),
                   ),
+                  // Task dropdown per la pratica
+                  if (type == 'pratica' && selSub != null && selSub.practicalTasks.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Builder(builder: (_) {
+                      final nc = _normSubCode(selSub.code);
+                      final taskRemaining = <dynamic, int>{};
+                      for (final t in selSub.practicalTasks) {
+                        final used = _allCourseLessons
+                            .where((l) => !l.isTheory &&
+                                _normSubCode(l.submoduleCode) == nc &&
+                                l.taskId == t.id)
+                            .length;
+                        taskRemaining[t.id] = (t.plannedHours - used).clamp(0, t.plannedHours);
+                      }
+                      // Auto-set to first incomplete task if not set or task changed
+                      if (selectedTaskId == null ||
+                          !selSub.practicalTasks.any((t) => t.id == selectedTaskId)) {
+                        final first = selSub.practicalTasks.firstWhere(
+                            (t) => (taskRemaining[t.id] ?? 0) > 0,
+                            orElse: () => selSub.practicalTasks.first);
+                        selectedTaskId = first.id;
+                      }
+                      return DropdownButtonFormField<dynamic>(
+                        value: selectedTaskId,
+                        dropdownColor: kSurface,
+                        isExpanded: true,
+                        style: const TextStyle(color: kText),
+                        decoration: const InputDecoration(labelText: 'Task pratica', isDense: true),
+                        items: selSub.practicalTasks.map((t) {
+                          final rem = taskRemaining[t.id] ?? 0;
+                          return DropdownMenuItem<dynamic>(
+                            value: t.id,
+                            child: Text('Task ${t.id} – ${rem > 0 ? "$rem/${t.plannedHours}h rim." : "completo"}',
+                                style: TextStyle(
+                                    color: rem > 0 ? kText : kTextDim,
+                                    overflow: TextOverflow.ellipsis)),
+                          );
+                        }).toList(),
+                        onChanged: (v) => setDlg(() => selectedTaskId = v),
+                      );
+                    }),
+                  ],
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String?>(
                     value: selectedInstructor,
@@ -406,6 +449,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                 onPressed: () async {
                   Navigator.pop(ctx);
                   if (selectedModule == null) return;
+                  final tid = type == 'pratica' ? selectedTaskId : null;
                   await _scheduleService.addLesson(
                     courseId: _selected!.id,
                     moduleNumber: selectedModule!,
@@ -415,6 +459,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                     date: date,
                     timeSlot: slot,
                     instructorId: selectedInstructor,
+                    taskId: tid,
                   );
                   _refreshWeek();
                   final next = _nextFreeSlot(date, slot);
@@ -440,6 +485,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                 onPressed: () async {
                   Navigator.pop(ctx);
                   if (selectedModule == null) return;
+                  final tid = type == 'pratica' ? selectedTaskId : null;
                   await _scheduleService.addLesson(
                     courseId: _selected!.id,
                     moduleNumber: selectedModule!,
@@ -449,6 +495,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                     date: date,
                     timeSlot: slot,
                     instructorId: selectedInstructor,
+                    taskId: tid,
                   );
                   _refreshWeek();
                 },
@@ -1678,6 +1725,18 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                         fontSize: 9,
                         fontWeight: FontWeight.w500)),
               ),
+              if (lesson.taskId != null) ...[
+                const SizedBox(width: 2),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: kAccent.withOpacity(0.18),
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                  child: Text('T${lesson.taskId}',
+                      style: const TextStyle(color: kAccent, fontSize: 8, fontWeight: FontWeight.bold)),
+                ),
+              ],
               const SizedBox(width: 2),
               if (instrName != null)
                 Flexible(

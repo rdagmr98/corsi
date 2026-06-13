@@ -133,11 +133,12 @@ class ScheduleService {
     required DateTime date,
     required int timeSlot,
     String? instructorId,
+    dynamic taskId,
   }) async {
     final schedules = _db.schedules.toList();
     final now = DateTime.now();
     final id = now.microsecondsSinceEpoch.toRadixString(16);
-    final newLesson = {
+    final newLesson = <String, dynamic>{
       'id': id,
       'course_id': courseId,
       'module_number': moduleNumber,
@@ -148,6 +149,7 @@ class ScheduleService {
       'time_slot': timeSlot,
       'instructor_id': instructorId,
       'confirmed': false,
+      if (taskId != null) 'task_id': taskId,
       'created_at': now.toIso8601String(),
       'updated_at': now.toIso8601String(),
     };
@@ -395,11 +397,30 @@ class ScheduleService {
     // '12.7.1' → '12.7' (triple-component codes collapsed to two components).
     final doneT = <String, int>{};
     final doneP = <String, int>{};
+    // Also count existing practice hours per task_id for assignment continuity
+    final taskDoneByNc = <String, Map<dynamic, int>>{};
     for (final l in allLessons.where((l) => l.timeSlot > 0 && keptIds.contains(l.id))) {
       final c = normalizeSubCode(l.submoduleCode);
       if (l.isTheory) doneT[c] = (doneT[c] ?? 0) + 1;
-      else            doneP[c] = (doneP[c] ?? 0) + 1;
+      else {
+        doneP[c] = (doneP[c] ?? 0) + 1;
+        if (l.taskId != null) {
+          (taskDoneByNc[c] ??= {})[l.taskId] = ((taskDoneByNc[c] ?? {})[l.taskId] ?? 0) + 1;
+        }
+      }
     }
+
+    // Map: normalized submodule code → practicalTasks (for auto task assignment)
+    final practicalTasksMap = <String, List<PracticalTask>>{};
+    for (final m in typeInfo.modules) {
+      for (final sub in m.submodules) {
+        if (sub.practicalTasks.isNotEmpty) {
+          practicalTasksMap[normalizeSubCode(sub.code)] = sub.practicalTasks;
+        }
+      }
+    }
+    // Track current task pointer per submodule during generation
+    final taskPtr = <String, int>{};
 
     // Build blocks per module: teoria = 2-3h, pratica = 4h (o 2 se < 4).
     // Ogni sottomodulo viene portato al SUO monte ore (T e P separati).
@@ -521,6 +542,31 @@ class ScheduleService {
       for (final slot in slots) {
         if (qi >= queue.length) break;
         final (code, modNum, lessonType) = queue[qi++];
+
+        // Auto-assign task_id for practice lessons
+        dynamic assignedTaskId;
+        if (lessonType == 'pratica') {
+          final nc = normalizeSubCode(code);
+          final tasks = practicalTasksMap[nc] ?? [];
+          if (tasks.isNotEmpty) {
+            final done = taskDoneByNc[nc] ??= {};
+            var ptr = taskPtr[nc] ?? 0;
+            while (ptr < tasks.length) {
+              final task = tasks[ptr];
+              final used = done[task.id] ?? 0;
+              if (used < task.plannedHours) {
+                assignedTaskId = task.id;
+                done[task.id] = used + 1;
+                if (used + 1 >= task.plannedHours) ptr++;
+                taskPtr[nc] = ptr;
+                break;
+              }
+              ptr++;
+            }
+            if (ptr <= (taskPtr[nc] ?? 0)) taskPtr[nc] = ptr;
+          }
+        }
+
         newLessons.add({
           'id': 'gen_${runId}_${counter++}',
           'course_id': courseId,
@@ -533,6 +579,7 @@ class ScheduleService {
           'instructor_id': null,
           'confirmed': false,
           'auto_generated': true,
+          if (assignedTaskId != null) 'task_id': assignedTaskId,
           'created_at': now,
           'updated_at': now,
         });

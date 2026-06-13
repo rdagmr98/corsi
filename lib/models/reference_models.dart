@@ -1,3 +1,15 @@
+class PracticalTask {
+  final int id;
+  final int plannedHours;
+
+  const PracticalTask({required this.id, required this.plannedHours});
+
+  factory PracticalTask.fromJson(Map<String, dynamic> j) => PracticalTask(
+    id: (j['id'] as num).toInt(),
+    plannedHours: j['plannedHours'] as int? ?? 0,
+  );
+}
+
 class SubmoduleInfo {
   final String code;
   final String name;
@@ -6,6 +18,7 @@ class SubmoduleInfo {
   final int? levelB1;
   final int? levelB2;
   final List<String> topics;
+  final List<PracticalTask> practicalTasks;
 
   const SubmoduleInfo({
     required this.code,
@@ -15,6 +28,7 @@ class SubmoduleInfo {
     this.levelB1,
     this.levelB2,
     this.topics = const [],
+    this.practicalTasks = const [],
   });
 
   factory SubmoduleInfo.fromJson(Map<String, dynamic> j) => SubmoduleInfo(
@@ -25,6 +39,10 @@ class SubmoduleInfo {
     levelB1: j['levelB1'] as int?,
     levelB2: j['levelB2'] as int?,
     topics: List<String>.from(j['topics'] as List? ?? []),
+    practicalTasks: (j['practicalTasks'] as List? ?? [])
+        .whereType<Map<String, dynamic>>()
+        .map(PracticalTask.fromJson)
+        .toList(),
   );
 }
 

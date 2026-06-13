@@ -178,7 +178,8 @@ class _InstructorScheduleScreenState extends ConsumerState<InstructorScheduleScr
                           title: Text(displayTopic,
                               style: const TextStyle(color: kText, fontSize: 13),
                               maxLines: 2),
-                          subtitle: Text('M${_refService.moduleLabel(l.moduleNumber)} · ${isTheory ? "Teoria" : "Pratica"} · $hoursStr',
+                          subtitle: Text(
+                              'M${_refService.moduleLabel(l.moduleNumber)} · ${isTheory ? "Teoria" : "Pratica"} · $hoursStr${l.taskId != null ? ' · Task ${l.taskId}' : ''}',
                               style: const TextStyle(color: kTextDim, fontSize: 11),
                               maxLines: 1),
                           trailing: l.confirmed

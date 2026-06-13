@@ -212,6 +212,18 @@ class _InstructorTodayScreenState extends ConsumerState<InstructorTodayScreen> {
                                 ),
                                 const SizedBox(width: 8),
                                 Text('M${_refService.moduleLabel(lesson.moduleNumber)}', style: const TextStyle(color: kTextDim, fontSize: 12)),
+                                if (lesson.taskId != null) ...[
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: kAccent.withOpacity(0.15),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text('Task ${lesson.taskId}',
+                                        style: const TextStyle(color: kAccent, fontSize: 10, fontWeight: FontWeight.bold)),
+                                  ),
+                                ],
                                 const Spacer(),
                                 Text('${lesson.timeSlot}ª ora', style: const TextStyle(color: kTextDim, fontSize: 12)),
                                 if (lesson.confirmed)
