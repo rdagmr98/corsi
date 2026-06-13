@@ -86,16 +86,29 @@ class _DirectorOverviewTabState extends ConsumerState<DirectorOverviewTab> {
     final taughtHours = _scheduleService.computeModuleHoursTaught(course.id);
     final totalTheory = typeInfo?.totalTheoryHours ?? 0;
     final totalPractical = typeInfo?.totalPracticalHours ?? 0;
-    // Stessa formula dell'admin (course_detail_screen): ore confermate cappate
-    // al monte ore di ogni modulo, denominatore = somma monte ore dei moduli.
-    double doneTotal = 0;
+
+    double doneTotal = 0, doneTotalT = 0, doneTotalP = 0;
     double totalHours = 0;
     if (typeInfo != null) {
+      final rawT = <int, double>{};
+      final rawP = <int, double>{};
+      for (final l in _scheduleService.getLessonsForCourse(course.id)) {
+        if (!l.confirmed) continue;
+        if (l.type != 'pratica') {
+          rawT[l.moduleNumber] = (rawT[l.moduleNumber] ?? 0) + 1;
+        } else {
+          rawP[l.moduleNumber] = (rawP[l.moduleNumber] ?? 0) + 1;
+        }
+      }
       for (final m in typeInfo.modules) {
         final t = m.totalHours.toDouble();
         final raw = taughtHours[m.number] ?? 0.0;
         totalHours += t;
         doneTotal += t > 0 && raw > t ? t : raw;
+        final rt = rawT[m.number] ?? 0.0;
+        final rp = rawP[m.number] ?? 0.0;
+        doneTotalT += m.theoryHours > 0 && rt > m.theoryHours ? m.theoryHours.toDouble() : rt;
+        doneTotalP += m.practicalHours > 0 && rp > m.practicalHours ? m.practicalHours.toDouble() : rp;
       }
     } else {
       doneTotal = taughtHours.values.fold(0.0, (a, b) => a + b);
@@ -169,7 +182,8 @@ class _DirectorOverviewTabState extends ConsumerState<DirectorOverviewTab> {
               const SizedBox(width: 12),
               _statCard('Ore pratica', '$totalPractical', Icons.handyman),
               const SizedBox(width: 12),
-              _statCard('Ore svolte', '${doneTotal.toInt()}', Icons.check_circle_outline),
+              _statCard('Ore svolte', '${doneTotal.toInt()}', Icons.check_circle_outline,
+                  onTap: () => _showHoursDetail(context, doneTotal, doneTotalT, doneTotalP)),
             ],
           ),
           const SizedBox(height: 24),
@@ -190,8 +204,11 @@ class _DirectorOverviewTabState extends ConsumerState<DirectorOverviewTab> {
                 child: Row(
                   children: [
                     SizedBox(
-                      width: 40,
-                      child: Text('M${m.displayCode}', style: const TextStyle(color: kTextDim, fontSize: 12)),
+                      width: 52,
+                      child: Text('M${m.displayCode}',
+                          softWrap: false,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: kTextDim, fontSize: 12)),
                     ),
                     Expanded(
                       child: Column(
@@ -209,9 +226,13 @@ class _DirectorOverviewTabState extends ConsumerState<DirectorOverviewTab> {
                         ],
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    Text('${done.toInt()}/${total.toInt()}h',
-                        style: const TextStyle(color: kTextDim, fontSize: 11)),
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      width: 64,
+                      child: Text('${done.toInt()}/${total.toInt()}h',
+                          textAlign: TextAlign.right,
+                          style: const TextStyle(color: kTextDim, fontSize: 11)),
+                    ),
                   ],
                 ),
               );
@@ -238,20 +259,72 @@ class _DirectorOverviewTabState extends ConsumerState<DirectorOverviewTab> {
     CourseStatus.archived => kTextDim,
   };
 
-  Widget _statCard(String label, String value, IconData icon) => Expanded(
-    child: Card(
-      color: kCard,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
+  void _showHoursDetail(BuildContext context, double total, double theory, double practical) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: kCard,
+        title: const Text('Ore svolte', style: TextStyle(color: kText, fontSize: 14)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: kPrimary, size: 20),
-            const SizedBox(height: 6),
-            Text(value, style: const TextStyle(color: kText, fontSize: 20, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 2),
-            Text(label, style: const TextStyle(color: kTextDim, fontSize: 11), textAlign: TextAlign.center),
+            _hoursRow('Totale', total.toInt(), kPrimary),
+            const Divider(color: kBorder, height: 16),
+            _hoursRow('Teoria', theory.toInt(), kPrimary),
+            _hoursRow('Pratica', practical.toInt(), kAccent),
           ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('OK', style: TextStyle(color: kPrimary)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _hoursRow(String label, int value, Color color) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 4),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: const TextStyle(color: kTextDim, fontSize: 13)),
+        Text('$value h', style: TextStyle(color: color, fontSize: 16, fontWeight: FontWeight.bold)),
+      ],
+    ),
+  );
+
+  Widget _statCard(String label, String value, IconData icon, {VoidCallback? onTap}) => Expanded(
+    child: GestureDetector(
+      onTap: onTap,
+      child: Card(
+        color: kCard,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            children: [
+              Icon(icon, color: kPrimary, size: 20),
+              const SizedBox(height: 6),
+              Text(value, style: const TextStyle(color: kText, fontSize: 20, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 2),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                    child: Text(label,
+                        style: const TextStyle(color: kTextDim, fontSize: 11),
+                        textAlign: TextAlign.center),
+                  ),
+                  if (onTap != null) ...[
+                    const SizedBox(width: 3),
+                    const Icon(Icons.info_outline, color: kTextDim, size: 10),
+                  ],
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     ),

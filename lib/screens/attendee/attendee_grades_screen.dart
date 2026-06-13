@@ -102,61 +102,44 @@ class _AttendeeGradesScreenState extends ConsumerState<AttendeeGradesScreen> {
                       ),
                       child: Padding(
                         padding: const EdgeInsets.all(16),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
+                        child: Column(
                           children: [
-                            Text(
-                              globalAvg.toStringAsFixed(3),
-                              style: TextStyle(
-                                color: globalAvg >= 22.5 ? kAccent : kError,
-                                fontSize: 36,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const Text(' /30',
-                                style:
-                                    TextStyle(color: kTextDim, fontSize: 18)),
-                            const SizedBox(width: 20),
-                            Flexible(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    globalAvg >= 22.5
-                                        ? 'SUFFICIENTE'
-                                        : 'INSUFFICIENTE',
-                                    style: TextStyle(
-                                      color: globalAvg >= 22.5 ? kAccent : kError,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 12,
-                                    ),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  globalAvg.toStringAsFixed(3),
+                                  style: TextStyle(
+                                    color: globalAvg >= 22.5 ? kAccent : kError,
+                                    fontSize: 36,
+                                    fontWeight: FontWeight.bold,
                                   ),
-                                  const Text('Media ponderata graduatoria',
-                                      style: TextStyle(
-                                          color: kTextDim, fontSize: 11)),
-                                  if (rankPos != null && rankPos > 0) ...[
-                                    const SizedBox(height: 4),
-                                    Row(
-                                      children: [
-                                        const Icon(Icons.leaderboard,
-                                            color: kWarning, size: 14),
-                                        const SizedBox(width: 4),
-                                        Flexible(
-                                          child: Text(
-                                            'Posizione provvisoria: $rankPos°/${course.attendeeIds.length}',
-                                            style: const TextStyle(
-                                                color: kWarning,
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.bold),
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
+                                ),
+                                const Text(' /30',
+                                    style: TextStyle(color: kTextDim, fontSize: 18)),
+                                const SizedBox(width: 12),
+                                const Text('Media ponderata graduatoria',
+                                    style: TextStyle(color: kTextDim, fontSize: 11)),
+                              ],
+                            ),
+                            if (rankPos != null && rankPos > 0) ...[
+                              const SizedBox(height: 8),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(Icons.leaderboard,
+                                      color: kWarning, size: 14),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    'Posizione provvisoria: $rankPos° / ${course.attendeeIds.length}',
+                                    style: const TextStyle(
+                                        color: kWarning,
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.bold),
+                                  ),
                                 ],
                               ),
-                            ),
+                            ],
                           ],
                         ),
                       ),
