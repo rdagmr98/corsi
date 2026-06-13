@@ -4,7 +4,9 @@ import '../../models/reference_models.dart';
 import '../../models/user_models.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/amc_service.dart';
+import '../../services/gh_db_service.dart';
 import '../../services/reference_service.dart';
+import '../../services/schedule_service.dart';
 import '../../services/user_service.dart';
 import '../../theme.dart';
 
@@ -116,12 +118,46 @@ class _UsersTabState extends ConsumerState<UsersTab> {
                               color: kText, fontSize: 13, fontWeight: FontWeight.w600)),
                     ),
                     const SizedBox(height: 4),
-                    const Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        'I sottomoduli insegnabili vengono assegnati in automatico secondo l\'ANNESSO MTOE-P-3-1.',
-                        style: TextStyle(color: kTextDim, fontSize: 11),
-                      ),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'I sottomoduli insegnabili vengono assegnati in automatico secondo l\'ANNESSO MTOE-P-3-1.',
+                            style: TextStyle(color: kTextDim, fontSize: 11),
+                          ),
+                        ),
+                        if (user != null) ...[
+                          const SizedBox(width: 8),
+                          TextButton(
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            ),
+                            onPressed: () {
+                              final db = GhDbService();
+                              final taughtT = <String>{};
+                              final taughtP = <String>{};
+                              for (final l in db.schedules) {
+                                if (l['instructor_id'] != user.id) continue;
+                                final nc = ScheduleService.normalizeSubCode(
+                                    l['submodule_code'] as String? ?? '');
+                                if (nc.isEmpty) continue;
+                                if (l['type'] == 'teoria') taughtT.add(nc);
+                                else taughtP.add(nc);
+                              }
+                              final suggested = _refService
+                                  .reverseEngineerQuals(taughtT, taughtP);
+                              setDlg(() {
+                                qualsTouched = true;
+                                selQuals
+                                  ..clear()
+                                  ..addAll(suggested);
+                              });
+                            },
+                            child: const Text('Auto-rileva', style: TextStyle(fontSize: 11)),
+                          ),
+                        ],
+                      ],
                     ),
                     const SizedBox(height: 10),
                     for (final entry in qualGroups.entries) ...[
@@ -183,21 +219,6 @@ class _UsersTabState extends ConsumerState<UsersTab> {
                         Expanded(child: _field('Titolo abilitazione', titoloCtrl)),
                         const SizedBox(width: 8),
                         Expanded(child: _field('Licenza Part-66', licenzaCtrl)),
-                        const SizedBox(width: 8),
-                        TextButton(
-                          onPressed: () {
-                            final cats = <String>{};
-                            for (final q in allQuals) {
-                              if (selQuals.contains(q.id) &&
-                                  q.group.startsWith('Categoria B')) {
-                                cats.add(q.group.replaceFirst('Categoria ', ''));
-                              }
-                            }
-                            final sorted = cats.toList()..sort();
-                            setDlg(() => licenzaCtrl.text = sorted.join(' / '));
-                          },
-                          child: const Text('Auto-popola', style: TextStyle(fontSize: 11)),
-                        ),
                       ],
                     ),
                   ],

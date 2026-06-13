@@ -328,8 +328,11 @@ class _DirectorOverviewTabState extends ConsumerState<DirectorOverviewTab> {
                   final sPlanP = (s.practicalHours as num).toDouble();
                   final rawST = subRawT[s.code as String] ?? 0.0;
                   final rawSP = subRawP[s.code as String] ?? 0.0;
-                  final sDoneT = rawST > sPlanT ? sPlanT : rawST;
-                  final sDoneP = rawSP > sPlanP ? sPlanP : rawSP;
+                  // Se il modulo è completato nel totale, mostra ogni sotto come 100%.
+                  final isModuleDone = (planT + planP) > 0 &&
+                      (doneT + doneP) >= (planT + planP);
+                  final sDoneT = isModuleDone ? sPlanT : (rawST > sPlanT ? sPlanT : rawST);
+                  final sDoneP = isModuleDone ? sPlanP : (rawSP > sPlanP ? sPlanP : rawSP);
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 6),
                     child: Column(

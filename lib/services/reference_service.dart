@@ -102,4 +102,53 @@ class ReferenceService {
   /// Tutti i codici coperti dalle regole AMC (gestiti in automatico).
   Set<String> amcRuleCodes({required bool theory}) =>
       _ruleMap(theory).keys.toSet();
+
+  /// Dato un insieme di sottomoduli effettivamente insegnati (codici già
+  /// normalizzati), restituisce il set minimo di qualifiche AMC che copre
+  /// tutti i soggetti (greedy set cover).
+  Set<String> reverseEngineerQuals(
+      Set<String> taughtTheory, Set<String> taughtPractice) {
+    final theoryMap = _ruleMap(true);
+    final practiceMap = _ruleMap(false);
+
+    // Soggetto (code, isTheory) → lista qualifiche che lo ammettono
+    final requirements = <(String, bool), List<String>>{};
+    for (final code in taughtTheory) {
+      final qs = theoryMap[code];
+      if (qs != null && qs.isNotEmpty) requirements[(code, true)] = qs;
+    }
+    for (final code in taughtPractice) {
+      final qs = practiceMap[code];
+      if (qs != null && qs.isNotEmpty) requirements[(code, false)] = qs;
+    }
+    if (requirements.isEmpty) return {};
+
+    // qualCovers[qId] = soggetti coperti da quella qualifica
+    final qualCovers = <String, Set<(String, bool)>>{};
+    for (final entry in requirements.entries) {
+      for (final qId in entry.value) {
+        qualCovers.putIfAbsent(qId, () => {}).add(entry.key);
+      }
+    }
+
+    // Greedy set cover
+    final selected = <String>{};
+    final uncovered = requirements.keys.toSet();
+    while (uncovered.isNotEmpty) {
+      String? best;
+      int bestCount = 0;
+      for (final entry in qualCovers.entries) {
+        if (selected.contains(entry.key)) continue;
+        final n = entry.value.intersection(uncovered).length;
+        if (n > bestCount) {
+          bestCount = n;
+          best = entry.key;
+        }
+      }
+      if (best == null) break;
+      selected.add(best);
+      uncovered.removeAll(qualCovers[best]!);
+    }
+    return selected;
+  }
 }
