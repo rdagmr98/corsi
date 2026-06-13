@@ -65,7 +65,16 @@ GitHub Actions (`.github/workflows/deploy.yml`) deploya automaticamente su push 
 
 ---
 
-## STATO SESSIONE — aggiornato 2026-06-14
+## STATO SESSIONE — aggiornato 2026-06-15
+
+### Ultime modifiche (2026-06-15) — sessione 7
+1. **Fix corretto completamento per sottomodulo (schedule_service + overview_tab, commit e8fdbd9)**:
+   - `schedule_service.dart`: rimosso skip a livello modulo (modPlanH/modDoneH); aggiunto `if (remT==0 && remP==0) continue;` dentro il loop per sottomodulo. Ora il generatore pianifica ORE per ogni sotto che non ha ancora completato il suo piano individuale.
+   - `overview_tab.dart`: `doneT/doneP` calcolati come `Σ min(subRaw, subPlan)` per ogni sottomodulo (non più min(modRaw, modPlan)). Rimosso `isModuleDone` errato da `_showModuleDetail`. Stessa correzione per i totali corso.
+   - Regola: un modulo è completo iff OGNI sottomodulo ha fatto >= pianificato individualmente.
+2. **Laraspata (BTC3, verifica Controlloistruttori.xlsx)**:
+   - Ha recuperato pratica: sì (7.3P: 1h feb 2026, 7.8P: 2h apr 2026, 8.4: 8h set 2025)
+   - 10% per modulo: SUPERA in M3 (~21h su 90h = 23%) e M12 (47h su 360h = 13%). Globale: ~125h su 1778h = 7% (OK).
 
 ### Ultime modifiche (2026-06-14) — sessione 6
 1. **Generator: skip moduli completati (schedule_service.dart)**: se doneH >= planH per il modulo, viene saltato interamente (fix M3/M6 che avevano ore extra su alcuni sottomoduli e deficit su altri).
