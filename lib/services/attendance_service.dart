@@ -217,29 +217,35 @@ class AttendanceService {
     await _db.saveRecords(records);
   }
 
-  /// Frequentatori fuori limite: assenze nette globali > 10% delle ore totali pianificate
-  /// (soglia AVES — stessa formula del foglio assenze Excel "nette oltre soglia").
+  /// Frequentatori fuori limite: per ogni modulo, se
+  /// max(0, assenze_modulo − recuperi_totali_globali) > 10% ore pianificate modulo.
+  /// I recuperi fanno pool globale (come formula Excel "nette oltre soglia").
   Set<String> attendeesOverRecoveryLimit(
     String courseId,
     List<String> attendeeIds,
     List<ScheduledLesson> allLessons, {
     List<ModuleInfo>? modules,
   }) {
-    final totalPlanned = modules?.fold<int>(0, (s, m) => s + m.totalHours) ?? 0;
+    final plannedHours = modules != null
+        ? {for (final m in modules) m.number: m.totalHours}
+        : <int, int>{};
     final result = <String>{};
     for (final attendeeId in attendeeIds) {
       final stats = computePerModuleStats(
           courseId, attendeeId, allLessons, modules: modules);
-      int totalAbsent = 0;
+      // Pool globale recuperi (indipendente da quale modulo è stato recuperato)
       int totalRecovered = 0;
       for (final s in stats.values) {
-        totalAbsent += s['absent'] ?? 0;
         totalRecovered += s['recovered'] ?? 0;
       }
-      final unrecovered = totalAbsent - totalRecovered;
-      if (totalPlanned > 0 && unrecovered > totalPlanned * 0.10) {
-        result.add(attendeeId);
+      bool over = false;
+      for (final e in stats.entries) {
+        final absM = e.value['absent'] ?? 0;
+        final nette = (absM - totalRecovered).clamp(0, absM);
+        final planH = plannedHours[e.key] ?? (e.value['confirmed'] ?? 0);
+        if (planH > 0 && nette > planH * 0.10) { over = true; break; }
       }
+      if (over) result.add(attendeeId);
     }
     return result;
   }
