@@ -67,6 +67,12 @@ GitHub Actions (`.github/workflows/deploy.yml`) deploya automaticamente su push 
 
 ## STATO SESSIONE — aggiornato 2026-06-15
 
+### Ultime modifiche (2026-06-15) — sessione 8
+1. **Reimport M3 BTC3 completo (corsi-data, commit 5d2340b)**: 124 lezioni M3 (90h teoria + 20h pratica + 10h recupero Laraspata teoria + 4h recupero Codina 3.5P pratica).
+   - Laraspata: 10 lezioni recupero teoria senza istruttore (11/06→20/06/2025, submoduli 3.1, 3.12, 3.15, 3.16, 3.17, 3.18).
+   - Codina: 4 lezioni recupero pratica 3.5P (15/07 task2 Ponticelli, 16/07 task2 Ponticelli, 17/07 task3 Ponticelli, 21/07 task3 no instructor).
+   - Fix completamento per sottomodulo già deployato (commit e8fdbd9 + GitHub Actions auto-build).
+
 ### Ultime modifiche (2026-06-15) — sessione 7
 1. **Fix corretto completamento per sottomodulo (schedule_service + overview_tab, commit e8fdbd9)**:
    - `schedule_service.dart`: rimosso skip a livello modulo (modPlanH/modDoneH); aggiunto `if (remT==0 && remP==0) continue;` dentro il loop per sottomodulo. Ora il generatore pianifica ORE per ogni sotto che non ha ancora completato il suo piano individuale.
