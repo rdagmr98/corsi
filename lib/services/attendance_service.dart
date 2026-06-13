@@ -217,34 +217,34 @@ class AttendanceService {
     await _db.saveRecords(records);
   }
 
-  /// Frequentatori fuori limite: pratica con assenze non recuperate al 100%,
-  /// o teoria con >10% assenze non recuperate sulle ore di teoria PIANIFICATE del modulo.
+  /// Frequentatori fuori limite: assenze nette globali > 10% delle ore totali pianificate
+  /// (soglia AVES — stessa formula del foglio assenze Excel "nette oltre soglia").
   Set<String> attendeesOverRecoveryLimit(
     String courseId,
     List<String> attendeeIds,
     List<ScheduledLesson> allLessons, {
     List<ModuleInfo>? modules,
   }) {
-    final plannedT = modules != null
-        ? {for (final m in modules) m.number: m.theoryHours}
-        : <int, int>{};
+    final totalPlanned = modules?.fold<int>(0, (s, m) => s + m.totalHours) ?? 0;
     final result = <String>{};
     for (final attendeeId in attendeeIds) {
       final stats = computePerModuleStats(
           courseId, attendeeId, allLessons, modules: modules);
-      bool over = false;
-      for (final e in stats.entries) {
-        if ((e.value['unrecoveredP'] ?? 0) > 0) { over = true; break; }
-        final unrecT = e.value['unrecoveredT'] ?? 0;
-        final planT  = plannedT[e.key] ?? (e.value['confirmedT'] ?? 0);
-        if (planT > 0 && unrecT / planT > 0.10) { over = true; break; }
+      int totalAbsent = 0;
+      int totalRecovered = 0;
+      for (final s in stats.values) {
+        totalAbsent += s['absent'] ?? 0;
+        totalRecovered += s['recovered'] ?? 0;
       }
-      if (over) result.add(attendeeId);
+      final unrecovered = totalAbsent - totalRecovered;
+      if (totalPlanned > 0 && unrecovered > totalPlanned * 0.10) {
+        result.add(attendeeId);
+      }
     }
     return result;
   }
 
-  /// True se almeno un frequentatore supera il limite assenze (pratica 100%, teoria 10%).
+  /// True se almeno un frequentatore supera il limite assenze (10% ore totali corso).
   bool courseHasAttendeesInRecovery(
     String courseId,
     List<String> attendeeIds,
