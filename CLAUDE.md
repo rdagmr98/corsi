@@ -65,7 +65,16 @@ GitHub Actions (`.github/workflows/deploy.yml`) deploya automaticamente su push 
 
 ---
 
-## STATO SESSIONE — aggiornato 2026-06-13
+## STATO SESSIONE — aggiornato 2026-06-14
+
+### Ultime modifiche (2026-06-14) — sessione 6
+1. **Generator: skip moduli completati (schedule_service.dart)**: se doneH >= planH per il modulo, viene saltato interamente (fix M3/M6 che avevano ore extra su alcuni sottomoduli e deficit su altri).
+2. **Generator: fasi per differenza (schedule_service.dart)**: `blocksByPhase` replace `moduleBlocks`. Fase 0 = no prereq, fase 1 = perDifferenzaOf==12 (M11A subs dopo M12), fase 2 = perDifferenzaOf==11 (M11B dopo M11A). Interleaving separato per fase.
+3. **SubmoduleInfo.perDifferenzaOf** (reference_models.dart): campo `int?` letto da `"perDifferenzaOf"` in JSON.
+4. **reference.json** (corsi-data): 14 sottomoduli M11A → `"perDifferenzaOf": 12`; 3 sottomoduli M11B → `"perDifferenzaOf": 11`.
+5. **X cancella lezione** (schedule_tab.dart): `Icon.close` size 10→14 + Padding(all:3).
+6. **AppUser titolo/licenza** (user_models.dart, user_service.dart): campi opzionali salvati in JSON; `createUser`/`updateUser` li gestiscono.
+7. **users_tab.dart**: campo Titolo abilitazione + Licenza Part-66 + pulsante "Auto-popola" (estrae categorie B da qualifiche AMC selezionate).
 
 ### Ultime modifiche (2026-06-13) — sessione 5
 1. **Fix record recuperi BTC3 (records.json, corsi-data commit 005160e)**: eliminati 63 record sintetici con recovered_module errato (erano in M3/M4 dove nessuno aveva assenze); i 63 record recupero da Excel ora hanno `recovered_module` = module_number della lezione di recupero.
