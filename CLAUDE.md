@@ -53,7 +53,12 @@ GitHub Actions (`.github/workflows/deploy.yml`) deploya automaticamente su push 
 
 ---
 
-## STATO SESSIONE — aggiornato 2026-06-12
+## STATO SESSIONE — aggiornato 2026-06-13
+
+### Ultime modifiche (2026-06-13)
+1. **UI overview direttore**: `_statCard` supporta `onTap` + icona info; tap su "Ore svolte" apre dialog con Totale/Teoria/Pratica ore. Barre modulo con testo `XX/XXh` in `SizedBox(w:64)` → larghezza uniforme. Label "M11A"/"M11B" in `SizedBox(w:52, softWrap:false)` → stessa riga.
+2. **UI voti frequentatore**: rimossa label SUFFICIENTE/INSUFFICIENTE; posizione graduatoria su riga propria a larghezza piena (non più troncata con "...").
+3. **BTC3 dati**: 140 lezioni duplicate rimosse (1523→1371 entro finestra registro), assenze ricreate da Excel con UUID completi. records.json: 1594 record totali.
 
 ### Ultime modifiche (2026-06-12)
 1. **Split M11 → 11A/11B (b1, corsi-data)**: reference.json — modulo 11 = "11A" Turbine (T114/P30, sottomoduli 11A.*), nuovo modulo 18 = "11B" Piston (T6/P5, sottomoduli 11B.*). 82 lezioni in schedules.json migrate a module_number 18. Campo `label` su ModuleInfo + `displayCode` + `ReferenceService.moduleLabel(int)` (cache statica invalidata in `GhDbService.init()`). Etichette applicate in TUTTI gli schermi (director/instructor/attendee/master) e nel PDF export.
