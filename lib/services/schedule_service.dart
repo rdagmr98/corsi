@@ -1,3 +1,4 @@
+import 'dart:math';
 import '../models/reference_models.dart';
 import '../models/schedule_models.dart';
 import 'gh_db_service.dart';
@@ -314,6 +315,51 @@ class ScheduleService {
     return next;
   }
 
+  // ── Note su slot ─────────────────────────────────────────────────────────────
+
+  List<SlotNote> getNotesForCourse(String courseId) =>
+      _db.slotNotes
+          .where((n) => n['course_id'] == courseId)
+          .map(SlotNote.fromJson)
+          .toList();
+
+  List<SlotNote> getNotesForWeek(String courseId, DateTime weekStart) {
+    final start = DateTime(weekStart.year, weekStart.month, weekStart.day);
+    final end = start.add(const Duration(days: 7));
+    return getNotesForCourse(courseId)
+        .where((n) => !n.date.isBefore(start) && n.date.isBefore(end))
+        .toList();
+  }
+
+  Future<SlotNote> addNote({
+    required String courseId,
+    required DateTime date,
+    required int timeSlot,
+    required String text,
+  }) async {
+    final notes = _db.slotNotes.toList();
+    final id = DateTime.now().microsecondsSinceEpoch.toRadixString(16);
+    final newNote = {
+      'id': id,
+      'course_id': courseId,
+      'date': date.toIso8601String().split('T').first,
+      'time_slot': timeSlot,
+      'text': text,
+    };
+    notes.removeWhere((n) =>
+        n['course_id'] == courseId &&
+        n['date'] == newNote['date'] &&
+        n['time_slot'] == timeSlot);
+    notes.add(newNote);
+    await _db.saveSlotNotes(notes);
+    return SlotNote.fromJson(newNote);
+  }
+
+  Future<void> deleteNote(String noteId) async {
+    final notes = _db.slotNotes.where((n) => n['id'] != noteId).toList();
+    await _db.saveSlotNotes(notes);
+  }
+
   Map<int, double> computeModuleHoursTaught(String courseId) {
     final lessons = getLessonsForCourse(courseId).where((l) => l.confirmed);
     final map = <int, double>{};
@@ -355,10 +401,8 @@ class ScheduleService {
       else            doneP[c] = (doneP[c] ?? 0) + 1;
     }
 
-    // Build 2–3-hour blocks per module, then interleave round-robin for mixing.
-    // Ogni sottomodulo viene portato al SUO monte ore (T e P separati): le ore
-    // oltre piano su un sottomodulo (recuperi/ripetizioni) non erodono le ore
-    // ancora da pianificare degli altri sottomoduli dello stesso modulo.
+    // Build blocks per module: teoria = 2-3h, pratica = 4h (o 2 se < 4).
+    // Ogni sottomodulo viene portato al SUO monte ore (T e P separati).
     final moduleBlocks = <int, List<List<(String, int, String)>>>{};
     for (final m in typeInfo.modules) {
       for (final sub in m.submodules) {
@@ -369,8 +413,14 @@ class ScheduleService {
         void addBlocks(int rem, String t) {
           var r = rem;
           while (r > 0) {
-            // prefer 3-hr blocks; avoid leaving a lone 1-hr tail (use 2+2 for 4)
-            final size = (r == 1) ? 1 : (r == 4 ? 2 : (r >= 3 ? 3 : 2));
+            final int size;
+            if (t == 'pratica') {
+              // pratica: blocchi da 4h (porta via tanto tempo); 2h se resto < 4
+              size = r >= 4 ? 4 : (r >= 2 ? 2 : 1);
+            } else {
+              // teoria: max 3h consecutive; 2+2 per evitare coda solitaria da 1h
+              size = r == 1 ? 1 : (r == 4 ? 2 : (r >= 3 ? 3 : 2));
+            }
             moduleBlocks.putIfAbsent(m.number, () => [])
                 .add(List.generate(size, (_) => (sub.code, m.number, t)));
             r -= size;
@@ -437,8 +487,17 @@ class ScheduleService {
 
     while (qi < queue.length) {
       final weekday = date.weekday;
-      final slots   = typeInfo.schedule.slotsForWeekday(weekday);
+      final allDaySlots = typeInfo.schedule.slotsForWeekday(weekday);
+      // Venerdì: max 3 slot (le ultime 3 ore sono libere)
+      final slots = weekday == DateTime.friday
+          ? allDaySlots.where((s) => s.slot <= 3).toList()
+          : allDaySlots;
       final dateStr = _fmt(date);
+
+      // Venerdì: prova a portare in testa un blocco di 3 ore stesso sottomodulo
+      if (weekday == DateTime.friday && slots.length >= 3) {
+        _rotateSameSubmoduleBlock(queue, qi, 3);
+      }
 
       // Recovery slot 0 — Mon–Thu only (weekday 1..4)
       if (hasAttendeesInRecovery && weekday <= DateTime.thursday) {
@@ -484,5 +543,33 @@ class ScheduleService {
 
     cleaned.addAll(newLessons);
     await _db.saveSchedules(cleaned);
+  }
+
+  /// Se possibile, sposta un blocco di [needed] ore dello stesso sottomodulo
+  /// nella posizione [qi] della coda (best-effort, lookahead 30).
+  void _rotateSameSubmoduleBlock(
+    List<(String, int, String)> queue, int qi, int needed) {
+    if (queue.length - qi < needed) return;
+    final (code0, _, _) = queue[qi];
+    bool alreadyOk = true;
+    for (var k = 1; k < needed; k++) {
+      if (queue[qi + k].$1 != code0) { alreadyOk = false; break; }
+    }
+    if (alreadyOk) return;
+    const lookahead = 40;
+    final limit = (qi + lookahead).clamp(0, queue.length - needed + 1);
+    for (var i = qi + 1; i < limit; i++) {
+      final (c, _, _) = queue[i];
+      bool match = true;
+      for (var k = 1; k < needed; k++) {
+        if (queue[i + k].$1 != c) { match = false; break; }
+      }
+      if (match) {
+        final block = queue.sublist(i, i + needed);
+        queue.removeRange(i, i + needed);
+        queue.insertAll(qi, block);
+        return;
+      }
+    }
   }
 }

@@ -101,6 +101,38 @@ class ScheduledLesson {
   static const Object _s = Object();
 }
 
+class SlotNote {
+  final String id;
+  final String courseId;
+  final DateTime date;
+  final int timeSlot;
+  final String text;
+
+  const SlotNote({
+    required this.id,
+    required this.courseId,
+    required this.date,
+    required this.timeSlot,
+    required this.text,
+  });
+
+  factory SlotNote.fromJson(Map<String, dynamic> j) => SlotNote(
+    id: j['id'] as String,
+    courseId: j['course_id'] as String,
+    date: DateTime.parse(j['date'] as String),
+    timeSlot: j['time_slot'] as int,
+    text: j['text'] as String,
+  );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'course_id': courseId,
+    'date': date.toIso8601String().split('T').first,
+    'time_slot': timeSlot,
+    'text': text,
+  };
+}
+
 class AttendanceRecord {
   final String id;
   final String scheduleId;

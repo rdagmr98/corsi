@@ -35,6 +35,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
   Course? _selected;
   DateTime _weekStart = _mondayOf(DateTime.now());
   List<ScheduledLesson> _weekLessons = [];
+  List<SlotNote> _weekNotes = [];
   CourseTypeInfo? _typeInfo;
   List<ScheduledLesson> _allCourseLessons = [];
 
@@ -59,6 +60,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
     if (_selected == null) return;
     setState(() {
       _weekLessons = _scheduleService.getLessonsForWeek(_selected!.id, _weekStart);
+      _weekNotes = _scheduleService.getNotesForWeek(_selected!.id, _weekStart);
       _allCourseLessons = _scheduleService.getLessonsForCourse(_selected!.id)
           .where((l) => l.timeSlot > 0).toList();
       _typeInfo = _refService.getEffectiveCourseType(_selected!.courseTypeId, _selected!.extensionTypeId);
@@ -862,6 +864,54 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
     _refreshWeek();
   }
 
+  Future<void> _editNote(DateTime date, int slot, SlotNote? existing) async {
+    if (_selected == null) return;
+    final ctrl = TextEditingController(text: existing?.text ?? '');
+    final result = await showDialog<String?>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(existing != null ? 'Modifica nota' : 'Aggiungi nota'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          maxLines: 4,
+          decoration: const InputDecoration(
+            hintText: 'Es. Solo 4 ore oggi — visita medica',
+            border: OutlineInputBorder(),
+          ),
+          onSubmitted: (_) => Navigator.pop(ctx, ctrl.text.trim()),
+        ),
+        actions: [
+          if (existing != null)
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, ''),
+              child: const Text('Elimina', style: TextStyle(color: kError)),
+            ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, null),
+            child: const Text('Annulla'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+            child: const Text('Salva'),
+          ),
+        ],
+      ),
+    );
+    if (result == null) return;
+    if (result.isEmpty && existing != null) {
+      await _scheduleService.deleteNote(existing.id);
+    } else if (result.isNotEmpty) {
+      await _scheduleService.addNote(
+        courseId: _selected!.id,
+        date: date,
+        timeSlot: slot,
+        text: result,
+      );
+    }
+    _refreshWeek();
+  }
+
   Future<void> _editLessonInstructor(ScheduledLesson lesson) async {
     if (_selected == null || _typeInfo == null) return;
     final instructors = _userService.getInstructors()
@@ -1389,14 +1439,33 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                             final lesson = regularLessons
                                 .where((l) => _sameDay(l.date, day) && l.timeSlot == slot.slot)
                                 .firstOrNull;
+                            final slotNote = _weekNotes
+                                .where((n) => _sameDay(n.date, day) && n.timeSlot == slot.slot)
+                                .firstOrNull;
                             return TableCell(
                               child: lesson == null
-                                  ? InkWell(
+                                  ? GestureDetector(
                                       onTap: () => _addLesson(day, slot.slot),
+                                      onSecondaryTap: () => _editNote(day, slot.slot, slotNote),
+                                      onLongPress: () => _editNote(day, slot.slot, slotNote),
                                       child: Container(
                                         height: 120,
-                                        alignment: Alignment.center,
-                                        child: const Icon(Icons.add, color: kBorder, size: 16),
+                                        alignment: slotNote != null ? Alignment.topLeft : Alignment.center,
+                                        padding: slotNote != null ? const EdgeInsets.all(6) : EdgeInsets.zero,
+                                        child: slotNote != null
+                                            ? Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Row(children: [
+                                                    const Icon(Icons.sticky_note_2_outlined, size: 10, color: kWarning),
+                                                    const SizedBox(width: 3),
+                                                    Expanded(child: Text(slotNote.text,
+                                                        style: const TextStyle(fontSize: 10, color: kWarning),
+                                                        maxLines: 5, overflow: TextOverflow.ellipsis)),
+                                                  ]),
+                                                ],
+                                              )
+                                            : const Icon(Icons.add, color: kBorder, size: 16),
                                       ),
                                     )
                                   : _lessonCell(lesson, subNameMap, instrNames,
