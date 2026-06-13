@@ -156,11 +156,11 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
     final totalUnrecovered = modStats.values.fold(0, (s, m) => s + (m['unrecovered'] ?? 0));
     final totalPlannedHours = typeInfo?.modules.fold(0, (s, m) => s + m.totalHours) ?? 0;
     final totalConfirmed = modStats.values.fold(0, (s, m) => s + (m['confirmed'] ?? 0));
-    final presPct = totalConfirmed > 0
-        ? ((totalConfirmed - totalAbsent) / totalConfirmed * 100).toStringAsFixed(0)
+    final presPct = totalPlannedHours > 0
+        ? ((totalPlannedHours - totalAbsent) / totalPlannedHours * 100).toStringAsFixed(0)
         : '100';
-    final absPct = totalConfirmed > 0
-        ? (totalAbsent / totalConfirmed * 100).toStringAsFixed(0)
+    final absPct = totalPlannedHours > 0
+        ? (totalAbsent / totalPlannedHours * 100).toStringAsFixed(0)
         : '0';
     final anyWarning = typeInfo != null &&
         modStats.entries.any((e) {
@@ -254,11 +254,12 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
     final unrecoveredP = stats['unrecoveredP'] ?? 0;
     final pct  = confirmedT > 0 ? unrecoveredT / confirmedT : 0.0;
     final warn = unrecoveredP > 0 || pct > 0.10;
-    final presPct = confirmed > 0
-        ? ((confirmed - absent) / confirmed * 100).toStringAsFixed(0)
+    final modPlan = mod.totalHours;
+    final presPct = modPlan > 0
+        ? ((modPlan - absent) / modPlan * 100).toStringAsFixed(0)
         : '100';
-    final absPct = confirmed > 0
-        ? (absent / confirmed * 100).toStringAsFixed(0)
+    final absPct = modPlan > 0
+        ? (absent / modPlan * 100).toStringAsFixed(0)
         : '0';
 
     return ListTile(
@@ -290,8 +291,8 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
             )
           : Text(
               absent == 0
-                  ? 'Pres. 100% · Ass. 0% — nessuna assenza su $confirmed lezioni'
-                  : 'Pres. $presPct% · Ass. $absPct% — $absent ass. · $recovered rec. · $unrecovered non rec. / $confirmed lez.',
+                  ? 'Pres. 100% · Ass. 0% — nessuna assenza su $modPlan ore prev.'
+                  : 'Pres. $presPct% · Ass. $absPct% — $absent ass. · $recovered rec. · $unrecovered non rec. / $modPlan ore prev.',
               style: const TextStyle(color: kTextDim, fontSize: 11),
             ),
       trailing: Row(

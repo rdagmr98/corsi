@@ -138,10 +138,12 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
       confirmedByMod[l.moduleNumber] = (confirmedByMod[l.moduleNumber] ?? 0) + 1;
       if (l.isTheory) {
         confirmedTByMod[l.moduleNumber] = (confirmedTByMod[l.moduleNumber] ?? 0) + 1;
-        if (l.submoduleCode.isNotEmpty) confirmedSubT[l.submoduleCode] = (confirmedSubT[l.submoduleCode] ?? 0) + 1;
+        final nc = ScheduleService.normalizeSubCode(l.submoduleCode);
+        if (nc.isNotEmpty) confirmedSubT[nc] = (confirmedSubT[nc] ?? 0) + 1;
       } else {
         confirmedPByMod[l.moduleNumber] = (confirmedPByMod[l.moduleNumber] ?? 0) + 1;
-        if (l.submoduleCode.isNotEmpty) confirmedSubP[l.submoduleCode] = (confirmedSubP[l.submoduleCode] ?? 0) + 1;
+        final nc = ScheduleService.normalizeSubCode(l.submoduleCode);
+        if (nc.isNotEmpty) confirmedSubP[nc] = (confirmedSubP[nc] ?? 0) + 1;
       }
     }
 
@@ -205,6 +207,7 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
         final pP = total > 0 ? doneP / total : 0.0;
         final col = moduleColor(m.number);
         return GestureDetector(
+          behavior: HitTestBehavior.opaque,
           onTap: () => _showModuleDetail(context, m, doneT.toDouble(), doneP.toDouble(), confirmedSubT, confirmedSubP),
           child: Padding(
             padding: const EdgeInsets.only(bottom: 10),
@@ -301,11 +304,11 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
         final totalUnrec = modStats.values.fold(0, (s, m) => s + (m['unrecovered'] ?? 0));
         final totalPlanned = typeInfo?.modules.fold<int>(0, (s, m) => s + (m.totalHours as int)) ?? 0;
         final totalConfirmed = modStats.values.fold(0, (s, m) => s + (m['confirmed'] ?? 0));
-        final presPct = totalConfirmed > 0
-            ? ((totalConfirmed - totalAbsent) / totalConfirmed * 100).toStringAsFixed(0)
+        final presPct = totalPlanned > 0
+            ? ((totalPlanned - totalAbsent) / totalPlanned * 100).toStringAsFixed(0)
             : '100';
-        final absPct = totalConfirmed > 0
-            ? (totalAbsent / totalConfirmed * 100).toStringAsFixed(0)
+        final absPct = totalPlanned > 0
+            ? (totalAbsent / totalPlanned * 100).toStringAsFixed(0)
             : '0';
         final anyWarn = typeInfo != null && modStats.entries.any((e) {
           final cT     = e.value['confirmedT'] ?? 0;
@@ -345,11 +348,12 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
               final unrecoveredP = stats['unrecoveredP'] ?? 0;
               final pct  = confirmedT > 0 ? unrecoveredT / confirmedT : 0.0;
               final warn = unrecoveredP > 0 || pct > 0.10;
-              final mPresPct = total > 0
-                  ? ((total - absent) / total * 100).toStringAsFixed(0)
+              final modPlan = mod.totalHours;
+              final mPresPct = modPlan > 0
+                  ? ((modPlan - absent) / modPlan * 100).toStringAsFixed(0)
                   : '100';
               final mAbsPct =
-                  total > 0 ? (absent / total * 100).toStringAsFixed(0) : '0';
+                  modPlan > 0 ? (absent / modPlan * 100).toStringAsFixed(0) : '0';
               return ListTile(
                 dense: true,
                 contentPadding: const EdgeInsets.fromLTRB(24, 0, 8, 0),
@@ -365,7 +369,7 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
                 title: Text(mod.name, style: const TextStyle(color: kText, fontSize: 12), overflow: TextOverflow.ellipsis),
                 subtitle: Text(
                   absent == 0
-                      ? 'Pres. 100% · Ass. 0% — nessuna assenza su $total ore prev.'
+                      ? 'Pres. 100% · Ass. 0% — nessuna assenza su $modPlan ore prev.'
                       : [
                           'Pres. $mPresPct% · Ass. $mAbsPct% — $unrecovered non rec.',
                           if (unrecoveredP > 0) 'P: $unrecoveredP ⚠ recupero 100%',

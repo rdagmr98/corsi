@@ -98,10 +98,12 @@ class _DirectorOverviewTabState extends ConsumerState<DirectorOverviewTab> {
         if (!l.confirmed) continue;
         if (l.type != 'pratica') {
           rawT[l.moduleNumber] = (rawT[l.moduleNumber] ?? 0) + 1;
-          if (l.submoduleCode.isNotEmpty) subRawT[l.submoduleCode] = (subRawT[l.submoduleCode] ?? 0) + 1;
+          final nc = ScheduleService.normalizeSubCode(l.submoduleCode);
+          if (nc.isNotEmpty) subRawT[nc] = (subRawT[nc] ?? 0) + 1;
         } else {
           rawP[l.moduleNumber] = (rawP[l.moduleNumber] ?? 0) + 1;
-          if (l.submoduleCode.isNotEmpty) subRawP[l.submoduleCode] = (subRawP[l.submoduleCode] ?? 0) + 1;
+          final nc = ScheduleService.normalizeSubCode(l.submoduleCode);
+          if (nc.isNotEmpty) subRawP[nc] = (subRawP[nc] ?? 0) + 1;
         }
       }
       for (final m in typeInfo.modules) {
@@ -208,6 +210,7 @@ class _DirectorOverviewTabState extends ConsumerState<DirectorOverviewTab> {
               final pT = total > 0 ? doneT / total : 0.0;
               final pP = total > 0 ? doneP / total : 0.0;
               return GestureDetector(
+                behavior: HitTestBehavior.opaque,
                 onTap: () => _showModuleDetail(context, m, doneT, doneP, subRawT, subRawP),
                 child: Padding(
                   padding: const EdgeInsets.only(bottom: 8),

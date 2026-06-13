@@ -94,13 +94,14 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
     final modStats = _attendanceService.computePerModuleStats(
       course.id, widget.userId, lessons, modules: typeInfo?.modules);
 
-    // Global totals (denominator = confirmed lessons)
+    // Global totals
     final totalConfirmed = modStats.values.fold(0, (s, m) => s + (m['confirmed'] ?? 0));
     final totalAbsent    = modStats.values.fold(0, (s, m) => s + (m['absent'] ?? 0));
     final totalRecovered = modStats.values.fold(0, (s, m) => s + (m['recovered'] ?? 0));
     final totalUnrec     = modStats.values.fold(0, (s, m) => s + (m['unrecovered'] ?? 0));
-    final globalPct      = totalConfirmed > 0 ? (totalConfirmed - totalUnrec) / totalConfirmed : 1.0;
-    final globalAbsPct   = totalConfirmed > 0 ? totalAbsent / totalConfirmed : 0.0;
+    final totalPlanned   = typeInfo?.modules.fold<int>(0, (s, m) => s + m.totalHours) ?? totalConfirmed;
+    final globalPct      = totalPlanned > 0 ? (totalPlanned - totalUnrec) / totalPlanned : 1.0;
+    final globalAbsPct   = totalPlanned > 0 ? totalAbsent / totalPlanned : 0.0;
     final anyWarn        = modStats.values.any((m) {
       final cT    = m['confirmedT'] ?? 0;
       final unrecT = m['unrecoveredT'] ?? 0;
@@ -266,7 +267,9 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
                     const Text('Dettaglio per modulo',
                         style: TextStyle(color: kTextDim, fontSize: 12, fontWeight: FontWeight.w600)),
                     const SizedBox(height: 6),
-                    ..._buildModuleRows(modStats, modNames),
+                    ..._buildModuleRows(modStats, modNames, {
+                      for (final m in typeInfo?.modules ?? []) m.number: m.totalHours,
+                    }),
                     const SizedBox(height: 12),
                   ],
 
@@ -445,6 +448,7 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
   List<Widget> _buildModuleRows(
     Map<int, Map<String, int>> modStats,
     Map<int, String> modNames,
+    Map<int, int> modPlanHours,
   ) {
     final entries = modStats.entries
         .where((e) => (e.value['confirmed'] ?? 0) > 0)
@@ -458,14 +462,15 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
       final absent = st['absent'] ?? 0;
       final rec   = st['recovered'] ?? 0;
       final unrec = st['unrecovered'] ?? 0;
-      final pct   = conf > 0 ? (conf - unrec) / conf : 1.0;
+      final plan  = modPlanHours[mod] ?? conf;
+      final pct   = plan > 0 ? (plan - unrec) / plan : 1.0;
       final warn  = conf > 0 && unrec / conf > 0.10;
       final color = warn ? kError : (pct >= 0.90 ? kAccent : kWarning);
-      final presPct = conf > 0
-          ? ((conf - absent) / conf * 100).toStringAsFixed(0)
+      final presPct = plan > 0
+          ? ((plan - absent) / plan * 100).toStringAsFixed(0)
           : '100';
       final absPct =
-          conf > 0 ? (absent / conf * 100).toStringAsFixed(0) : '0';
+          plan > 0 ? (absent / plan * 100).toStringAsFixed(0) : '0';
 
       return Card(
         color: kSurface,
@@ -500,8 +505,8 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
                           overflow: TextOverflow.ellipsis),
                     Text(
                       absent == 0
-                          ? 'Pres. 100% · Ass. 0% — nessuna assenza su $conf lezioni'
-                          : 'Pres. $presPct% · Ass. $absPct% — $absent ass. · $rec rec. · $unrec non rec. / $conf lez.',
+                          ? 'Pres. 100% · Ass. 0% — nessuna assenza su $plan ore prev.'
+                          : 'Pres. $presPct% · Ass. $absPct% — $absent ass. · $rec rec. · $unrec non rec. / $plan ore prev.',
                       style: TextStyle(color: warn ? kError : kTextDim, fontSize: 10),
                     ),
                     if (warn)
