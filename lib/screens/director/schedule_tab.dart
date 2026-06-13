@@ -636,21 +636,29 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
     // Suggerimenti: SOLO i frequentatori oltre il 10% di assenze non
     // recuperate rispetto alle ore confermate del corso (quelli che devono
     // recuperare per rientrare) — pre-compilano materia e presenti,
-    // restano modificabili.
+    // restano modificabili. La pratica va recuperata al 100% quindi viene
+    // suggerita per prima.
     final allLessons = _scheduleService.getLessonsForCourse(_selected!.id);
     final overLimit = _attendanceService.attendeesOverRecoveryLimit(
         _selected!.id, _selected!.attendeeIds, allLessons);
     final unrecByAttendee = <String, Map<int, int>>{};
+    final unrecPByAttendee = <String, Map<int, int>>{};
     final unrecByModule = <int, int>{};
+    final unrecPByModule = <int, int>{};
     for (final a in attendees) {
       if (!overLimit.contains(a.id)) continue;
       final stats = _attendanceService.computePerModuleStats(
           _selected!.id, a.id, allLessons, modules: typeInfo.modules);
       stats.forEach((mod, s) {
         final u = s['unrecovered'] ?? 0;
+        final uP = s['unrecoveredP'] ?? 0;
         if (u > 0) {
           (unrecByAttendee[a.id] ??= {})[mod] = u;
           unrecByModule[mod] = (unrecByModule[mod] ?? 0) + u;
+        }
+        if (uP > 0) {
+          (unrecPByAttendee[a.id] ??= {})[mod] = uP;
+          unrecPByModule[mod] = (unrecPByModule[mod] ?? 0) + uP;
         }
       });
     }
@@ -661,10 +669,16 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
 
     int? selectedModule =
         typeInfo.modules.isNotEmpty ? typeInfo.modules.first.number : null;
+    // Moduli con pratica non recuperata vengono suggeriti per primi
     final candidates = unrecByModule.entries
         .where((e) => typeInfo.modules.any((m) => m.number == e.key))
         .toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
+      ..sort((a, b) {
+        final pA = unrecPByModule[a.key] ?? 0;
+        final pB = unrecPByModule[b.key] ?? 0;
+        if (pA != pB) return pB.compareTo(pA); // pratica prima
+        return b.value.compareTo(a.value);
+      });
     if (candidates.isNotEmpty) selectedModule = candidates.first.key;
     final selectedAttendees = <String>{...suggestedFor(selectedModule)};
     final user = ref.read(authProvider).currentUser;
@@ -695,22 +709,35 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                     decoration: const InputDecoration(isDense: true),
                     items: typeInfo.modules.map((m) {
                       final u = unrecByModule[m.number] ?? 0;
+                      final uP = unrecPByModule[m.number] ?? 0;
                       return DropdownMenuItem(
                         value: m.number,
                         child: Row(
                           children: [
-                            if (u > 0) ...[
+                            if (uP > 0) ...[
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: kError.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(3),
+                                ),
+                                child: Text('${uP}P',
+                                    style: const TextStyle(
+                                        color: kError, fontSize: 9, fontWeight: FontWeight.bold)),
+                              ),
+                              const SizedBox(width: 4),
+                            ] else if (u > 0) ...[
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                                 decoration: BoxDecoration(
                                   color: kWarning.withOpacity(0.15),
                                   borderRadius: BorderRadius.circular(3),
                                 ),
-                                child: Text('${u}h',
+                                child: Text('${u}T',
                                     style: const TextStyle(
                                         color: kWarning, fontSize: 9, fontWeight: FontWeight.bold)),
                               ),
-                              const SizedBox(width: 6),
+                              const SizedBox(width: 4),
                             ],
                             Flexible(
                               child: Text('M${m.displayCode} – ${m.name}',
@@ -730,7 +757,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                   if (unrecByModule.isNotEmpty) ...[
                     const SizedBox(height: 6),
                     const Text(
-                      'Suggeriti solo i frequentatori oltre il 10% di assenze non recuperate sulle ore svolte.',
+                      'Suggeriti i frequentatori oltre il limite. Badge P = pratica da recuperare al 100% (priorità). Badge T = teoria oltre il 10%.',
                       style: TextStyle(color: kTextDim, fontSize: 10, fontStyle: FontStyle.italic),
                     ),
                   ],
@@ -740,25 +767,60 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                   Wrap(
                     spacing: 6,
                     runSpacing: 4,
-                    children: attendees.map((a) {
-                      final sel = selectedAttendees.contains(a.id);
-                      final u = unrecByAttendee[a.id]?[selectedModule] ?? 0;
-                      return FilterChip(
-                        label: Text(
-                          u > 0 ? '${a.fullName} · ${u}h' : a.fullName,
-                          style: TextStyle(
-                              color: sel ? Colors.white : (u > 0 ? kWarning : kTextDim),
-                              fontSize: 11),
-                        ),
-                        selected: sel,
-                        selectedColor: kAccent.withOpacity(0.8),
-                        backgroundColor: kSurface,
-                        side: u > 0 && !sel ? const BorderSide(color: kWarning) : null,
-                        onSelected: (v) => setDlg(() {
-                          if (v) selectedAttendees.add(a.id); else selectedAttendees.remove(a.id);
-                        }),
-                      );
-                    }).toList(),
+                    children: (() {
+                      // Frequentatori con pratica da recuperare vengono mostrati per primi
+                      final sorted = List<AppUser>.from(attendees)
+                        ..sort((a, b) {
+                          final pA = (unrecPByAttendee[a.id]?[selectedModule] ?? 0) > 0 ? 0 : 1;
+                          final pB = (unrecPByAttendee[b.id]?[selectedModule] ?? 0) > 0 ? 0 : 1;
+                          if (pA != pB) return pA - pB;
+                          final uA = unrecByAttendee[a.id]?[selectedModule] ?? 0;
+                          final uB = unrecByAttendee[b.id]?[selectedModule] ?? 0;
+                          return uB.compareTo(uA);
+                        });
+                      return sorted.map((a) {
+                        final sel = selectedAttendees.contains(a.id);
+                        final u = unrecByAttendee[a.id]?[selectedModule] ?? 0;
+                        final uP = unrecPByAttendee[a.id]?[selectedModule] ?? 0;
+                        return FilterChip(
+                          label: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (uP > 0) ...[
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+                                  decoration: BoxDecoration(
+                                    color: kError.withOpacity(sel ? 0.3 : 0.15),
+                                    borderRadius: BorderRadius.circular(3),
+                                  ),
+                                  child: Text('P',
+                                      style: TextStyle(
+                                          color: sel ? Colors.white : kError,
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.bold)),
+                                ),
+                                const SizedBox(width: 4),
+                              ],
+                              Text(
+                                u > 0 ? '${a.fullName} · ${u}h' : a.fullName,
+                                style: TextStyle(
+                                    color: sel ? Colors.white : (u > 0 ? kWarning : kTextDim),
+                                    fontSize: 11),
+                              ),
+                            ],
+                          ),
+                          selected: sel,
+                          selectedColor: kAccent.withOpacity(0.8),
+                          backgroundColor: kSurface,
+                          side: u > 0 && !sel
+                              ? BorderSide(color: uP > 0 ? kError : kWarning)
+                              : null,
+                          onSelected: (v) => setDlg(() {
+                            if (v) selectedAttendees.add(a.id); else selectedAttendees.remove(a.id);
+                          }),
+                        );
+                      }).toList();
+                    })(),
                   ),
                 ],
               ),
