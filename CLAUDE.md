@@ -55,7 +55,14 @@ GitHub Actions (`.github/workflows/deploy.yml`) deploya automaticamente su push 
 
 ## STATO SESSIONE — aggiornato 2026-06-13
 
-### Ultime modifiche (2026-06-13)
+### Ultime modifiche (2026-06-13) — sessione 2
+1. **Barra bicolore T/P (theme.dart)**: `splitBar(pT, pP, {height})` — teoria kPrimary + pratica kAccent + residuo kSurface. Usata in admin e director.
+2. **Admin course_detail_screen**: chip M11A/11B `width:48 softWrap:false overflow:ellipsis`, barra bicolore `splitBar(pT,pP,height:5)`, tap modulo → dialog Totale/Teoria/Pratica ore+%.
+3. **Director overview_tab**: barra bicolore modulo, rimossa "h" dal testo durata `done/total`, tap modulo → dialog dettaglio. `rawT`/`rawP` spostate a scope funzione per fix compile error.
+4. **BTC3 verifica dati**: tutti i moduli corretti — M6 gap 2h genuino (non ancora insegnato), differenze App/Excel solo su date post-registro (2026-06-08/09) legittime.
+5. **Commit**: `0360bf0`
+
+### Ultime modifiche (2026-06-13) — sessione 1
 1. **UI overview direttore**: `_statCard` supporta `onTap` + icona info; tap su "Ore svolte" apre dialog con Totale/Teoria/Pratica ore. Barre modulo con testo `XX/XXh` in `SizedBox(w:64)` → larghezza uniforme. Label "M11A"/"M11B" in `SizedBox(w:52, softWrap:false)` → stessa riga.
 2. **UI voti frequentatore**: rimossa label SUFFICIENTE/INSUFFICIENTE; posizione graduatoria su riga propria a larghezza piena (non più troncata con "...").
 3. **BTC3 dati**: 140 lezioni duplicate rimosse (1523→1371 entro finestra registro), assenze ricreate da Excel con UUID completi. records.json: 1594 record totali.
