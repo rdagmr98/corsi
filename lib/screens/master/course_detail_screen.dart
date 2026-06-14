@@ -638,6 +638,7 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
     child: Text(
       text,
+      overflow: TextOverflow.ellipsis,
       style: TextStyle(
         color: color ?? kText,
         fontSize: 11,

@@ -443,6 +443,7 @@ class _DirectorGradesTabState extends ConsumerState<DirectorGradesTab> {
                                     padding: const EdgeInsets.symmetric(
                                         horizontal: 6, vertical: 4),
                                     child: Text(a.fullName,
+                                        overflow: TextOverflow.ellipsis,
                                         style: const TextStyle(
                                             color: kText, fontSize: 11)),
                                   ),

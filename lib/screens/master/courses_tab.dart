@@ -459,12 +459,13 @@ class _CoursesTabState extends ConsumerState<CoursesTab> {
                               child: Text(c.courseStatus.label, style: TextStyle(color: color, fontSize: 11)),
                             ),
                             const SizedBox(width: 8),
-                            Text(
+                            Flexible(child: Text(
                               c.startDate != null
                                   ? 'Inizio: ${DateFormat('dd/MM/yyyy').format(c.startDate!)}'
                                   : 'Data da definire',
+                              overflow: TextOverflow.ellipsis,
                               style: const TextStyle(color: kTextDim, fontSize: 12),
-                            ),
+                            )),
                             const SizedBox(width: 8),
                             Text(
                               '${c.attendeeIds.length} freq. · ${c.instructorIds.length} istr.',

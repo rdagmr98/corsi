@@ -333,11 +333,11 @@ class _UsersTabState extends ConsumerState<UsersTab> {
                       ),
                       if (u.username != null) ...[
                         const SizedBox(width: 8),
-                        Text('@${u.username}', style: const TextStyle(color: kTextDim, fontSize: 11)),
+                        Flexible(child: Text('@${u.username}', overflow: TextOverflow.ellipsis, style: const TextStyle(color: kTextDim, fontSize: 11))),
                       ],
                       if (u.email != null) ...[
                         const SizedBox(width: 8),
-                        Text(u.email!, style: const TextStyle(color: kTextDim, fontSize: 11)),
+                        Flexible(child: Text(u.email!, overflow: TextOverflow.ellipsis, style: const TextStyle(color: kTextDim, fontSize: 11))),
                       ],
                     ],
                   ),

@@ -632,10 +632,11 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
                       padding: const EdgeInsets.only(bottom: 3),
                       child: Row(
                         children: [
-                          Text(
+                          Flexible(child: Text(
                             att?.fullName ?? r.attendeeId.substring(0, 8),
+                            overflow: TextOverflow.ellipsis,
                             style: const TextStyle(color: kText, fontSize: 12),
-                          ),
+                          )),
                           const SizedBox(width: 8),
                           const Text('→',
                               style: TextStyle(color: kTextDim, fontSize: 12)),
