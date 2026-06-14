@@ -74,6 +74,7 @@ class _UsersTabState extends ConsumerState<UsersTab> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  const SizedBox(height: 8),
                   _field('Cognome', cognomeCtrl),
                   const SizedBox(height: 12),
                   _field('Nome', nomeCtrl),

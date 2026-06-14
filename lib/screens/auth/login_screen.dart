@@ -65,6 +65,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  const SizedBox(height: 8),
                   TextField(
                     controller: nomeCtrl,
                     decoration: const InputDecoration(labelText: 'Nome', isDense: true),
