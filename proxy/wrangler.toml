@@ -1,0 +1,7 @@
+name = "corsi-proxy"
+main = "worker.js"
+compatibility_date = "2024-11-01"
+
+# I secret NON vanno qui. Impostali con:
+#   wrangler secret put GH_TOKEN
+#   wrangler secret put APP_KEY   (opzionale)

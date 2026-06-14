@@ -31,15 +31,16 @@ class _ChangePasswordDialogState extends ConsumerState<ChangePasswordDialog> {
     final user = ref.read(authProvider).currentUser;
     if (user == null) return;
 
-    final oldHash = GhDbService.hashPassword(_oldCtrl.text);
     final db = GhDbService();
 
-    // Verifica password attuale
+    // Verifica password attuale (gestisce hash legacy e PBKDF2)
     final raw = db.users.firstWhere(
       (u) => u['id'] == user.id,
       orElse: () => {},
     );
-    if (raw.isEmpty || raw['password_hash'] != oldHash) {
+    final stored = raw['password_hash'] as String?;
+    if (raw.isEmpty || stored == null ||
+        !GhDbService.verifyPassword(_oldCtrl.text, stored)) {
       setState(() => _error = 'Password attuale non corretta.');
       return;
     }

@@ -12,6 +12,7 @@ import '../../services/reference_service.dart';
 import '../../services/schedule_service.dart';
 import '../../services/user_service.dart';
 import '../../theme.dart';
+import '../../utils/snackbar.dart';
 import 'course_detail_screen.dart';
 
 class CoursesTab extends ConsumerStatefulWidget {
@@ -161,27 +162,32 @@ class _CoursesTabState extends ConsumerState<CoursesTab> {
                 final masterId = ref.read(authProvider).currentUser?.id ?? '';
 
                 Navigator.pop(ctx);
-                if (isNew) {
-                  await _courseService.createCourse(
-                    courseTypeId: selectedType!,
-                    title: title,
-                    createdBy: masterId,
-                    startDate: startDate,
-                    directorIds: selectedDirectors.toList(),
-                    instructorIds: selectedInstructors.toList(),
-                    attendeeIds: selectedAttendees.toList(),
-                  );
-                } else {
-                  await _courseService.updateCourse(course!.copyWith(
-                    courseTypeId: selectedType,
-                    title: title,
-                    startDate: startDate,
-                    directorIds: selectedDirectors.toList(),
-                    instructorIds: selectedInstructors.toList(),
-                    attendeeIds: selectedAttendees.toList(),
-                  ));
+                try {
+                  if (isNew) {
+                    await _courseService.createCourse(
+                      courseTypeId: selectedType!,
+                      title: title,
+                      createdBy: masterId,
+                      startDate: startDate,
+                      directorIds: selectedDirectors.toList(),
+                      instructorIds: selectedInstructors.toList(),
+                      attendeeIds: selectedAttendees.toList(),
+                    );
+                  } else {
+                    await _courseService.updateCourse(course!.copyWith(
+                      courseTypeId: selectedType,
+                      title: title,
+                      startDate: startDate,
+                      directorIds: selectedDirectors.toList(),
+                      instructorIds: selectedInstructors.toList(),
+                      attendeeIds: selectedAttendees.toList(),
+                    ));
+                  }
+                } catch (_) {
+                  showAppError('Salvataggio del corso non riuscito. Riprova.');
+                } finally {
+                  _reload();
                 }
-                _reload();
               },
               child: const Text('Salva'),
             ),

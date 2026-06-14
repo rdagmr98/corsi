@@ -6,6 +6,8 @@ import 'screens/master/master_shell.dart';
 import 'screens/director/director_shell.dart';
 import 'screens/instructor/instructor_shell.dart';
 import 'screens/attendee/attendee_shell.dart';
+import 'services/gh_db_service.dart';
+import 'utils/snackbar.dart';
 import 'theme.dart';
 
 final _router = GoRouter(
@@ -19,15 +21,38 @@ final _router = GoRouter(
   ],
 );
 
-class CorsiApp extends ConsumerWidget {
+class CorsiApp extends ConsumerStatefulWidget {
   const CorsiApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<CorsiApp> createState() => _CorsiAppState();
+}
+
+class _CorsiAppState extends ConsumerState<CorsiApp> {
+  @override
+  void initState() {
+    super.initState();
+    GhDbService.saveError.addListener(_onSaveError);
+  }
+
+  @override
+  void dispose() {
+    GhDbService.saveError.removeListener(_onSaveError);
+    super.dispose();
+  }
+
+  void _onSaveError() {
+    if (GhDbService.saveError.value == null) return;
+    showAppError('Salvataggio non riuscito. Controlla la connessione e riprova.');
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return MaterialApp.router(
       title: 'Gestione Corsi',
       debugShowCheckedModeBanner: false,
       theme: buildTheme(),
+      scaffoldMessengerKey: scaffoldMessengerKey,
       routerConfig: _router,
       builder: (context, child) => MediaQuery(
         data: MediaQuery.of(context).copyWith(

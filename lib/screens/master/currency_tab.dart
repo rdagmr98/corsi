@@ -7,6 +7,7 @@ import '../../services/gh_db_service.dart';
 import '../../services/grade_service.dart';
 import '../../services/user_service.dart';
 import '../../theme.dart';
+import '../../utils/snackbar.dart';
 
 class CurrencyTab extends ConsumerStatefulWidget {
   const CurrencyTab({super.key});
@@ -379,8 +380,13 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
 
     if (confirmed == null) return;
     final newExpiry = confirmed is _RemoveDate ? null : confirmed as DateTime;
-    await _userService.setDaaExpiry(instr.id, newExpiry);
-    _reload();
+    try {
+      await _userService.setDaaExpiry(instr.id, newExpiry);
+    } catch (_) {
+      showAppError('Salvataggio scadenza DAA non riuscito. Riprova.');
+    } finally {
+      _reload();
+    }
   }
 
   // ── GO override dialog ────────────────────────────────────────────────────
@@ -412,8 +418,13 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
       ),
     );
     if (confirm == true) {
-      await _userService.setGoOverride(instr.id, newVal);
-      _reload();
+      try {
+        await _userService.setGoOverride(instr.id, newVal);
+      } catch (_) {
+        showAppError('Salvataggio GO manuale non riuscito. Riprova.');
+      } finally {
+        _reload();
+      }
     }
   }
 

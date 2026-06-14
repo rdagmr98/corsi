@@ -87,6 +87,20 @@ ThemeData buildTheme() => ThemeData.dark().copyWith(
     labelStyle: TextStyle(color: kText, fontSize: 12),
     padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
   ),
+  dialogTheme: DialogThemeData(
+    backgroundColor: kCard,
+    surfaceTintColor: Colors.transparent,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+    titleTextStyle: const TextStyle(color: kText, fontSize: 17, fontWeight: FontWeight.w600),
+    contentTextStyle: const TextStyle(color: kText, fontSize: 14),
+  ),
+  snackBarTheme: SnackBarThemeData(
+    behavior: SnackBarBehavior.floating,
+    backgroundColor: kCard,
+    contentTextStyle: const TextStyle(color: kText, fontSize: 13),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+    insetPadding: const EdgeInsets.all(16),
+  ),
 );
 
 /// Barra progresso bicolore: teoria (kPrimary) + pratica (kAccent) + residuo (kSurface).
