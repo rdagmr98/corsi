@@ -206,173 +206,96 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Widget build(BuildContext context) {
     final auth = ref.watch(authProvider);
     return Scaffold(
-      body: DecoratedBox(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFF0A0F1E), Color(0xFF0E1832), Color(0xFF0A0F1E)],
-          ),
-        ),
-        child: Stack(
-          children: [
-            Positioned(
-              top: -120,
-              left: 0,
-              right: 0,
-              height: 380,
-              child: Center(
-                child: Container(
-                  width: 360,
-                  height: 360,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: RadialGradient(
-                      colors: [
-                        kPrimary.withValues(alpha: 0.20),
-                        Colors.transparent,
-                      ],
+      backgroundColor: kBg,
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 380),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Image.asset(
+                  'assets/images/smam_logo.png',
+                  width: 140,
+                  height: 140,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Gestione Corsi',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontSize: 24,
+                    color: kText,
+                  ),
+                ),
+                Text(
+                  'Manutenzione Aeronautica',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                const SizedBox(height: 40),
+                TextField(
+                  controller: _usernameCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Username',
+                    prefixIcon: Icon(Icons.person_outline, color: kTextDim),
+                  ),
+                  style: const TextStyle(color: kText),
+                  onSubmitted: (_) => _login(),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _passwordCtrl,
+                  obscureText: _obscure,
+                  decoration: InputDecoration(
+                    labelText: 'Password',
+                    prefixIcon: const Icon(Icons.lock_outline, color: kTextDim),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscure ? Icons.visibility_off : Icons.visibility,
+                        color: kTextDim,
+                      ),
+                      onPressed: () => setState(() => _obscure = !_obscure),
                     ),
                   ),
+                  style: const TextStyle(color: kText),
+                  onSubmitted: (_) => _login(),
                 ),
-              ),
-            ),
-            Center(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(24),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 400),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(18),
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: kCard,
-                          border: Border.all(
-                            color: kPrimary.withValues(alpha: 0.35),
-                            width: 1.5,
+                if (auth.error != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    auth.error!,
+                    style: const TextStyle(color: kError, fontSize: 13),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+                const SizedBox(height: 24),
+                ElevatedButton(
+                  onPressed: auth.isLoading ? null : _login,
+                  child: auth.isLoading
+                      ? const SizedBox(
+                          height: 18,
+                          width: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
                           ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: kPrimary.withValues(alpha: 0.25),
-                              blurRadius: 30,
-                              spreadRadius: 2,
-                            ),
-                          ],
-                        ),
-                        child: Image.asset(
-                          'assets/images/smam_logo.png',
-                          width: 92,
-                          height: 92,
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      Text(
-                        'Gestione Corsi',
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                              fontSize: 24,
-                              color: kText,
-                            ),
-                      ),
-                      Text(
-                        'Manutenzione Aeronautica',
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                      const SizedBox(height: 28),
-                      Container(
-                        padding: const EdgeInsets.all(24),
-                        decoration: BoxDecoration(
-                          color: kCard,
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: kBorder),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.35),
-                              blurRadius: 24,
-                              offset: const Offset(0, 12),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            TextField(
-                              controller: _usernameCtrl,
-                              decoration: const InputDecoration(
-                                labelText: 'Username',
-                                prefixIcon:
-                                    Icon(Icons.person_outline, color: kTextDim),
-                              ),
-                              style: const TextStyle(color: kText),
-                              onSubmitted: (_) => _login(),
-                            ),
-                            const SizedBox(height: 16),
-                            TextField(
-                              controller: _passwordCtrl,
-                              obscureText: _obscure,
-                              decoration: InputDecoration(
-                                labelText: 'Password',
-                                prefixIcon: const Icon(Icons.lock_outline,
-                                    color: kTextDim),
-                                suffixIcon: IconButton(
-                                  icon: Icon(
-                                    _obscure
-                                        ? Icons.visibility_off
-                                        : Icons.visibility,
-                                    color: kTextDim,
-                                  ),
-                                  onPressed: () =>
-                                      setState(() => _obscure = !_obscure),
-                                ),
-                              ),
-                              style: const TextStyle(color: kText),
-                              onSubmitted: (_) => _login(),
-                            ),
-                            if (auth.error != null) ...[
-                              const SizedBox(height: 12),
-                              Text(
-                                auth.error!,
-                                style: const TextStyle(
-                                    color: kError, fontSize: 13),
-                                textAlign: TextAlign.center,
-                              ),
-                            ],
-                            const SizedBox(height: 24),
-                            ElevatedButton(
-                              onPressed: auth.isLoading ? null : _login,
-                              child: auth.isLoading
-                                  ? const SizedBox(
-                                      height: 18,
-                                      width: 18,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: Colors.white,
-                                      ),
-                                    )
-                                  : const Text('Accedi'),
-                            ),
-                            const SizedBox(height: 8),
-                            TextButton(
-                              onPressed: auth.isLoading ? null : _register,
-                              child: const Text(
-                                'Non hai un account? Registrati',
-                                style:
-                                    TextStyle(color: kTextDim, fontSize: 13),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
+                        )
+                      : const Text('Accedi'),
+                ),
+                const SizedBox(height: 12),
+                TextButton(
+                  onPressed: auth.isLoading ? null : _register,
+                  child: const Text(
+                    'Non hai un account? Registrati',
+                    style: TextStyle(color: kTextDim, fontSize: 13),
                   ),
                 ),
-              ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
