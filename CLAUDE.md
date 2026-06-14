@@ -65,7 +65,14 @@ GitHub Actions (`.github/workflows/deploy.yml`) deploya automaticamente su push 
 
 ---
 
-## STATO SESSIONE — aggiornato 2026-06-15
+## STATO SESSIONE — aggiornato 2026-06-14 (sessione 9)
+
+### Ultime modifiche (2026-06-14) — sessione 9 — sicurezza, robustezza, grafica (commit 4293970)
+1. **Cifratura PII con IV casuale (crypto_service.dart)**: nuovo formato `ENC1:<ivB64>:<ctB64>`, IV random per record (niente più leak di uguaglianza). Decifra ancora il legacy `ENC:` (IV zero) → retrocompatibile. La chiave resta nel bundle: per riservatezza piena serve il proxy.
+2. **Hashing password PBKDF2 (gh_db_service.dart)**: `hashPassword` ora PBKDF2-HMAC-SHA256, 10000 iter, salt 16B per-utente → formato `pbkdf2$<iter>$<saltB64>$<hashB64>`. `verifyPassword` const-time, accetta anche i vecchi SHA-256. `auth_service.login` migra l'hash legacy al primo login OK (best-effort `.ignore()`). `change_password_dialog` usa `verifyPassword`.
+3. **Proxy token (gh_config.dart + proxy/)**: `PROXY_URL`/`APP_KEY` via dart-define. Se valorizzati, le chiamate passano dal Cloudflare Worker (`proxy/worker.js` + `wrangler.toml`) che custodisce il token GitHub lato server; il client non invia più il PAT. Default vuoto = comportamento attuale (GitHub diretto col PAT). **TODO utente**: deployare il Worker, settare i secret, aggiungere i dart-define nel workflow, rimuovere READ_PAT, revocare il vecchio PAT.
+4. **Robustezza salvataggi**: `_writeFile` (scritture sincrone users/courses/amc) ora imposta `saveError` sul fallimento → SnackBar globale (rete di sicurezza per tutti i call-site). In più try/catch con messaggio specifico su: creazione/modifica corso (courses_tab), scadenza DAA e GO manuale (currency_tab). Listener globale in `app.dart` + helper `lib/utils/snackbar.dart` (`showAppError`/`showAppInfo`, `scaffoldMessengerKey`).
+5. **Grafica login (login_screen.dart)**: sfondo a gradiente verticale, alone luminoso radiale dietro al logo, logo dentro un anello con bordo+glow, form dentro una card (bordo kBorder, ombra). Theme: aggiunti `dialogTheme` (DialogThemeData) e `snackBarTheme` (SnackBarThemeData, floating).
 
 ### Ultime modifiche (2026-06-15) — sessione 8
 1. **Reimport M3 BTC3 completo (corsi-data, commit 5d2340b)**: 124 lezioni M3 (90h teoria + 20h pratica + 10h recupero Laraspata teoria + 4h recupero Codina 3.5P pratica).
