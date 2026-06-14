@@ -188,6 +188,7 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
           ),
         ),
         title: Text(a.fullName,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(color: kText, fontWeight: FontWeight.w500, fontSize: 14)),
         subtitle: Text(
           'Pres. $presPct% · Ass. $absPct% — $totalAbsent ore ass. · $totalUnrecovered non rec. su $totalPlannedHours ore prev.',

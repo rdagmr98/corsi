@@ -334,7 +334,7 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
               child: Text(a.cognome.isNotEmpty ? a.cognome[0].toUpperCase() : '?',
                   style: TextStyle(color: anyWarn ? kError : kPrimary, fontWeight: FontWeight.bold, fontSize: 13)),
             ),
-            title: Text(a.fullName, style: const TextStyle(color: kText, fontSize: 13)),
+            title: Text(a.fullName, overflow: TextOverflow.ellipsis, style: const TextStyle(color: kText, fontSize: 13)),
             subtitle: Text(
               'Pres. $presPct% · Ass. $absPct% — $totalAbsent ore ass. · $totalUnrec non rec. su $totalPlanned ore prev.',
               style: TextStyle(color: anyWarn ? kError : kTextDim, fontSize: 11),

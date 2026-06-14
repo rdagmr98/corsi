@@ -320,7 +320,7 @@ class _UsersTabState extends ConsumerState<UsersTab> {
                       style: TextStyle(color: color, fontWeight: FontWeight.bold),
                     ),
                   ),
-                  title: Text(u.fullName, style: const TextStyle(color: kText, fontWeight: FontWeight.w500)),
+                  title: Text(u.fullName, overflow: TextOverflow.ellipsis, style: const TextStyle(color: kText, fontWeight: FontWeight.w500)),
                   subtitle: Row(
                     children: [
                       Container(

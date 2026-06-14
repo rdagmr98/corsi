@@ -104,7 +104,7 @@ class _InstructorTodayScreenState extends ConsumerState<InstructorTodayScreen> {
                           style: TextStyle(color: present ? kAccent : kError),
                         ),
                       ),
-                      title: Text(a.fullName, style: const TextStyle(color: kText)),
+                      title: Text(a.fullName, overflow: TextOverflow.ellipsis, style: const TextStyle(color: kText)),
                       trailing: Switch(
                         value: present,
                         activeColor: kAccent,
