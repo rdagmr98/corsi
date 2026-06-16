@@ -59,13 +59,29 @@ GitHub Actions (`.github/workflows/deploy.yml`) deploya automaticamente su push 
 | `lib/screens/instructor/my_hours_screen.dart` | valuta GO/NO GO istruttore |
 
 ## Recuperi (recovery records)
-- ID sintetico: `recovery:{courseId8}:{attendeeId8}:YYYY-MM-DD:m{modulo}`
+- ID sintetico: `recovery:{courseId8}:{attendeeId8}:YYYY-MM-DD:m{modulo}` (+ `:{tipo}` se tipizzato)
 - `present: true`, `justification: 'recupero'`, `recoveredModule: int`
+- `recovered_submodule` (es. "6.6") e `recovered_type` ("teoria"/"pratica") opzionali → nelle assenze del frequentatore si vede quali assenze sono recuperate, separate per teoria/pratica
 - Non corrispondono a nessuna lezione reale in schedules.json
+- I record con `justification == 'recupero'` NON contano come ora di lezione (solo riducono le assenze nette)
 
 ---
 
-## STATO SESSIONE — aggiornato 2026-06-14 (sessione 9)
+## STATO SESSIONE — aggiornato 2026-06-16 (sessione 10)
+
+### Ultime modifiche (2026-06-16) — sessione 10 — ricostruzione BTC3 da Excel + visibilità recuperi per tipo
+1. **Ricostruzione lezioni/record BTC3 da `Controlloistruttori.xlsx`** (script `C:\Users\Gianmarco\reconstruct_btc3.py`, corsi-data commit 5fecbfc). Rigenera SOLO BTC3 dai moduli Excel {1,2,3,4,5,6,7,8,9,10,12,15,16}, preserva tutto il resto (incluse le lezioni M11 non-Excel confermate).
+   - **Regola 1** (più assenti in una stessa ora): riga nuova, stessa data/lezione, SENZA istruttore.
+   - **Regola 2** (recupero): riempi tutto TRANNE "assenti", una riga per frequentatore/ora di sottomodulo recuperato.
+   - **Conteggio**: le righe con "recuperi" valorizzati e le righe senza istruttore NON contano come ora di lezione.
+   - **Mapping sottomoduli**: codici a 3 componenti (es. 6.5.1) → modulo padre 6.5 (`normsub` strip 'P/p' + collapse X.Y.Z→X.Y).
+   - Risultato verificato: 1371 lezioni reali Excel + 2 inserite = 1373; 4 lezioni M11 preservate; 311 record assenza; 63 record recupero; 0 non collegati. MORELLI Simone escluso. LA RASPATA M3 10rec/M4 19rec confermati fedeli all'Excel (recupero in blocco di un late joiner, nessuna assenza inventata).
+2. **Gap 2h modulo 6 colmato**: inserite 2 ore di **6.6 teoria** venerdì **2025-11-07**, slot **4 e 5**, istruttore **Palmieri Biagio** — nelle prime due ore libere dopo il blocco 6.6, senza toccare le lezioni reali. Modulo 6 ora 160h (6.6 = 18h).
+3. **Visibilità recuperi per tipo (corsi app, commit 47ca62c)**: nelle assenze del frequentatore ora si vede quali assenze sono state recuperate, separate per teoria/pratica.
+   - `schedule_models.dart`: `AttendanceRecord` + `recoveredSubmodule`/`recoveredType` (from/toJson).
+   - `attendance_service.dart`: `computePerModuleStats` calcola recoveredT/recoveredP per modulo da `recovered_type` (legacy senza tipo → euristica pratica-prima); `saveRecovery` accetta `recoveredType`/`recoveredSubmodule`, id sintetico con suffisso tipo.
+   - `attendee_attendance_screen.dart`: breakdown "Teoria/Pratica: X ass. · Y recuperate · Z da recuperare" per riga modulo; card recupero col sottomodulo+tipo.
+   - `attendance_tab.dart` (director): dialog recupero con ChoiceChip Teoria/Pratica, passa `recoveredType`.
 
 ### Ultime modifiche (2026-06-14) — sessione 9 — sicurezza, robustezza, grafica (commit 4293970)
 1. **Cifratura PII con IV casuale (crypto_service.dart)**: nuovo formato `ENC1:<ivB64>:<ctB64>`, IV random per record (niente più leak di uguaglianza). Decifra ancora il legacy `ENC:` (IV zero) → retrocompatibile. La chiave resta nel bundle: per riservatezza piena serve il proxy.
