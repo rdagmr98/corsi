@@ -148,6 +148,9 @@ class AttendanceRecord {
   final bool present;
   final String? justification;
   final int? recoveredModule;
+  // sottomodulo (es. "6.6") e tipo ("teoria"/"pratica") dell'ora recuperata
+  final String? recoveredSubmodule;
+  final String? recoveredType;
   final String? confirmedBy;
   final DateTime? confirmedAt;
 
@@ -159,6 +162,8 @@ class AttendanceRecord {
     required this.present,
     this.justification,
     this.recoveredModule,
+    this.recoveredSubmodule,
+    this.recoveredType,
     this.confirmedBy,
     this.confirmedAt,
   });
@@ -171,6 +176,8 @@ class AttendanceRecord {
     present: j['present'] as bool? ?? false,
     justification: j['justification'] as String?,
     recoveredModule: j['recovered_module'] as int?,
+    recoveredSubmodule: j['recovered_submodule'] as String?,
+    recoveredType: j['recovered_type'] as String?,
     confirmedBy: j['confirmed_by'] as String?,
     confirmedAt: j['confirmed_at'] != null
         ? DateTime.tryParse(j['confirmed_at'] as String)
@@ -185,6 +192,8 @@ class AttendanceRecord {
     'present': present,
     'justification': justification,
     'recovered_module': recoveredModule,
+    if (recoveredSubmodule != null) 'recovered_submodule': recoveredSubmodule,
+    if (recoveredType != null) 'recovered_type': recoveredType,
     'confirmed_by': confirmedBy,
     'confirmed_at': confirmedAt?.toIso8601String(),
   };

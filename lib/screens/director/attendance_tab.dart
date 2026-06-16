@@ -319,6 +319,7 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
 
   Future<void> _addRecovery(Course course, String attendeeId, int moduleNumber) async {
     DateTime? selectedDate;
+    String recoveryType = 'teoria';
     final user = ref.read(authProvider).currentUser;
 
     final ok = await showDialog<bool>(
@@ -333,6 +334,26 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
             children: [
               Text('Modulo: M${_refService.moduleLabel(moduleNumber)}',
                   style: const TextStyle(color: kTextDim, fontSize: 13)),
+              const SizedBox(height: 12),
+              const Text('Tipo ora recuperata:',
+                  style: TextStyle(color: kTextDim, fontSize: 13)),
+              const SizedBox(height: 4),
+              Wrap(
+                spacing: 8,
+                children: [
+                  for (final t in const ['teoria', 'pratica'])
+                    ChoiceChip(
+                      label: Text(t == 'teoria' ? 'Teoria' : 'Pratica'),
+                      selected: recoveryType == t,
+                      onSelected: (_) => setDlg(() => recoveryType = t),
+                      selectedColor: kPrimary.withValues(alpha: 0.25),
+                      labelStyle: TextStyle(
+                          color: recoveryType == t ? kPrimary : kTextDim,
+                          fontSize: 12),
+                      backgroundColor: kSurface,
+                    ),
+                ],
+              ),
               const SizedBox(height: 12),
               const Text('Data recupero:',
                   style: TextStyle(color: kTextDim, fontSize: 13)),
@@ -383,6 +404,7 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
         confirmedBy: user?.id ?? '',
         recoveredModule: moduleNumber,
         recoveryDate: selectedDate!,
+        recoveredType: recoveryType,
       );
       _reload();
     }

@@ -308,6 +308,10 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
                           final r = recoveryRecords[i];
                           final date = _dateFromSyntheticId(r.scheduleId);
                           final modNum = r.recoveredModule;
+                          final sub = r.recoveredSubmodule;
+                          final typLabel = r.recoveredType == 'pratica'
+                              ? 'Pratica'
+                              : (r.recoveredType == 'teoria' ? 'Teoria' : '');
                           return Card(
                             color: kCard,
                             margin: const EdgeInsets.only(bottom: 6),
@@ -317,7 +321,10 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
                               leading: const Icon(Icons.replay, color: kPrimary, size: 20),
                               title: Text(
                                 modNum != null
-                                    ? 'Recupero M${_refService.moduleLabel(modNum)} – ${modNames[modNum] ?? ''}'
+                                    ? 'Recupero M${_refService.moduleLabel(modNum)}'
+                                        '${sub != null ? ' $sub' : ''}'
+                                        '${typLabel.isNotEmpty ? ' ($typLabel)' : ''}'
+                                        ' – ${modNames[modNum] ?? ''}'
                                     : 'Recupero',
                                 style: const TextStyle(color: kText, fontSize: 12),
                                 maxLines: 1,
@@ -475,6 +482,25 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
           : '100';
       final absPct =
           plan > 0 ? (absent / plan * 100).toStringAsFixed(0) : '0';
+      // Dettaglio teoria/pratica: assenze, quante recuperate, quante ancora da recuperare
+      final absentT = st['absentT'] ?? 0;
+      final absentP = st['absentP'] ?? 0;
+      final recT    = st['recoveredT'] ?? 0;
+      final recP    = st['recoveredP'] ?? 0;
+      final unrecT  = st['unrecoveredT'] ?? 0;
+      final unrecP  = st['unrecoveredP'] ?? 0;
+      String typeDetail(String lbl, int a, int r, int u) {
+        if (a == 0 && r == 0) return '';
+        final buf = StringBuffer('$lbl: $a ass.');
+        if (r > 0) buf.write(' · $r recuperate');
+        if (u > 0) buf.write(' · $u da recuperare');
+        return buf.toString();
+      }
+      final breakdown = [
+        typeDetail('Teoria', absentT, recT, unrecT),
+        typeDetail('Pratica', absentP, recP, unrecP),
+      ].where((s) => s.isNotEmpty).join('\n');
+      final hasActivity = absent > 0 || rec > 0;
 
       return Card(
         color: kSurface,
@@ -508,11 +534,20 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis),
                     Text(
-                      absent == 0
+                      !hasActivity
                           ? 'Pres. 100% · Ass. 0% — nessuna assenza su $plan ore prev.'
                           : 'Pres. $presPct% · Ass. $absPct% — $absent ass. · $rec rec. · $unrec non rec. / $plan ore prev.',
                       style: TextStyle(color: warn ? kError : kTextDim, fontSize: 10),
                     ),
+                    if (breakdown.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          breakdown,
+                          style: TextStyle(
+                              color: warn ? kError : kTextDim, fontSize: 10),
+                        ),
+                      ),
                     if (warn)
                       const Text('LIMITE 10% SUPERATO',
                           style: TextStyle(

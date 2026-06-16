@@ -134,11 +134,23 @@ class AttendanceService {
       }
     }
 
+    // Recuperi per modulo, separati per tipo. Usa recovered_type quando presente;
+    // per i record legacy senza tipo si applica l'euristica (pratica prima).
     final Map<int, int> recoveredByModule = {};
+    final Map<int, int> recoveredTByModule = {};
+    final Map<int, int> recoveredPByModule = {};
+    final Map<int, int> recoveredUntypedByModule = {};
     for (final r in records) {
       if (r.justification == 'recupero' && r.recoveredModule != null) {
         final m = r.recoveredModule!;
         recoveredByModule[m] = (recoveredByModule[m] ?? 0) + 1;
+        if (r.recoveredType == 'pratica') {
+          recoveredPByModule[m] = (recoveredPByModule[m] ?? 0) + 1;
+        } else if (r.recoveredType == 'teoria') {
+          recoveredTByModule[m] = (recoveredTByModule[m] ?? 0) + 1;
+        } else {
+          recoveredUntypedByModule[m] = (recoveredUntypedByModule[m] ?? 0) + 1;
+        }
       }
     }
 
@@ -148,7 +160,11 @@ class AttendanceService {
         : <int, int>{};
 
     final result = <int, Map<String, int>>{};
-    final moduleKeys = {...confirmedByModule.keys, ...absentByModule.keys};
+    final moduleKeys = {
+      ...confirmedByModule.keys,
+      ...absentByModule.keys,
+      ...recoveredByModule.keys,
+    };
     for (final moduleNum in moduleKeys) {
       final confirmedH = confirmedByModule[moduleNum] ?? 0;
       final confirmedT = confirmedTByModule[moduleNum] ?? 0;
@@ -159,11 +175,16 @@ class AttendanceService {
       final absentP = absentPByModule[moduleNum] ?? 0;
       final recovered = recoveredByModule[moduleNum] ?? 0;
       final unrecovered = (absent - recovered).clamp(0, absent);
-      // Recoveries applied to practice first (stricter rule), then theory
-      final recForP = min(recovered, absentP);
-      final recForT = recovered - recForP;
-      final unrecoveredP = absentP - recForP;
-      final unrecoveredT = (absentT - recForT).clamp(0, absentT);
+      // Recuperi tipizzati noti + distribuzione legacy (pratica prima) sulle assenze residue
+      int recoveredT = recoveredTByModule[moduleNum] ?? 0;
+      int recoveredP = recoveredPByModule[moduleNum] ?? 0;
+      final untyped = recoveredUntypedByModule[moduleNum] ?? 0;
+      final remAbsP = (absentP - recoveredP).clamp(0, absentP);
+      final addP = min(untyped, remAbsP);
+      recoveredP += addP;
+      recoveredT += untyped - addP;
+      final unrecoveredT = (absentT - recoveredT).clamp(0, absentT);
+      final unrecoveredP = (absentP - recoveredP).clamp(0, absentP);
       result[moduleNum] = {
         'total': total,
         'confirmed': confirmedH,
@@ -173,6 +194,8 @@ class AttendanceService {
         'absentT': absentT,
         'absentP': absentP,
         'recovered': recovered,
+        'recoveredT': recoveredT,
+        'recoveredP': recoveredP,
         'unrecovered': unrecovered,
         'unrecoveredT': unrecoveredT,
         'unrecoveredP': unrecoveredP,
@@ -187,11 +210,16 @@ class AttendanceService {
     required String confirmedBy,
     required int recoveredModule,
     required DateTime recoveryDate,
+    String? recoveredType,
+    String? recoveredSubmodule,
   }) async {
     final records = _db.records.toList();
     final dateKey = recoveryDate.toIso8601String().split('T').first;
+    // Il tipo entra nell'id sintetico così teoria e pratica dello stesso modulo/data
+    // possono coesistere senza collidere col controllo "già esistente".
+    final typeSuffix = recoveredType != null ? ':$recoveredType' : '';
     final syntheticScheduleId =
-        'recovery:${courseId.substring(0, 8)}:${attendeeId.substring(0, 8)}:$dateKey:m$recoveredModule';
+        'recovery:${courseId.substring(0, 8)}:${attendeeId.substring(0, 8)}:$dateKey:m$recoveredModule$typeSuffix';
     final alreadyExists = records.any((r) =>
         r['schedule_id'] == syntheticScheduleId &&
         r['attendee_id'] == attendeeId);
@@ -206,6 +234,8 @@ class AttendanceService {
       'present': true,
       'justification': 'recupero',
       'recovered_module': recoveredModule,
+      if (recoveredSubmodule != null) 'recovered_submodule': recoveredSubmodule,
+      if (recoveredType != null) 'recovered_type': recoveredType,
       'confirmed_by': confirmedBy,
       'confirmed_at': DateTime.now().toIso8601String(),
     });
