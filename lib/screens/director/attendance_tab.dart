@@ -156,20 +156,16 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
     final totalUnrecovered = modStats.values.fold(0, (s, m) => s + (m['unrecovered'] ?? 0));
     final totalPlannedHours = typeInfo?.modules.fold(0, (s, m) => s + m.totalHours) ?? 0;
     final totalConfirmed = modStats.values.fold(0, (s, m) => s + (m['confirmed'] ?? 0));
+    final totalToRecover  = modStats.values.fold(0, (s, m) => s + (m['toRecover'] ?? 0));
+    final totalToRecoverT = modStats.values.fold(0, (s, m) => s + (m['toRecoverT'] ?? 0));
+    final totalToRecoverP = modStats.values.fold(0, (s, m) => s + (m['toRecoverP'] ?? 0));
     final presPct = totalPlannedHours > 0
         ? ((totalPlannedHours - totalAbsent) / totalPlannedHours * 100).toStringAsFixed(0)
         : '100';
     final absPct = totalPlannedHours > 0
         ? (totalAbsent / totalPlannedHours * 100).toStringAsFixed(0)
         : '0';
-    final modPlanT = {for (final m in typeInfo?.modules ?? <ModuleInfo>[]) m.number: m.theoryHours};
-    final anyWarning = typeInfo != null &&
-        modStats.entries.any((e) {
-          final planT  = modPlanT[e.key] ?? (e.value['confirmedT'] ?? 0);
-          final unrecT = e.value['unrecoveredT'] ?? 0;
-          final unrecP = e.value['unrecoveredP'] ?? 0;
-          return unrecP > 0 || (planT > 0 && unrecT / planT > 0.10);
-        });
+    final anyWarning = totalToRecover > 0;
 
     return Card(
       color: kCard,
@@ -191,7 +187,10 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(color: kText, fontWeight: FontWeight.w500, fontSize: 14)),
         subtitle: Text(
-          'Pres. $presPct% · Ass. $absPct% — $totalAbsent ore ass. · $totalUnrecovered non rec. su $totalPlannedHours ore prev.',
+          'Pres. $presPct% · Ass. $absPct% — $totalAbsent ore ass. · $totalUnrecovered non rec. su $totalPlannedHours ore prev.'
+          '${totalToRecover > 0 ? '\nDa recuperare: ${totalToRecover}h'
+              '${totalToRecoverP > 0 ? ' · ${totalToRecoverP}h pratica (100%)' : ''}'
+              '${totalToRecoverT > 0 ? ' · ${totalToRecoverT}h teoria (oltre 10%)' : ''}' : ''}',
           style: TextStyle(
               color: anyWarning ? kError : kTextDim, fontSize: 12),
         ),
@@ -247,15 +246,13 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
     ModuleInfo mod,
     Map<String, int> stats,
   ) {
-    final confirmed   = stats['confirmed'] ?? 0;
-    final confirmedT  = stats['confirmedT'] ?? 0;
     final absent      = stats['absent'] ?? 0;
     final recovered   = stats['recovered'] ?? 0;
     final unrecovered = stats['unrecovered'] ?? 0;
-    final unrecoveredT = stats['unrecoveredT'] ?? 0;
-    final unrecoveredP = stats['unrecoveredP'] ?? 0;
-    final pct  = mod.theoryHours > 0 ? unrecoveredT / mod.theoryHours : 0.0;
-    final warn = unrecoveredP > 0 || pct > 0.10;
+    final toRecover   = stats['toRecover'] ?? 0;
+    final toRecoverT  = stats['toRecoverT'] ?? 0;
+    final toRecoverP  = stats['toRecoverP'] ?? 0;
+    final warn = toRecover > 0;
     final modPlan = mod.totalHours;
     final presPct = modPlan > 0
         ? ((modPlan - absent) / modPlan * 100).toStringAsFixed(0)
@@ -286,8 +283,9 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
           ? Text(
               [
                 'Ass. $absPct% · $unrecovered non rec.',
-                if (unrecoveredP > 0) 'P: $unrecoveredP ⚠ recupero 100%',
-                if (pct > 0.10) 'T: $unrecoveredT/${mod.theoryHours} (${(pct * 100).toStringAsFixed(1)}%) ⚠ >10%',
+                'Da recuperare: ${toRecover}h',
+                if (toRecoverP > 0) 'P: ${toRecoverP}h (100%)',
+                if (toRecoverT > 0) 'T: ${toRecoverT}h (oltre 10%)',
               ].join(' — '),
               style: const TextStyle(color: kError, fontSize: 11),
             )

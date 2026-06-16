@@ -67,7 +67,13 @@ GitHub Actions (`.github/workflows/deploy.yml`) deploya automaticamente su push 
 
 ---
 
-## STATO SESSIONE — aggiornato 2026-06-16 (sessione 10)
+## STATO SESSIONE — aggiornato 2026-06-16 (sessione 11)
+
+### Ultime modifiche (2026-06-16) — sessione 11 — ore da recuperare (pratica 100% + teoria oltre 10%)
+Sia il frequentatore sia il direttore vedono ora **quante ORE il frequentatore deve ancora recuperare**, con la regola: **pratica = 100% delle assenze**, **teoria = solo le ore eccedenti la soglia 10% del modulo** (`floor(ore_modulo/10)`, come Excel "assenze 3btc").
+1. **`attendance_service.dart` — `computePerModuleStats`**: nuovi campi per modulo `threshold` (=`total ~/ 10`), `toRecoverP` (=`unrecoveredP`, pratica 100%), `toRecoverT` (=`max(0, absentT − threshold − recoveredT)`, teoria oltre soglia al netto dei recuperi teoria), `toRecover` (=somma).
+2. **`attendee_attendance_screen.dart`**: `recoveryWindow`/`anyWarn` ora da `toRecover` (prima usava il 10% delle sole ore di teoria — riconciliato alle ore totali modulo). Alert "Ore da recuperare: Xh · Yh pratica · Zh teoria" con dettaglio per modulo; nel dettaglio modulo la teoria "da recuperare" mostra `toRecoverT`; label rossa "DA RECUPERARE: Xh · pratica · teoria".
+3. **`attendance_tab.dart` (director)**: card frequentatore con riga "Da recuperare: Xh · pratica (100%) · teoria (oltre 10%)" e bordo/warn da `toRecover`; riga modulo idem. Rimosso il vecchio calcolo warn basato su `unrecoveredT/theoryHours`.
 
 ### Ultime modifiche (2026-06-16) — sessione 10 — ricostruzione BTC3 da Excel + visibilità recuperi per tipo
 1. **Ricostruzione lezioni/record BTC3 da `Controlloistruttori.xlsx`** (script `C:\Users\Gianmarco\reconstruct_btc3.py`, corsi-data commit 5fecbfc). Rigenera SOLO BTC3 dai moduli Excel {1,2,3,4,5,6,7,8,9,10,12,15,16}, preserva tutto il resto (incluse le lezioni M11 non-Excel confermate).

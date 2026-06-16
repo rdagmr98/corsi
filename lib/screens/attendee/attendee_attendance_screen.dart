@@ -103,31 +103,21 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
     final totalPlanned   = typeInfo?.modules.fold<int>(0, (s, m) => s + m.totalHours) ?? totalConfirmed;
     final globalPct      = totalPlanned > 0 ? (totalPlanned - totalUnrec) / totalPlanned : 1.0;
     final globalAbsPct   = totalPlanned > 0 ? totalAbsent / totalPlanned : 0.0;
-    final modPlanT       = <int, int>{
-      for (final m in typeInfo?.modules ?? <ModuleInfo>[]) m.number: m.theoryHours
-    };
-    final anyWarn        = modStats.entries.any((e) {
-      final planT  = modPlanT[e.key] ?? (e.value['confirmedT'] ?? 0);
-      final unrecT = e.value['unrecoveredT'] ?? 0;
-      final unrecP = e.value['unrecoveredP'] ?? 0;
-      return unrecP > 0 || (planT > 0 && unrecT / planT > 0.10);
-    });
+    // Ore totali ancora da recuperare: pratica 100% + teoria oltre il 10%.
+    final totalToRecover  = modStats.values.fold(0, (s, m) => s + (m['toRecover'] ?? 0));
+    final totalToRecoverT = modStats.values.fold(0, (s, m) => s + (m['toRecoverT'] ?? 0));
+    final totalToRecoverP = modStats.values.fold(0, (s, m) => s + (m['toRecoverP'] ?? 0));
+    final anyWarn         = totalToRecover > 0;
 
     final modNames = <int, String>{
-      for (final m in typeInfo?.modules ?? []) m.number: m.name,
+      for (final m in typeInfo?.modules ?? <ModuleInfo>[]) m.number: m.name,
     };
 
-    // Recovery window: quanti recuperi mancano per rientrare nei limiti
+    // Recovery window: ore ancora da recuperare per modulo (solo quelle >0).
     final recoveryWindow = <int, int>{};
     for (final e in modStats.entries) {
-      final planT  = modPlanT[e.key] ?? (e.value['confirmedT'] ?? 0);
-      final unrecT = e.value['unrecoveredT'] ?? 0;
-      final unrecP = e.value['unrecoveredP'] ?? 0;
-      final needsRecovery = unrecP > 0 || (planT > 0 && unrecT / planT > 0.10);
-      if (needsRecovery) {
-        final maxAllowedT = planT > 0 ? (planT * 0.10).floor() : 0;
-        recoveryWindow[e.key] = unrecP + (unrecT > maxAllowedT ? unrecT - maxAllowedT : 0);
-      }
+      final toRec = e.value['toRecover'] ?? 0;
+      if (toRec > 0) recoveryWindow[e.key] = toRec;
     }
 
     // Recovery records (synthetic schedule IDs)
@@ -247,19 +237,34 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
                           Row(children: [
                             const Icon(Icons.warning_amber, color: kError, size: 16),
                             const SizedBox(width: 6),
-                            const Flexible(
-                              child: Text('Recuperi necessari per rientrare nel 10%',
-                                  style: TextStyle(color: kError, fontSize: 12, fontWeight: FontWeight.w600)),
+                            Flexible(
+                              child: Text(
+                                  'Ore da recuperare: ${totalToRecover}h'
+                                  '${totalToRecoverP > 0 ? ' · ${totalToRecoverP}h pratica' : ''}'
+                                  '${totalToRecoverT > 0 ? ' · ${totalToRecoverT}h teoria' : ''}',
+                                  style: const TextStyle(color: kError, fontSize: 12, fontWeight: FontWeight.w600)),
                             ),
                           ]),
+                          const SizedBox(height: 2),
+                          const Text(
+                              'Pratica: 100% delle assenze · Teoria: solo le ore oltre il 10%',
+                              style: TextStyle(color: kError, fontSize: 10)),
                           const SizedBox(height: 6),
-                          ...recoveryWindow.entries.map((e) => Padding(
-                            padding: const EdgeInsets.only(top: 4),
-                            child: Text(
-                              '• M${_refService.moduleLabel(e.key)}: ancora ${e.value} lezione${e.value > 1 ? 'i' : 'e'} da recuperare',
-                              style: const TextStyle(color: kError, fontSize: 11),
-                            ),
-                          )),
+                          ...recoveryWindow.entries.map((e) {
+                            final tT = modStats[e.key]?['toRecoverT'] ?? 0;
+                            final tP = modStats[e.key]?['toRecoverP'] ?? 0;
+                            final parts = [
+                              if (tP > 0) '${tP}h pratica',
+                              if (tT > 0) '${tT}h teoria',
+                            ].join(' + ');
+                            return Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Text(
+                                '• M${_refService.moduleLabel(e.key)}: ${e.value}h da recuperare ($parts)',
+                                style: const TextStyle(color: kError, fontSize: 11),
+                              ),
+                            );
+                          }),
                         ],
                       ),
                     ),
@@ -475,7 +480,10 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
       final unrec = st['unrecovered'] ?? 0;
       final plan  = modPlanHours[mod] ?? conf;
       final pct   = plan > 0 ? (plan - unrec) / plan : 1.0;
-      final warn  = conf > 0 && unrec / conf > 0.10;
+      final toRec  = st['toRecover'] ?? 0;
+      final toRecT = st['toRecoverT'] ?? 0;
+      final toRecP = st['toRecoverP'] ?? 0;
+      final warn  = toRec > 0;
       final color = warn ? kError : (pct >= 0.90 ? kAccent : kWarning);
       final presPct = plan > 0
           ? ((plan - absent) / plan * 100).toStringAsFixed(0)
@@ -487,8 +495,6 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
       final absentP = st['absentP'] ?? 0;
       final recT    = st['recoveredT'] ?? 0;
       final recP    = st['recoveredP'] ?? 0;
-      final unrecT  = st['unrecoveredT'] ?? 0;
-      final unrecP  = st['unrecoveredP'] ?? 0;
       String typeDetail(String lbl, int a, int r, int u) {
         if (a == 0 && r == 0) return '';
         final buf = StringBuffer('$lbl: $a ass.');
@@ -497,8 +503,8 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
         return buf.toString();
       }
       final breakdown = [
-        typeDetail('Teoria', absentT, recT, unrecT),
-        typeDetail('Pratica', absentP, recP, unrecP),
+        typeDetail('Teoria', absentT, recT, toRecT),
+        typeDetail('Pratica', absentP, recP, toRecP),
       ].where((s) => s.isNotEmpty).join('\n');
       final hasActivity = absent > 0 || rec > 0;
 
@@ -549,8 +555,11 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
                         ),
                       ),
                     if (warn)
-                      const Text('LIMITE 10% SUPERATO',
-                          style: TextStyle(
+                      Text(
+                          'DA RECUPERARE: ${toRec}h'
+                          '${toRecP > 0 ? ' · ${toRecP}h pratica' : ''}'
+                          '${toRecT > 0 ? ' · ${toRecT}h teoria' : ''}',
+                          style: const TextStyle(
                               color: kError, fontSize: 10, fontWeight: FontWeight.bold)),
                   ],
                 ),

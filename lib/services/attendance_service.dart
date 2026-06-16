@@ -97,7 +97,10 @@ class AttendanceService {
   /// Per-module absence/recovery stats for one attendee.
   /// 'total' = planned module hours from [modules] reference (if provided),
   /// otherwise falls back to confirmed lesson count.
-  /// Returns map keyed by module number: {total, absent, recovered, unrecovered}
+  /// Returns map keyed by module number: {total, absent, recovered, unrecovered,
+  /// absentT/absentP, recoveredT/recoveredP, unrecoveredT/unrecoveredP,
+  /// threshold (= floor(ore_modulo/10)), toRecoverT/toRecoverP/toRecover}.
+  /// toRecover = ore da recuperare: pratica 100% + teoria oltre soglia 10%.
   Map<int, Map<String, int>> computePerModuleStats(
     String courseId,
     String attendeeId,
@@ -185,6 +188,14 @@ class AttendanceService {
       recoveredT += untyped - addP;
       final unrecoveredT = (absentT - recoveredT).clamp(0, absentT);
       final unrecoveredP = (absentP - recoveredP).clamp(0, absentP);
+      // Ore che il frequentatore deve ancora recuperare (regola corso):
+      //  - Pratica: 100% delle assenze residue.
+      //  - Teoria: solo le ore eccedenti la soglia 10% del modulo
+      //    (floor(ore_modulo/10), come Excel), al netto della teoria già recuperata.
+      final threshold = total ~/ 10;
+      final toRecoverP = unrecoveredP;
+      final toRecoverT = max(0, absentT - threshold - recoveredT);
+      final toRecover = toRecoverT + toRecoverP;
       result[moduleNum] = {
         'total': total,
         'confirmed': confirmedH,
@@ -199,6 +210,10 @@ class AttendanceService {
         'unrecovered': unrecovered,
         'unrecoveredT': unrecoveredT,
         'unrecoveredP': unrecoveredP,
+        'threshold': threshold,
+        'toRecoverT': toRecoverT,
+        'toRecoverP': toRecoverP,
+        'toRecover': toRecover,
       };
     }
     return result;
