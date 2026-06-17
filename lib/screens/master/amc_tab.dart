@@ -4,6 +4,7 @@ import '../../models/user_models.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/course_service.dart';
 import '../../services/gh_db_service.dart';
+import '../../services/grade_service.dart';
 import '../../services/reference_service.dart';
 import '../../services/user_service.dart';
 import '../../theme.dart';
@@ -20,11 +21,13 @@ class _AmcTabState extends ConsumerState<AmcTab>
   final _courseService      = CourseService();
   final _db                 = GhDbService();
   final _referenceService   = ReferenceService();
+  final _gradeService       = GradeService();
   late final TabController _tabs = TabController(length: 2, vsync: this);
 
   String? _selectedCourseId;
   final _searchCtrl = TextEditingController();
   String _search = '';
+  bool _onlyGo = false; // false = tutti gli istruttori, true = solo i GO
 
   @override
   void initState() {
@@ -72,6 +75,16 @@ class _AmcTabState extends ConsumerState<AmcTab>
   Map<String, AppUser> _uidToUser() =>
       {for (final u in _userService.getAllUsers()) u.id: u};
 
+  // Idoneità GO (stessa regola di currency_tab): override manuale, oppure
+  // ≥6h insegnamento (365gg) E ≥35h aggiorn. prof. (2 anni) E DAA non scaduta.
+  bool _isGo(AppUser u, DateTime now) {
+    if (u.goOverride) return true;
+    final teachH = _gradeService.getTeachingHoursRollingYear(u.id);
+    final profH  = _gradeService.getProfessionalUpdateHoursLast2Years(u.id);
+    final daaOk  = u.daaExpiry == null || u.daaExpiry!.isAfter(now);
+    return teachH >= 6 && profH >= 35 && daaOk;
+  }
+
   Set<String> _courseInstructors() {
     if (_selectedCourseId == null) return {};
     final c = _courseService.getAllCourses()
@@ -110,6 +123,10 @@ class _AmcTabState extends ConsumerState<AmcTab>
     final uidToUser  = _uidToUser();
     final subNames   = _submoduleNames();
     final courseUids = _courseInstructors();
+    final now        = DateTime.now();
+    final goUids     = <String>{
+      for (final u in uidToUser.values) if (_isGo(u, now)) u.id
+    };
 
     return Column(children: [
       // ── Toolbar ──────────────────────────────────────────────────────────
@@ -118,6 +135,8 @@ class _AmcTabState extends ConsumerState<AmcTab>
         child: Row(children: [
           Text('Tabella AMC', style: Theme.of(context).textTheme.titleLarge),
           const Spacer(),
+          _goToggle(),
+          const SizedBox(width: 12),
           DropdownButton<String?>(
             value: _selectedCourseId,
             dropdownColor: kSurface,
@@ -197,9 +216,9 @@ class _AmcTabState extends ConsumerState<AmcTab>
           controller: _tabs,
           children: [
             _buildGrid(theory: true,  uidToUser: uidToUser,
-                subNames: subNames, courseUids: courseUids),
+                subNames: subNames, courseUids: courseUids, goUids: goUids),
             _buildGrid(theory: false, uidToUser: uidToUser,
-                subNames: subNames, courseUids: courseUids),
+                subNames: subNames, courseUids: courseUids, goUids: goUids),
           ],
         ),
       ),
@@ -211,6 +230,7 @@ class _AmcTabState extends ConsumerState<AmcTab>
     required Map<String, AppUser> uidToUser,
     required Map<String, String> subNames,
     required Set<String> courseUids,
+    required Set<String> goUids,
   }) {
     final grid = _grid(theory);
     var codes = _sortedCodes(grid);
@@ -256,7 +276,10 @@ class _AmcTabState extends ConsumerState<AmcTab>
       itemBuilder: (_, i) {
         final item    = items[i];
         final code    = item.code;
-        final uids    = grid[code] ?? [];
+        final allUids = grid[code] ?? [];
+        final uids    = _onlyGo
+            ? allUids.where((uid) => goUids.contains(uid)).toList()
+            : allUids;
         final subName = subNames[code] ?? '';
 
         final showHeader = item.showHeader;
@@ -355,5 +378,28 @@ class _AmcTabState extends ConsumerState<AmcTab>
         color: color.withOpacity(0.5),
         shape: BoxShape.circle,
         border: Border.all(color: color)),
+  );
+
+  Widget _goToggle() => InkWell(
+    borderRadius: BorderRadius.circular(6),
+    onTap: () => setState(() => _onlyGo = !_onlyGo),
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: _onlyGo ? kAccent.withOpacity(0.18) : Colors.transparent,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: _onlyGo ? kAccent : kBorder),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(_onlyGo ? Icons.check_circle : Icons.filter_alt_outlined,
+            size: 14, color: _onlyGo ? kAccent : kTextDim),
+        const SizedBox(width: 5),
+        Text(_onlyGo ? 'Solo GO' : 'Tutti',
+            style: TextStyle(
+                fontSize: 11,
+                color: _onlyGo ? kAccent : kTextDim,
+                fontWeight: _onlyGo ? FontWeight.bold : FontWeight.normal)),
+      ]),
+    ),
   );
 }
