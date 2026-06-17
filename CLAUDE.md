@@ -67,7 +67,15 @@ GitHub Actions (`.github/workflows/deploy.yml`) deploya automaticamente su push 
 
 ---
 
-## STATO SESSIONE — aggiornato 2026-06-16 (sessione 11)
+## STATO SESSIONE — aggiornato 2026-06-17 (sessione 12)
+
+### Ultime modifiche (2026-06-17) — sessione 12 — titoli istruttori (qualifiche AMC) da 'stato di servizio' 2026
+Aggiunto il campo `qualifications` agli istruttori in `corsi-data/db/users.json` (commit corsi-data 27e2bc7) e rigenerate `amc.json` theoryGrid/practiceGrid in modo **additivo**.
+- **Fonte**: unione di tre sorgenti — (1) parse della tabella LICENZA dei file "stato di servizio" 2026 in `C:\Users\Gianmarco\Documents\5. Istruttori Completo` (categoria B1.x/B2/C + aeromobile → qualifica AMC `bX.Y_<ac>`), (2) reverse-engineering delle griglie AMC già curate (set-cover minimale), (3) le 4 lauree note: **Ardia/Principe → laurea_elettronica, Palmieri → laurea_aerospaziale, Grandi → laurea_meccanica**.
+- **Risultato**: 22 istruttori valorizzati (23 con quals incl. Ardia preesistente), 661 add in griglia, **0 rimozioni** (l'unione contiene sempre il grid-reverse → la rigenerazione non toglie nulla). Nessun campo cifrato/credenziale alterato; JSON mantenuti compatti (1 riga).
+- **Script riproducibili** (locali, NON committati nella repo dati perché contengono la KEY AES): `corsi-data/parse_licenze.py` (estrazione docx) e `corsi-data/reconcile_quals.py` (unione + scrittura + rigenerazione griglie). Artefatto temp: `corsi-data/db/_parsed_licenze.json`.
+- **Mapping aeromobile→AMC** (in `parse_licenze.py`): AH-129A/C/D→ah129d, CH-47C/F→ch47f, RH-206A/C→rh206c, UH-90A/NH-90→nh90, UH-169B/D→uh169d, UC-228→uc228, VC-180A→vc180a, HH-412A→hh412a, UH-212→uh212, UH-205A→uh205a; MRH-109A non in AMC (skip); RQ-7C+B2→b2_apr. Categoria C → nessuna qualifica AMC.
+- **Nota**: i titoli SV/NAM stanno in una tabella QUALIFICHE separata (non nella tabella licenza); sono stati recuperati dal grid-reverse (Minissi/Signore→sv, Niespolo→nam).
 
 ### Ultime modifiche (2026-06-16) — sessione 11 — ore da recuperare (pratica 100% + teoria oltre 10%)
 Sia il frequentatore sia il direttore vedono ora **quante ORE il frequentatore deve ancora recuperare**, con la regola: **pratica = 100% delle assenze**, **teoria = solo le ore eccedenti la soglia 10% del modulo** (`floor(ore_modulo/10)`, come Excel "assenze 3btc").
