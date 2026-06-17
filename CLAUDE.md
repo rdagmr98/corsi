@@ -67,7 +67,14 @@ GitHub Actions (`.github/workflows/deploy.yml`) deploya automaticamente su push 
 
 ---
 
-## STATO SESSIONE — aggiornato 2026-06-17 (sessione 12)
+## STATO SESSIONE — aggiornato 2026-06-17 (sessione 13)
+
+### Ultime modifiche (2026-06-17) — sessione 13 — toggle Solo GO/Tutti in tabella AMC + griglie da conferimenti ufficiali
+1. **Toggle "Solo GO / Tutti" nella Tabella AMC** (`amc_tab.dart`, commit corsi 13c9d98). Interruttore in toolbar: filtra gli istruttori mostrati per ogni sottomodulo ai soli GO (stessa regola di `currency_tab`: `goOverride` OR `teach>=6h`/365gg AND `prof>=35h`/2anni AND DAA non scaduta) oppure tutti. Conteggio totale per riga segue il filtro. Usa `GradeService.getTeachingHoursRollingYear` + `getProfessionalUpdateHoursLast2Years`.
+2. **Griglie AMC popolate dai conferimenti ufficiali** (commit corsi-data d355dbd, +170: 153 teoria + 17 pratica, **0 rimozioni**). Fonte: `C:\Users\Gianmarco\Documents\5. Istruttori Completo\Conferimenti_Istruttori.xlsx` (master conferimenti d'insegnamento, formato per righe: col A nome, col E+ codici "Teoria/Pratica Modulo N", "T7.1", "P3.5", `//`=vuoto). Script locale (NON committato, contiene KEY): `corsi-data/populate_grid_conferimenti.py`.
+   - **Solo griglia, `qualifications` NON toccate**: un conferimento d'insegnamento non implica la licenza categoria+aeromobile → niente reverse-engineering di licenze/lauree (coerente con "le uniche lauree sono Ardia/Principe/Palmieri/Grandi").
+   - **Mapping codici al schema app**: `12.7.1/.2/.2B`→`12.7`, `6.5.4`→`6.5`, `11.N`→`11A.N`, `P11.9`→`11A.9`, `P12.7.2`→`12.7`. **Skip** `P3.5/P3.6/P7.21` (assenti dallo schema pratica), **VETRUGNO** (non istruttore in users.json).
+   - **CAVEAT fragilità**: i codici rule-covered aggiunti a istruttori con `qualifications` vuote (~163 in analisi pre-sync) verrebbero rimossi se un admin riapre e **salva** quell'istruttore in `users_tab` (perché `applyQualifications` con quals vuote toglie i codici rule-covered). `applyQualifications` NON gira al load, solo su salvataggio esplicito → in pratica persistono. Per renderli permanenti servirebbe un concetto di "conferimento manuale" o una guardia "se quals vuote, non rimuovere" (TODO non implementato).
 
 ### Ultime modifiche (2026-06-17) — sessione 12 — titoli istruttori (qualifiche AMC) da 'stato di servizio' 2026
 Aggiunto il campo `qualifications` agli istruttori in `corsi-data/db/users.json` (commit corsi-data 27e2bc7) e rigenerate `amc.json` theoryGrid/practiceGrid in modo **additivo**.
