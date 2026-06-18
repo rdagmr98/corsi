@@ -67,16 +67,25 @@ GitHub Actions (`.github/workflows/deploy.yml`) deploya automaticamente su push 
 
 ---
 
-## STATO SESSIONE — aggiornato 2026-06-17 (sessione 13)
+## STATO SESSIONE — aggiornato 2026-06-18 (sessione 14)
 
-### Ultime modifiche (2026-06-17) — sessione 13 — toggle Solo GO/Tutti in tabella AMC + griglie da conferimenti ufficiali
+### Ultime modifiche (2026-06-18) — sessione 14 — qualifiche e griglie AMC 100% dai titoli nei doc (SUPERA s12 e s13 punto 2)
+**Modello autoritativo (utente)**: l'UNICO modo di assegnare i moduli insegnabili è la griglia AMC, derivata dai **TITOLI**. I conferimenti (`Conferimenti_Istruttori.xlsx`) **NON sono più validi**. Niente reverse-engineering delle griglie.
+1. **`qualifications` ricostruite SOLO dai titoli** nei "stato di servizio" (commit corsi-data b4b8529): (a) licenza categoria+aeromobile, (b) 4 lauree note dal testo (ing. elettronica/telecomunicazioni→`laurea_elettronica`, meccanica→`laurea_meccanica`, aerospaziale→`laurea_aerospaziale`; Palmieri hardcoded aerospaziale perché il doc non riporta la parola laurea), (c) corso Sicurezza Volo→`sv`, (d) Istruttore Normativa Aeronautica (checkbox tab QUALIFICHE, rilevamento X/Wingdings a sinistra della label)→`nam`.
+2. **Griglie AMC rigenerate 100% dai titoli** via amcRules (replica `AmcService.applyQualifications`: aggiunge se insegnabile, **RIMUOVE se no**). +128 / **−918** (purga le assegnazioni non coperte da titoli, incluse quelle da conferimenti s13 e additive s12).
+3. **Modulo 3 (3.1–3.18) solo a chi ha `laurea_elettronica`**: Ardia, Principe, Carrino (ing. elettronica), Onofri (ing. telecomunicazioni, typo doc "Telecomincazioni" gestito con regex larga). **Ciula e Mirizzi** (solo B2, nessuna laurea) **NON insegnano più Modulo 3** (richiesta esplicita utente).
+4. **Categoria B1.x: la macchina determina la sotto-categoria** — UC-228/VC-180A→b1.1, elicotteri→b1.3. Corregge il refuso di **Balloi** (elicotteri CH-47/AH-129A/RH-206A/UH-205A scritti sotto "B1.1" → letti come b1.3).
+5. **15 istruttori restano senza qualifiche** perché i loro doc NON elencano licenze su macchina (categoria senza aeromobili, o tabella vuota): Spinella, Schitti, Corzani, Faroppa, Intermite, Scacco, Monti, Tridici, Orsini, Piccioli, Mechal, Pignotta, Falconi, Bargagli, Pizzichetti. Per assegnar loro moduli serve completare i doc o aggiungere i titoli a mano in `users_tab`.
+6. **Script locale** (NON committato, contiene KEY): `corsi-data/build_quals_from_titoli.py`. Aggiunto `corsi-data/.gitignore` (`*.py`, `*.bak`, `_*`) per blindare la KEY AES (commit 27ee086).
+
+### [SUPERATO s14] Ultime modifiche (2026-06-17) — sessione 13 — toggle Solo GO/Tutti in tabella AMC + griglie da conferimenti ufficiali
 1. **Toggle "Solo GO / Tutti" nella Tabella AMC** (`amc_tab.dart`, commit corsi 13c9d98). Interruttore in toolbar: filtra gli istruttori mostrati per ogni sottomodulo ai soli GO (stessa regola di `currency_tab`: `goOverride` OR `teach>=6h`/365gg AND `prof>=35h`/2anni AND DAA non scaduta) oppure tutti. Conteggio totale per riga segue il filtro. Usa `GradeService.getTeachingHoursRollingYear` + `getProfessionalUpdateHoursLast2Years`.
 2. **Griglie AMC popolate dai conferimenti ufficiali** (commit corsi-data d355dbd, +170: 153 teoria + 17 pratica, **0 rimozioni**). Fonte: `C:\Users\Gianmarco\Documents\5. Istruttori Completo\Conferimenti_Istruttori.xlsx` (master conferimenti d'insegnamento, formato per righe: col A nome, col E+ codici "Teoria/Pratica Modulo N", "T7.1", "P3.5", `//`=vuoto). Script locale (NON committato, contiene KEY): `corsi-data/populate_grid_conferimenti.py`.
    - **Solo griglia, `qualifications` NON toccate**: un conferimento d'insegnamento non implica la licenza categoria+aeromobile → niente reverse-engineering di licenze/lauree (coerente con "le uniche lauree sono Ardia/Principe/Palmieri/Grandi").
    - **Mapping codici al schema app**: `12.7.1/.2/.2B`→`12.7`, `6.5.4`→`6.5`, `11.N`→`11A.N`, `P11.9`→`11A.9`, `P12.7.2`→`12.7`. **Skip** `P3.5/P3.6/P7.21` (assenti dallo schema pratica), **VETRUGNO** (non istruttore in users.json).
    - **CAVEAT fragilità**: i codici rule-covered aggiunti a istruttori con `qualifications` vuote (~163 in analisi pre-sync) verrebbero rimossi se un admin riapre e **salva** quell'istruttore in `users_tab` (perché `applyQualifications` con quals vuote toglie i codici rule-covered). `applyQualifications` NON gira al load, solo su salvataggio esplicito → in pratica persistono. Per renderli permanenti servirebbe un concetto di "conferimento manuale" o una guardia "se quals vuote, non rimuovere" (TODO non implementato).
 
-### Ultime modifiche (2026-06-17) — sessione 12 — titoli istruttori (qualifiche AMC) da 'stato di servizio' 2026
+### [SUPERATO s14] Ultime modifiche (2026-06-17) — sessione 12 — titoli istruttori (qualifiche AMC) da 'stato di servizio' 2026
 Aggiunto il campo `qualifications` agli istruttori in `corsi-data/db/users.json` (commit corsi-data 27e2bc7) e rigenerate `amc.json` theoryGrid/practiceGrid in modo **additivo**.
 - **Fonte**: unione di tre sorgenti — (1) parse della tabella LICENZA dei file "stato di servizio" 2026 in `C:\Users\Gianmarco\Documents\5. Istruttori Completo` (categoria B1.x/B2/C + aeromobile → qualifica AMC `bX.Y_<ac>`), (2) reverse-engineering delle griglie AMC già curate (set-cover minimale), (3) le 4 lauree note: **Ardia/Principe → laurea_elettronica, Palmieri → laurea_aerospaziale, Grandi → laurea_meccanica**.
 - **Risultato**: 22 istruttori valorizzati (23 con quals incl. Ardia preesistente), 661 add in griglia, **0 rimozioni** (l'unione contiene sempre il grid-reverse → la rigenerazione non toglie nulla). Nessun campo cifrato/credenziale alterato; JSON mantenuti compatti (1 riga).
