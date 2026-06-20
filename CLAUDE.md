@@ -67,7 +67,16 @@ GitHub Actions (`.github/workflows/deploy.yml`) deploya automaticamente su push 
 
 ---
 
-## STATO SESSIONE — aggiornato 2026-06-18 (sessione 14)
+## STATO SESSIONE — aggiornato 2026-06-20 (sessione 15)
+
+### Ultime modifiche (2026-06-20) — sessione 15 — admin CRUD tipi corso + nomi task visibili ovunque
+Richiesta utente: l'admin deve poter creare nuovi tipi corso (moduli + ore T/P + task pratica con id/nome/durata) e modificare quelli esistenti (durate attuali errate su alcuni). I riepiloghi (incluso controllo istruttori) devono sempre derivare dalla programmazione lezioni del direttore.
+1. **`reference.json` diventa scrivibile** (prima era solo lettura): `GhDbService.saveReference()` + `ReferenceService.saveCourseTypes()`/`nextTaskId()` (id task univoco su tutto il file)/`isCourseTypeInUse(id)` (un tipo corso in uso da un `Course` non è eliminabile).
+2. **`PracticalTask.name`** (reference_models.dart): nuovo campo, da/a JSON. Prima i task pratica avevano solo `id` e `plannedHours`.
+3. **Nuova schermata admin `course_types_tab.dart`** (5° tab in `master_shell.dart`, icona `tune`/"Tipi Corso"): CRUD completo su tipi corso → moduli → sottomoduli → task pratica. Creazione nuovo tipo corso da zero, editing di b1/b2/b1mil/b2mil esistenti, eliminazione bloccata se il tipo è in uso da un corso.
+4. **Nome task visibile ovunque** (prima il campo era scrivibile ma mai mostrato — gap chiuso): nuovo `ReferenceService.taskName(effectiveType, taskId)` (scan singolo, per call-site low-volume) + pattern a mappa precalcolata per-tipo-corso (per call-site high-volume, stesso pattern già usato per i nomi sottomodulo in `my_schedule_screen`). Aggiornati: calendario direttore (`schedule_tab.dart`, badge cella + dropdown `_addLesson`), agenda istruttore (`my_schedule_screen.dart`), oggi istruttore (`today_screen.dart`), agenda frequentatore (`attendee_schedule_screen.dart`). `taskId` resta `dynamic` (int per task base 1-112, String per task MIL legacy "1 m"-"25 m" non presenti in reference.json → `taskName` ritorna null, si mostra il raw id come fallback).
+5. **Riepiloghi/controllo istruttori già live da reference.json + programmazione lezioni** (verificato, nessuna modifica necessaria): non c'è cache che richieda invalidazione manuale — modificare una lezione vecchia in `schedule_tab` aggiorna automaticamente sia il riepilogo direttore sia quello admin, perché entrambi leggono `getLessonsForCourse`/`getCourseType` a ogni `build()`.
+6. **Build+push**: solo `lib/...` staged (mai `build/web` o `git add -A`), `flutter build web --release --base-href "/corsi/"` prima del commit. Nessun test in browser eseguito in sessione (nessun tool di controllo browser disponibile) — da verificare manualmente: dialog creazione/editing tipo corso, eliminazione bloccata su tipo in uso, etichette task nei 5 punti elencati al punto 4.
 
 ### Ultime modifiche (2026-06-18) — sessione 14 — qualifiche e griglie AMC 100% dai titoli nei doc (SUPERA s12 e s13 punto 2)
 **Modello autoritativo (utente)**: l'UNICO modo di assegnare i moduli insegnabili è la griglia AMC, derivata dai **TITOLI**. I conferimenti (`Conferimenti_Istruttori.xlsx`) **NON sono più validi**. Niente reverse-engineering delle griglie.
