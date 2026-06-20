@@ -38,6 +38,45 @@ class ReferenceService {
     );
   }
 
+  Future<void> saveCourseTypes(List<CourseTypeInfo> types) async {
+    final updated = {..._ref, 'courseTypes': types.map((t) => t.toJson()).toList()};
+    await _db.saveReference(updated);
+    invalidateLabelCache();
+  }
+
+  // Prossimo id task pratica libero (univoco su tutto reference.json).
+  int nextTaskId() {
+    var maxId = 0;
+    for (final ct in getCourseTypes()) {
+      for (final m in ct.modules) {
+        for (final s in m.submodules) {
+          for (final t in s.practicalTasks) {
+            if (t.id > maxId) maxId = t.id;
+          }
+        }
+      }
+    }
+    return maxId + 1;
+  }
+
+  bool isCourseTypeInUse(String id) => _db.courses
+      .any((c) => c['course_type_id'] == id || c['extension_type_id'] == id);
+
+  // Nome del task pratica (se valorizzato) dato il tipo corso effettivo e il taskId
+  // della lezione (può essere int per i task base o String per i task MIL legacy:
+  // in quel caso non c'è corrispondenza in reference.json e si torna null).
+  String? taskName(CourseTypeInfo? effectiveType, dynamic taskId) {
+    if (effectiveType == null || taskId == null) return null;
+    for (final m in effectiveType.modules) {
+      for (final s in m.submodules) {
+        for (final t in s.practicalTasks) {
+          if (t.id == taskId && t.name.isNotEmpty) return t.name;
+        }
+      }
+    }
+    return null;
+  }
+
   // Etichetta di un modulo dato il numero interno (es. 11 → '11A', 18 → '11B').
   // Cache statica: la mappa numero→label è identica per tutti i tipi corso.
   static Map<int, String>? _labelCache;

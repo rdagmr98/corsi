@@ -63,6 +63,16 @@ class _AttendeeScheduleScreenState extends ConsumerState<AttendeeScheduleScreen>
     }
     final dates = grouped.keys.toList()..sort();
 
+    final effectiveType = _selected == null
+        ? null
+        : _refService.getEffectiveCourseType(_selected!.courseTypeId, _selected!.extensionTypeId);
+    final taskNames = <int, String>{
+      for (final m in effectiveType?.modules ?? [])
+        for (final s in m.submodules)
+          for (final t in s.practicalTasks)
+            if (t.name.isNotEmpty) t.id: t.name,
+    };
+
     return Column(
       children: [
         if (_courses.length > 1)
@@ -138,7 +148,7 @@ class _AttendeeScheduleScreenState extends ConsumerState<AttendeeScheduleScreen>
                                     style: const TextStyle(color: kText, fontSize: 13),
                                     maxLines: 2),
                                 subtitle: Text(
-                                    'M${_refService.moduleLabel(l.moduleNumber)}${l.taskId != null ? ' · Task ${l.taskId}' : ''}',
+                                    'M${_refService.moduleLabel(l.moduleNumber)}${l.taskId != null ? ' · Task ${taskNames[l.taskId] ?? l.taskId}' : ''}',
                                     style: const TextStyle(color: kTextDim, fontSize: 11)),
                                 trailing: l.confirmed
                                     ? const Icon(Icons.check_circle, color: kAccent, size: 16)

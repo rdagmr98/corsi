@@ -1,13 +1,21 @@
 class PracticalTask {
   final int id;
+  final String name;
   final int plannedHours;
 
-  const PracticalTask({required this.id, required this.plannedHours});
+  const PracticalTask({required this.id, this.name = '', required this.plannedHours});
 
   factory PracticalTask.fromJson(Map<String, dynamic> j) => PracticalTask(
     id: (j['id'] as num).toInt(),
+    name: j['name'] as String? ?? '',
     plannedHours: j['plannedHours'] as int? ?? 0,
   );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    if (name.isNotEmpty) 'name': name,
+    'plannedHours': plannedHours,
+  };
 }
 
 class SubmoduleInfo {
@@ -49,6 +57,19 @@ class SubmoduleInfo {
         .toList(),
     perDifferenzaOf: j['perDifferenzaOf'] as int?,
   );
+
+  Map<String, dynamic> toJson() => {
+    'code': code,
+    'name': name,
+    'theoryHours': theoryHours,
+    'practicalHours': practicalHours,
+    if (levelB1 != null) 'levelB1': levelB1,
+    if (levelB2 != null) 'levelB2': levelB2,
+    if (topics.isNotEmpty) 'topics': topics,
+    if (practicalTasks.isNotEmpty)
+      'practicalTasks': practicalTasks.map((t) => t.toJson()).toList(),
+    if (perDifferenzaOf != null) 'perDifferenzaOf': perDifferenzaOf,
+  };
 }
 
 class ModuleInfo {
@@ -90,6 +111,17 @@ class ModuleInfo {
         .map((s) => SubmoduleInfo.fromJson(s as Map<String, dynamic>))
         .toList(),
   );
+
+  Map<String, dynamic> toJson() => {
+    'number': number,
+    if (label != null) 'label': label,
+    'name': name,
+    'theoryHours': theoryHours,
+    'practicalHours': practicalHours,
+    'examQuestions': examQuestions,
+    'examMinutes': examMinutes,
+    'submodules': submodules.map((s) => s.toJson()).toList(),
+  };
 }
 
 class TimeSlot {
@@ -104,6 +136,8 @@ class TimeSlot {
     start: j['start'] as String,
     end: j['end'] as String,
   );
+
+  Map<String, dynamic> toJson() => {'slot': slot, 'start': start, 'end': end};
 }
 
 class ScheduleTemplate {
@@ -129,6 +163,12 @@ class ScheduleTemplate {
 
   List<TimeSlot> slotsForWeekday(int weekday) =>
       weekday == DateTime.friday ? friday : mondayThursday;
+
+  Map<String, dynamic> toJson() => {
+    'mondayThursday': mondayThursday.map((s) => s.toJson()).toList(),
+    'friday': friday.map((s) => s.toJson()).toList(),
+    'hoursPerWeek': hoursPerWeek,
+  };
 }
 
 class CourseTypeInfo {
@@ -168,6 +208,16 @@ class CourseTypeInfo {
         .map((m) => ModuleInfo.fromJson(m as Map<String, dynamic>))
         .toList(),
   );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'code': code,
+    'name': name,
+    'category': category,
+    'maxAttendees': maxAttendees,
+    'schedule': schedule.toJson(),
+    'modules': modules.map((m) => m.toJson()).toList(),
+  };
 }
 
 class GradingRules {

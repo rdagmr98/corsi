@@ -47,6 +47,7 @@ class _InstructorScheduleScreenState extends ConsumerState<InstructorScheduleScr
       for (final c in _courseService.getAllCourses()) c.id: c.courseTypeId,
     };
     final subNamesPerType = <String, Map<String, String>>{};
+    final taskNamesPerType = <String, Map<int, String>>{};
     final subSchedTPerType = <String, Map<String, int>>{};
     final subSchedPPerType = <String, Map<String, int>>{};
     for (final l in _lessons) {
@@ -57,6 +58,15 @@ class _InstructorScheduleScreenState extends ConsumerState<InstructorScheduleScr
         return <String, String>{
           for (final m in ti?.modules ?? [])
             for (final s in m.submodules) s.code: s.name,
+        };
+      });
+      taskNamesPerType.putIfAbsent(typeId, () {
+        final ti = _refService.getCourseType(typeId);
+        return <int, String>{
+          for (final m in ti?.modules ?? [])
+            for (final s in m.submodules)
+              for (final t in s.practicalTasks)
+                if (t.name.isNotEmpty) t.id: t.name,
         };
       });
       final nc = normCode(l.submoduleCode);
@@ -135,6 +145,7 @@ class _InstructorScheduleScreenState extends ConsumerState<InstructorScheduleScr
                       final typeId = courseTypeMap[l.courseId] ?? '';
                       final nc = normCode(l.submoduleCode);
                       final subNames = subNamesPerType[typeId] ?? {};
+                      final taskNames = taskNamesPerType[typeId] ?? {};
                       final planMap = subPlanPerType[typeId] ?? {};
                       final plan = planMap[nc];
                       final schedT = subSchedTPerType[typeId]?[nc] ?? 0;
@@ -179,7 +190,7 @@ class _InstructorScheduleScreenState extends ConsumerState<InstructorScheduleScr
                               style: const TextStyle(color: kText, fontSize: 13),
                               maxLines: 2),
                           subtitle: Text(
-                              'M${_refService.moduleLabel(l.moduleNumber)} · ${isTheory ? "Teoria" : "Pratica"} · $hoursStr${l.taskId != null ? ' · Task ${l.taskId}' : ''}',
+                              'M${_refService.moduleLabel(l.moduleNumber)} · ${isTheory ? "Teoria" : "Pratica"} · $hoursStr${l.taskId != null ? ' · Task ${taskNames[l.taskId] ?? l.taskId}' : ''}',
                               style: const TextStyle(color: kTextDim, fontSize: 11),
                               maxLines: 1),
                           trailing: l.confirmed

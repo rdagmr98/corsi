@@ -8,6 +8,7 @@ import 'courses_tab.dart';
 import 'users_tab.dart';
 import 'currency_tab.dart';
 import 'amc_tab.dart';
+import 'course_types_tab.dart';
 
 class MasterShell extends ConsumerStatefulWidget {
   const MasterShell({super.key});
@@ -24,6 +25,7 @@ class _MasterShellState extends ConsumerState<MasterShell> {
     (Icons.people, 'Utenti'),
     (Icons.verified_user, 'Idoneità Istruttori'),
     (Icons.table_chart, 'Tabella AMC'),
+    (Icons.tune, 'Tipi Corso'),
   ];
 
   @override
@@ -99,6 +101,7 @@ class _MasterShellState extends ConsumerState<MasterShell> {
               1 => const UsersTab(),
               2 => const CurrencyTab(),
               3 => const AmcTab(),
+              4 => const CourseTypesTab(),
               _ => const SizedBox(),
             },
           ),

@@ -411,7 +411,8 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                           final rem = taskRemaining[t.id] ?? 0;
                           return DropdownMenuItem<dynamic>(
                             value: t.id,
-                            child: Text('Task ${t.id} – ${rem > 0 ? "$rem/${t.plannedHours}h rim." : "completo"}',
+                            child: Text(
+                                'Task ${t.id}${t.name.isNotEmpty ? " ${t.name}" : ""} – ${rem > 0 ? "$rem/${t.plannedHours}h rim." : "completo"}',
                                 style: TextStyle(
                                     color: rem > 0 ? kText : kTextDim,
                                     overflow: TextOverflow.ellipsis)),
@@ -1736,7 +1737,8 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                     color: kAccent.withOpacity(0.18),
                     borderRadius: BorderRadius.circular(3),
                   ),
-                  child: Text('T${lesson.taskId}',
+                  child: Text(
+                      'T${_refService.taskName(_typeInfo, lesson.taskId) ?? lesson.taskId}',
                       style: const TextStyle(color: kAccent, fontSize: 8, fontWeight: FontWeight.bold)),
                 ),
               ],
