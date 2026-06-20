@@ -6,7 +6,8 @@ App: `rdagmr98.github.io/corsi/` | Repo app: `rdagmr98/corsi` | Repo dati: `rdag
 
 | Situazione | File da aprire |
 |------------|----------------|
-| Ore T/P di un modulo/sottomodulo sbagliate | `C:\Users\Gianmarco\Documents\programmi\b1.pdf` (o b2/b1mil/b2mil) |
+| Ore T/P di un modulo/sottomodulo sbagliate | `C:\Users\Gianmarco\Documents\programmi\b1.pdf` (o b2/b1mil/b2mil). Vedi anche `02 - SYLLABUS_EI_B1_Combinato_(T+P)_Rev.1.pdf` in `Documents\BTC\btc\` — usato per la correzione completa di reference.json b1 in sessione 16 |
+| Ore registrate per modulo (BTC3) | `Controlloistruttori.xlsx` → foglio `3btc` (registro 1 riga = 1 ora; colonna Modulo, suffisso "P"=pratica; righe senza Istruttore = recupero/assenza extra, NON contano) e `Attività formativa 3btc` (riepilogo teoria pianificata/fatta per modulo — "ore da fare" è SOLO teoria, non T+P) |
 | Assenze, recuperi, situazione frequentatori | `C:\Users\Gianmarco\Documents\Controlloistruttori.xlsx` → foglio `assenze 3btc` (R5-R12 = nette oltre soglia; R41-R48 = raw unrecovered) |
 | Chi può insegnare un sottomodulo (AMC) | `C:\Users\Gianmarco\Documents\ANNESSO MTOE-P-3-1.docx` → tabelle T2 (teoria) e T3 (pratica). Font trick: "3.2" in Times New Roman = "3.1" reale |
 | Currency istruttori reale | `Controlloistruttori.xlsx` → fogli `istruttori nell'anno`, `currency per modulo`, `currency 2 anni` |
@@ -67,9 +68,20 @@ GitHub Actions (`.github/workflows/deploy.yml`) deploya automaticamente su push 
 
 ---
 
-## STATO SESSIONE — aggiornato 2026-06-20 (sessione 15)
+## STATO SESSIONE — aggiornato 2026-06-20 (sessione 16)
 
-### Ultime modifiche (2026-06-20) — sessione 15 — admin CRUD tipi corso + nomi task visibili ovunque
+### Ultime modifiche (2026-06-20) — sessione 16 — correzione completa programma b1 da syllabus PDF + fix label UI + discrepanze BTC3
+Richiesta utente: estrarre da `02 - SYLLABUS_EI_B1_Combinato_(T+P)_Rev.1.pdf` nomi/durate/numeri task corretti per `reference.json` (tipo corso `b1`), enforce dell'invariante "somma ore task pratica di un sottomodulo = practicalHours del sottomodulo", poi confronto finale programma corretto vs Controllo istruttori.
+1. **`reference.json` b1 corretto da ground-truth PDF** (corsi-data commit `b10b2fe`, merge su 100+ commit upstream concorrenti — l'app live scrive di continuo sullo stesso repo dati): 3 fix `theoryHours` modulo 1 (1.1=14, 1.2=21, 1.3=35) + 47 sottomoduli con `practicalTasks` ricostruiti (id/nome/ore corretti) sui moduli 3, 7, 11A, 11B, 12, 15, 16, 17. Script riproducibili (locali, NON in repo): `C:\Users\Gianmarco\fase_b_parse.py` (estrae 112 task da dump tabella PDF FASE B, risolve l'ambiguità 11A/11B per bilancio ore pagina 12), `rebuild_b1_tasks.py` (applica il fix), `diff_reference.py` (verifica). Verificato 0 violazioni invariante, 0 nomi task mancanti, 112 task totali. 9 "issues" residue nel diff sono falsi positivi noti (submoduleCode 11A.x/11B.x nel ground truth normalizzato come 11.x — solo formato, non un errore).
+2. **Fix bug ricorrente label tagliata sul bordo** (`course_types_tab.dart`, commit corsi `4c05c3a`): `InputDecoration.labelText` dentro `SizedBox`/`Row` stretti tronca la label. Sostituito con helper `_labeledField()` (Text sopra il campo via Column) su tutti i campi di moduli/sottomoduli/task. Aggiunto anche indicatore live nel subtitle del sottomodulo: se somma ore task ≠ pratica pianificata, mostra "(≠ pratica)" in rosso. Memoria salvata: [[feedback_flutter_label_cutoff]] — pattern da ricontrollare ad ogni nuovo campo stretto.
+3. **Discrepanze programma corretto vs Controllo istruttori (BTC3)** — metodo: aggregazione riga-per-riga del foglio `3btc` (1 riga = 1 ora), escluse le righe senza Istruttore (recuperi/assenze extra, per regola già nota non contano come ora di lezione), confrontata con teoria/pratica per modulo di `reference.json` b1 corretto. Risultato cross-validato (combinando teoria+pratica per modulo torna identico a "ore fatte" di `Attività formativa 3btc`):
+   - **Modulo 3 pratica**: 23h registrate vs 20h piano → **+3h oltre piano**
+   - **Modulo 8 teoria**: 59h registrate vs 50h piano → **+9h oltre piano**
+   - **Modulo 9 teoria**: 26h registrate vs 22h piano → **+4h oltre piano**
+   - Tutti gli altri moduli: match esatto (1,2,4,5,10,16) o sotto piano perché il modulo non è ancora concluso in BTC3 (6,7,12,15 — normale, corso in corso). Moduli 11A/11B/17/50/51/53/54: 0h registrate, non ancora iniziati.
+   - **Nota collaterale**: il foglio `Attività formativa 3btc` riga "ore da fare" riporta SOLO `theoryHours` (mai T+P) per ogni modulo — combacia esattamente col programma corretto, non è un errore, è solo una metrica diversa (teoria-only). Non confondere con la pratica, tracciata altrove.
+
+### [SUPERATO s16] Ultime modifiche (2026-06-20) — sessione 15 — admin CRUD tipi corso + nomi task visibili ovunque
 Richiesta utente: l'admin deve poter creare nuovi tipi corso (moduli + ore T/P + task pratica con id/nome/durata) e modificare quelli esistenti (durate attuali errate su alcuni). I riepiloghi (incluso controllo istruttori) devono sempre derivare dalla programmazione lezioni del direttore.
 1. **`reference.json` diventa scrivibile** (prima era solo lettura): `GhDbService.saveReference()` + `ReferenceService.saveCourseTypes()`/`nextTaskId()` (id task univoco su tutto il file)/`isCourseTypeInUse(id)` (un tipo corso in uso da un `Course` non è eliminabile).
 2. **`PracticalTask.name`** (reference_models.dart): nuovo campo, da/a JSON. Prima i task pratica avevano solo `id` e `plannedHours`.
