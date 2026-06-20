@@ -42,6 +42,15 @@ class _CourseTypesTabState extends ConsumerState<CourseTypesTab> {
     child: Text(text, style: const TextStyle(color: kTextDim, fontSize: 12)),
   );
 
+  // Etichetta sopra il campo, MAI labelText dentro InputDecoration in campi
+  // stretti (Row/SizedBox): il floating label di Material va a metà sul
+  // bordo e si taglia quando lo spazio orizzontale è limitato.
+  Widget _labeledField(String label, Widget field) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    mainAxisSize: MainAxisSize.min,
+    children: [_label(label), field],
+  );
+
   // ── Dialog tipo corso (id/code/name/category/maxAttendees) ───────────────
   Future<void> _showCourseTypeDialog({CourseTypeInfo? type}) async {
     final isNew = type == null;
@@ -386,55 +395,72 @@ class _CourseTypesTabState extends ConsumerState<CourseTypesTab> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         SizedBox(
                           width: 80,
-                          child: TextField(
-                            controller: draft.number,
-                            keyboardType: TextInputType.number,
-                            style: const TextStyle(color: kText),
-                            decoration: const InputDecoration(labelText: 'Numero', isDense: true),
+                          child: _labeledField(
+                            'Numero',
+                            TextField(
+                              controller: draft.number,
+                              keyboardType: TextInputType.number,
+                              style: const TextStyle(color: kText),
+                              decoration: const InputDecoration(isDense: true),
+                            ),
                           ),
                         ),
                         const SizedBox(width: 12),
                         SizedBox(
                           width: 90,
-                          child: TextField(
-                            controller: draft.label,
-                            style: const TextStyle(color: kText),
-                            decoration: const InputDecoration(labelText: 'Etichetta', hintText: 'es. 11A', isDense: true),
+                          child: _labeledField(
+                            'Etichetta',
+                            TextField(
+                              controller: draft.label,
+                              style: const TextStyle(color: kText),
+                              decoration: const InputDecoration(hintText: 'es. 11A', isDense: true),
+                            ),
                           ),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
-                          child: TextField(
-                            controller: draft.name,
-                            style: const TextStyle(color: kText),
-                            decoration: const InputDecoration(labelText: 'Nome modulo', isDense: true),
+                          child: _labeledField(
+                            'Nome modulo',
+                            TextField(
+                              controller: draft.name,
+                              style: const TextStyle(color: kText),
+                              decoration: const InputDecoration(isDense: true),
+                            ),
                           ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 12),
                     Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         SizedBox(
                           width: 160,
-                          child: TextField(
-                            controller: draft.examQuestions,
-                            keyboardType: TextInputType.number,
-                            style: const TextStyle(color: kText),
-                            decoration: const InputDecoration(labelText: 'Domande esame', isDense: true),
+                          child: _labeledField(
+                            'Domande esame',
+                            TextField(
+                              controller: draft.examQuestions,
+                              keyboardType: TextInputType.number,
+                              style: const TextStyle(color: kText),
+                              decoration: const InputDecoration(isDense: true),
+                            ),
                           ),
                         ),
                         const SizedBox(width: 12),
                         SizedBox(
                           width: 160,
-                          child: TextField(
-                            controller: draft.examMinutes,
-                            keyboardType: TextInputType.number,
-                            style: const TextStyle(color: kText),
-                            decoration: const InputDecoration(labelText: 'Minuti esame', isDense: true),
+                          child: _labeledField(
+                            'Minuti esame',
+                            TextField(
+                              controller: draft.examMinutes,
+                              keyboardType: TextInputType.number,
+                              style: const TextStyle(color: kText),
+                              decoration: const InputDecoration(isDense: true),
+                            ),
                           ),
                         ),
                       ],
@@ -442,26 +468,33 @@ class _CourseTypesTabState extends ConsumerState<CourseTypesTab> {
                     const SizedBox(height: 12),
                     if (simple)
                       Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           SizedBox(
                             width: 160,
-                            child: TextField(
-                              controller: draft.theory,
-                              keyboardType: TextInputType.number,
-                              style: const TextStyle(color: kText),
-                              decoration: const InputDecoration(labelText: 'Teoria (ore)', isDense: true),
-                              onChanged: (_) => setDlg(() {}),
+                            child: _labeledField(
+                              'Teoria (ore)',
+                              TextField(
+                                controller: draft.theory,
+                                keyboardType: TextInputType.number,
+                                style: const TextStyle(color: kText),
+                                decoration: const InputDecoration(isDense: true),
+                                onChanged: (_) => setDlg(() {}),
+                              ),
                             ),
                           ),
                           const SizedBox(width: 12),
                           SizedBox(
                             width: 160,
-                            child: TextField(
-                              controller: draft.practical,
-                              keyboardType: TextInputType.number,
-                              style: const TextStyle(color: kText),
-                              decoration: const InputDecoration(labelText: 'Pratica (ore)', isDense: true),
-                              onChanged: (_) => setDlg(() {}),
+                            child: _labeledField(
+                              'Pratica (ore)',
+                              TextField(
+                                controller: draft.practical,
+                                keyboardType: TextInputType.number,
+                                style: const TextStyle(color: kText),
+                                decoration: const InputDecoration(isDense: true),
+                                onChanged: (_) => setDlg(() {}),
+                              ),
                             ),
                           ),
                         ],
@@ -589,12 +622,17 @@ class _CourseTypesTabState extends ConsumerState<CourseTypesTab> {
             ),
           ],
         ),
-        subtitle: Text(
-          '${s.theory.text.isEmpty ? 0 : s.theory.text}h teoria · '
-          '${s.practical.text.isEmpty ? 0 : s.practical.text}h pratica · '
-          '${s.tasks.length} task',
-          style: const TextStyle(color: kTextDim, fontSize: 11),
-        ),
+        subtitle: Builder(builder: (_) {
+          final practicalPlanned = int.tryParse(s.practical.text.trim()) ?? 0;
+          final taskSum = s.tasks.fold<int>(0, (acc, t) => acc + (int.tryParse(t.hours.text.trim()) ?? 0));
+          final mismatch = s.tasks.isNotEmpty && taskSum != practicalPlanned;
+          return Text(
+            '${s.theory.text.isEmpty ? 0 : s.theory.text}h teoria · '
+            '${s.practical.text.isEmpty ? 0 : s.practical.text}h pratica · '
+            'task ${taskSum}h${mismatch ? ' (≠ pratica)' : ''}',
+            style: TextStyle(color: mismatch ? kError : kTextDim, fontSize: 11),
+          );
+        }),
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
@@ -602,55 +640,71 @@ class _CourseTypesTabState extends ConsumerState<CourseTypesTab> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     SizedBox(
                       width: 120,
-                      child: TextField(
-                        controller: s.theory,
-                        keyboardType: TextInputType.number,
-                        style: const TextStyle(color: kText),
-                        decoration: const InputDecoration(labelText: 'Teoria (ore)', isDense: true),
-                        onChanged: (_) => setDlg(() {}),
+                      child: _labeledField(
+                        'Teoria (ore)',
+                        TextField(
+                          controller: s.theory,
+                          keyboardType: TextInputType.number,
+                          style: const TextStyle(color: kText),
+                          decoration: const InputDecoration(isDense: true),
+                          onChanged: (_) => setDlg(() {}),
+                        ),
                       ),
                     ),
                     const SizedBox(width: 12),
                     SizedBox(
                       width: 120,
-                      child: TextField(
-                        controller: s.practical,
-                        keyboardType: TextInputType.number,
-                        style: const TextStyle(color: kText),
-                        decoration: const InputDecoration(labelText: 'Pratica (ore)', isDense: true),
-                        onChanged: (_) => setDlg(() {}),
+                      child: _labeledField(
+                        'Pratica (ore)',
+                        TextField(
+                          controller: s.practical,
+                          keyboardType: TextInputType.number,
+                          style: const TextStyle(color: kText),
+                          decoration: const InputDecoration(isDense: true),
+                          onChanged: (_) => setDlg(() {}),
+                        ),
                       ),
                     ),
                     const SizedBox(width: 12),
                     SizedBox(
                       width: 100,
-                      child: TextField(
-                        controller: s.levelB1,
-                        keyboardType: TextInputType.number,
-                        style: const TextStyle(color: kText),
-                        decoration: const InputDecoration(labelText: 'Livello B1', isDense: true),
+                      child: _labeledField(
+                        'Livello B1',
+                        TextField(
+                          controller: s.levelB1,
+                          keyboardType: TextInputType.number,
+                          style: const TextStyle(color: kText),
+                          decoration: const InputDecoration(isDense: true),
+                        ),
                       ),
                     ),
                     const SizedBox(width: 12),
                     SizedBox(
                       width: 100,
-                      child: TextField(
-                        controller: s.levelB2,
-                        keyboardType: TextInputType.number,
-                        style: const TextStyle(color: kText),
-                        decoration: const InputDecoration(labelText: 'Livello B2', isDense: true),
+                      child: _labeledField(
+                        'Livello B2',
+                        TextField(
+                          controller: s.levelB2,
+                          keyboardType: TextInputType.number,
+                          style: const TextStyle(color: kText),
+                          decoration: const InputDecoration(isDense: true),
+                        ),
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 10),
-                TextField(
-                  controller: s.topics,
-                  style: const TextStyle(color: kText),
-                  decoration: const InputDecoration(labelText: 'Argomenti (separati da virgola)', isDense: true),
+                _labeledField(
+                  'Argomenti (separati da virgola)',
+                  TextField(
+                    controller: s.topics,
+                    style: const TextStyle(color: kText),
+                    decoration: const InputDecoration(isDense: true),
+                  ),
                 ),
                 const Divider(color: kBorder, height: 24),
                 Row(
@@ -664,6 +718,19 @@ class _CourseTypesTabState extends ConsumerState<CourseTypesTab> {
                     ),
                   ],
                 ),
+                if (s.tasks.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      SizedBox(width: 60, child: _label('ID')),
+                      const SizedBox(width: 8),
+                      Expanded(child: _label('Nome task')),
+                      const SizedBox(width: 8),
+                      SizedBox(width: 80, child: _label('Ore')),
+                      const SizedBox(width: 32),
+                    ],
+                  ),
+                ],
                 ...s.tasks.asMap().entries.map((te) {
                   final j = te.key;
                   final t = te.value;
@@ -678,7 +745,7 @@ class _CourseTypesTabState extends ConsumerState<CourseTypesTab> {
                             controller: t.id,
                             keyboardType: TextInputType.number,
                             style: const TextStyle(color: kText, fontSize: 12),
-                            decoration: const InputDecoration(isDense: true, labelText: 'ID'),
+                            decoration: const InputDecoration(isDense: true),
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -686,7 +753,7 @@ class _CourseTypesTabState extends ConsumerState<CourseTypesTab> {
                           child: TextField(
                             controller: t.name,
                             style: const TextStyle(color: kText, fontSize: 12),
-                            decoration: const InputDecoration(isDense: true, labelText: 'Nome task'),
+                            decoration: const InputDecoration(isDense: true),
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -696,7 +763,8 @@ class _CourseTypesTabState extends ConsumerState<CourseTypesTab> {
                             controller: t.hours,
                             keyboardType: TextInputType.number,
                             style: const TextStyle(color: kText, fontSize: 12),
-                            decoration: const InputDecoration(isDense: true, labelText: 'Ore'),
+                            decoration: const InputDecoration(isDense: true),
+                            onChanged: (_) => setDlg(() {}),
                           ),
                         ),
                         IconButton(
