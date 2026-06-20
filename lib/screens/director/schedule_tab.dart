@@ -1665,8 +1665,12 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
         ? (instrNames[lesson.instructorId!] ?? '?')
         : null;
 
+    final taskName = lesson.taskId != null
+        ? _refService.taskName(_typeInfo, lesson.taskId)
+        : null;
     final tooltipMsg = [
       displayTopic,
+      if (taskName != null) '🔧 Task ${lesson.taskId}: $taskName',
       if (instrName != null) '👤 $instrName',
       hoursStr,
     ].join('\n');
@@ -1738,7 +1742,9 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                     borderRadius: BorderRadius.circular(3),
                   ),
                   child: Text(
-                      'T${_refService.taskName(_typeInfo, lesson.taskId) ?? lesson.taskId}',
+                      'T${lesson.taskId}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(color: kAccent, fontSize: 8, fontWeight: FontWeight.bold)),
                 ),
               ],
