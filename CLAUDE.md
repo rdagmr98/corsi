@@ -68,9 +68,20 @@ GitHub Actions (`.github/workflows/deploy.yml`) deploya automaticamente su push 
 
 ---
 
-## STATO SESSIONE — aggiornato 2026-06-20 (sessione 16)
+## STATO SESSIONE — aggiornato 2026-06-21 (sessione 17)
 
-### Ultime modifiche (2026-06-20) — sessione 16 — correzione completa programma b1 da syllabus PDF + fix label UI + verifica BTC3 (zero discrepanze)
+### Ultime modifiche (2026-06-21) — sessione 17 — coda TODO pendenti da s16, tutti chiusi
+Richiesta utente: chiudere i 6 TODO lasciati aperti a fine sessione 16 (vedi sezione TODO pendenti, ora svuotata).
+1. **Overflow badge task in calendario** (`schedule_tab.dart`, commit corsi `9961a5d`): badge cella mostra solo l'ID task invece del nome intero quando non entra.
+2. **Tab direttore "Storico lezioni"** (commit corsi `2fe1e4a`): nuova tab con filtri data/modulo/sottomodulo/task/istruttore/assenti/recuperi sulla lista lezioni fatte. Il filtro "in recupero" usa `computePerModuleStats(...)['toRecover'] > 0` per frequentatore selezionato.
+3. **Root cause "dati storici BTC3 indistinguibili da dati nativi"** (`schedule_tab.dart`, commit corsi `a3ff5aa`): la ricostruzione storica (s10/s16) aveva già corretto `topic` nei dati importati per usare il nome reale del sottomodulo invece del codice grezzo (es. "6.6"); editare il sottomodulo di una lezione dalla UI direttore reimpostava però `topic` al codice grezzo, vanificando la correzione ad ogni modifica futura. Ora il path di editing nativo imposta `topic` allo stesso modo dei dati ricostruiti.
+4. **Voti: stato recupero su ultimo tentativo, non storico** (`grade_models.dart`, commit corsi `80dff4b`): nuovo concetto `latestAttempts` — `hasFailing`/`weightedAverage` guardano solo l'ultimo tentativo per tipo accertamento. Un voto negativo poi recuperato non resta "da recuperare" per sempre. Aggiunta etichetta "Tentativo N di M" + nota di stato, visibile a frequentatore/direttore/admin.
+5. **Assenze: data vera di recupero** (`schedule_models.dart` + `attendance_service.dart`, commit corsi `2b37eee`): nuovo getter `AttendanceRecord.recoveryDate` — la vera data di recupero è incorporata nello schedule_id sintetico dei record recupero (`recovery:...:YYYY-MM-DD:mN[:tipo]`), non `confirmedAt` (timestamp di inserimento dati, usato per errore in dialog/raggruppamento direttore). Nuovo `AttendanceService.pairAbsenceRecoveries()`: abbinamento FIFO assenza↔recupero per pool modulo+tipo (il modello non ha legame 1:1 tra assenza specifica e recupero specifico). Frequentatore vede "Recuperata il dd/MM/yyyy"; direttore vede la stessa data nei chip della tab Per Lezione.
+6. **Verificato (nessuna modifica)**: ore da recuperare teoria/pratica (`toRecover/toRecoverT/toRecoverP`, s11/s16) già esposte chiaramente in UI sia a frequentatore (card riepilogo + alert dedicato + dettaglio per modulo) sia a direttore (per-studente + per-modulo, etichette "(100%)"/"(oltre 10%)").
+
+Tutti i TODO storici del progetto risultano chiusi a fine s17.
+
+### [SUPERATO s17] Ultime modifiche (2026-06-20) — sessione 16 — correzione completa programma b1 da syllabus PDF + fix label UI + verifica BTC3 (zero discrepanze)
 Richiesta utente: estrarre da `02 - SYLLABUS_EI_B1_Combinato_(T+P)_Rev.1.pdf` nomi/durate/numeri task corretti per `reference.json` (tipo corso `b1`), enforce dell'invariante "somma ore task pratica di un sottomodulo = practicalHours del sottomodulo", poi confronto finale programma corretto vs Controllo istruttori.
 1. **`reference.json` b1 corretto da ground-truth PDF** (corsi-data commit `b10b2fe`, merge su 100+ commit upstream concorrenti — l'app live scrive di continuo sullo stesso repo dati): 3 fix `theoryHours` modulo 1 (1.1=14, 1.2=21, 1.3=35) + 47 sottomoduli con `practicalTasks` ricostruiti (id/nome/ore corretti) sui moduli 3, 7, 11A, 11B, 12, 15, 16, 17. Script riproducibili (locali, NON in repo): `C:\Users\Gianmarco\fase_b_parse.py` (estrae 112 task da dump tabella PDF FASE B, risolve l'ambiguità 11A/11B per bilancio ore pagina 12), `rebuild_b1_tasks.py` (applica il fix), `diff_reference.py` (verifica). Verificato 0 violazioni invariante, 0 nomi task mancanti, 112 task totali. 9 "issues" residue nel diff sono falsi positivi noti (submoduleCode 11A.x/11B.x nel ground truth normalizzato come 11.x — solo formato, non un errore).
 2. **Fix bug ricorrente label tagliata sul bordo** (`course_types_tab.dart`, commit corsi `4c05c3a`): `InputDecoration.labelText` dentro `SizedBox`/`Row` stretti tronca la label. Sostituito con helper `_labeledField()` (Text sopra il campo via Column) su tutti i campi di moduli/sottomoduli/task. Aggiunto anche indicatore live nel subtitle del sottomodulo: se somma ore task ≠ pratica pianificata, mostra "(≠ pratica)" in rosso. Memoria salvata: [[feedback_flutter_label_cutoff]] — pattern da ricontrollare ad ogni nuovo campo stretto.
@@ -220,15 +231,9 @@ Sia il frequentatore sia il direttore vedono ora **quante ORE il frequentatore d
 7. **Percentuali presenze/assenze ovunque**: "Pres. X% · Ass. Y%" (pres = (confirmed−absent)/confirmed, ass = absent/confirmed) in attendance_tab (card frequentatore + righe modulo), course_detail_screen (presenze admin), attendee_attendance_screen (stat "Assenza" nel riepilogo + righe modulo).
 
 ### TODO pendenti
-- Il direttore BTC3 deve rigenerare il calendario (pulsante genera) per sanare i contatori: ultima ora X/X, ~170h nette mancanti ri-pianificate.
-- Nomi sottomoduli 11A in reference.json da verificare col programma corso ufficiale (probabile shift: numerazione EASA vs nomi attuali, vedi punto 19).
-- **Richieste utente 2026-06-20 (post s16, da implementare)**:
-  1. Programmazione lezioni: overflow nome task nel dialog/dropdown — mostrare solo l'ID task, non il nome intero.
-  2. Dati storici BTC3 importati devono essere indistinguibili da dati creati nativamente dall'app (il corso deve "sembrare" iniziato con l'app).
-  3. Voti frequentatore: un voto negativo recuperato non deve apparire "da recuperare" — lo stato di recupero va calcolato sul SOLO ultimo tentativo per accertamento, non sullo storico. Specificare ovunque (vista frequentatore E inserimento direttore) quale accertamento e quale tentativo di recupero rappresenta un voto.
-  4. Assenze: sia direttore che frequentatore devono vedere ogni assenza con, se recuperata, la data del recupero (oggi probabilmente non c'è traccia).
-  5. Ore da recuperare: direttore e frequentatore devono vedere chiaramente le ore di teoria/pratica ancora da recuperare per rientrare nella normalità (pratica = tutte le assenze, teoria = solo oltre il 10% del modulo). Verificare stato attuale di `toRecover/toRecoverT/toRecoverP` (s11, `computePerModuleStats`) — calcolati ma forse non esposti bene in UI.
-  6. Direttore: filtri sulla lista lezioni fatte per data, modulo, sottomodulo, ID task, istruttore, frequentatori assenti, frequentatori in recupero.
+Nessuno al momento (tutti i TODO storici chiusi a fine sessione 17, 2026-06-21).
+- Il direttore BTC3 deve rigenerare il calendario (pulsante genera) per sanare i contatori: ultima ora X/X, ~170h nette mancanti ri-pianificate. (TODO operativo lato direttore, non di sviluppo)
+- Nomi sottomoduli 11A in reference.json da verificare col programma corso ufficiale (probabile shift: numerazione EASA vs nomi attuali, vedi punto 19 sessione 12-storica).
 
 ### Note importanti
 - Se RASPATA o altri sembrano ancora rossi: è cache stale → fare refresh nell'app (pull-to-refresh)
