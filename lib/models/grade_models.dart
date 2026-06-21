@@ -141,8 +141,26 @@ class AttendeeGradeSummary {
     required this.grades,
   });
 
+  /// Voti raggruppati per tipo (accertamento/esame), ordinati dal più
+  /// vecchio al più recente: indice+1 = numero del tentativo.
+  Map<AssessmentType, List<Grade>> get byType {
+    final map = <AssessmentType, List<Grade>>{};
+    for (final g in grades) {
+      map.putIfAbsent(g.assessmentType, () => []).add(g);
+    }
+    for (final list in map.values) {
+      list.sort((a, b) => a.date.compareTo(b.date));
+    }
+    return map;
+  }
+
+  /// Solo l'ultimo tentativo per ciascun tipo: è questo — non lo storico
+  /// completo — a determinare se il modulo è ancora "da recuperare".
+  List<Grade> get latestAttempts =>
+      byType.values.map((l) => l.last).toList();
+
   double get weightedAverage {
-    final valid = grades.where((g) => g.isPassing).toList();
+    final valid = latestAttempts.where((g) => g.isPassing).toList();
     if (valid.isEmpty) return 0;
     double totalWeightedScore = 0;
     int totalWeight = 0;
@@ -154,8 +172,40 @@ class AttendeeGradeSummary {
     return totalWeight == 0 ? 0 : totalWeightedScore / totalWeight;
   }
 
-  bool get hasFailing => grades.any((g) => !g.isPassing);
+  bool get hasFailing => latestAttempts.any((g) => !g.isPassing);
 
   bool get isPassing => weightedAverage >= 22.5;
   bool get hasGrades => grades.isNotEmpty;
+
+  /// Numero di tentativo (1-based) di [g] tra i voti dello stesso tipo.
+  int attemptNumber(Grade g) {
+    final list = byType[g.assessmentType] ?? const [];
+    final idx = list.indexWhere((x) => x.id == g.id);
+    return idx < 0 ? 1 : idx + 1;
+  }
+
+  int attemptsCount(Grade g) => byType[g.assessmentType]?.length ?? 1;
+
+  /// true se [g] non è l'ultimo tentativo del suo tipo (superato da un
+  /// tentativo successivo, indipendentemente dall'esito di quest'ultimo).
+  bool isSuperseded(Grade g) {
+    final list = byType[g.assessmentType];
+    return list != null && list.isNotEmpty && list.last.id != g.id;
+  }
+
+  /// Etichetta "Tentativo N di M" da mostrare accanto al voto. Null se è
+  /// l'unico tentativo per quel tipo (nessuna ambiguità da chiarire).
+  String? attemptLabel(Grade g) {
+    final count = attemptsCount(g);
+    if (count <= 1) return null;
+    return 'Tentativo ${attemptNumber(g)} di $count';
+  }
+
+  /// Nota di stato da mostrare sotto un voto negativo. Null se il voto è
+  /// positivo. "da recuperare" solo se è l'ultimo tentativo del suo tipo;
+  /// un voto negativo superato da un tentativo successivo è "superato".
+  String? recoveryNote(Grade g) {
+    if (g.isPassing) return null;
+    return isSuperseded(g) ? 'tentativo superato' : 'da recuperare';
+  }
 }

@@ -202,7 +202,10 @@ class _AttendeeGradesScreenState extends ConsumerState<AttendeeGradesScreen> {
                             ),
                             if (s != null && s.hasGrades) ...[
                               const SizedBox(height: 8),
-                              ...s.grades.map((g) => Padding(
+                              ...s.grades.map((g) {
+                                final attemptLabel = s.attemptLabel(g);
+                                final recoveryNote = s.recoveryNote(g);
+                                return Padding(
                                 padding: const EdgeInsets.only(bottom: 4),
                                 child: Row(
                                   children: [
@@ -221,8 +224,16 @@ class _AttendeeGradesScreenState extends ConsumerState<AttendeeGradesScreen> {
                                       ),
                                     ),
                                     const SizedBox(width: 8),
-                                    Text(DateFormat('dd/MM/yyyy').format(g.date),
-                                        style: const TextStyle(color: kTextDim, fontSize: 11)),
+                                    Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(DateFormat('dd/MM/yyyy').format(g.date),
+                                            style: const TextStyle(color: kTextDim, fontSize: 11)),
+                                        if (attemptLabel != null)
+                                          Text(attemptLabel,
+                                              style: const TextStyle(color: kTextDim, fontSize: 9)),
+                                      ],
+                                    ),
                                     const Spacer(),
                                     Column(
                                       crossAxisAlignment: CrossAxisAlignment.end,
@@ -234,15 +245,17 @@ class _AttendeeGradesScreenState extends ConsumerState<AttendeeGradesScreen> {
                                             fontWeight: FontWeight.bold,
                                           ),
                                         ),
-                                        if (!g.isPassing)
-                                          const Text('da recuperare',
+                                        if (recoveryNote != null)
+                                          Text(recoveryNote,
                                               style: TextStyle(
-                                                  color: kError, fontSize: 9)),
+                                                  color: recoveryNote == 'da recuperare' ? kError : kTextDim,
+                                                  fontSize: 9)),
                                       ],
                                     ),
                                   ],
                                 ),
-                              )),
+                              );
+                              }),
                             ] else
                               const Padding(
                                 padding: EdgeInsets.only(top: 6),

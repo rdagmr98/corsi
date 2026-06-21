@@ -237,6 +237,8 @@ class _DirectorGradesTabState extends ConsumerState<DirectorGradesTab> {
               .getGradesForAttendee(course.id, attendeeId)
               .where((g) => g.moduleNumber == module.number)
               .toList();
+          final summary = AttendeeGradeSummary(
+              attendeeId: attendeeId, moduleNumber: module.number, grades: grades);
           return AlertDialog(
             backgroundColor: kCard,
             title: Column(
@@ -259,6 +261,8 @@ class _DirectorGradesTabState extends ConsumerState<DirectorGradesTab> {
                       children: grades.map((g) {
                         final isEsame = g.assessmentType == AssessmentType.esame;
                         final typeColor = isEsame ? kWarning : kPrimary;
+                        final attemptLabel = summary.attemptLabel(g);
+                        final recoveryNote = summary.recoveryNote(g);
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 6),
                           child: Row(
@@ -281,13 +285,24 @@ class _DirectorGradesTabState extends ConsumerState<DirectorGradesTab> {
                               const SizedBox(width: 10),
                               SizedBox(
                                 width: 44,
-                                child: Text(
-                                  g.score.toStringAsFixed(1),
-                                  style: TextStyle(
-                                    color: g.isPassing ? kAccent : kError,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      g.score.toStringAsFixed(1),
+                                      style: TextStyle(
+                                        color: g.isPassing ? kAccent : kError,
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    if (recoveryNote != null)
+                                      Text(recoveryNote,
+                                          style: TextStyle(
+                                              color: recoveryNote == 'da recuperare' ? kError : kTextDim,
+                                              fontSize: 8)),
+                                  ],
                                 ),
                               ),
                               Expanded(
@@ -296,6 +311,9 @@ class _DirectorGradesTabState extends ConsumerState<DirectorGradesTab> {
                                   children: [
                                     Text(DateFormat('dd/MM/yyyy').format(g.date),
                                         style: const TextStyle(color: kTextDim, fontSize: 11)),
+                                    if (attemptLabel != null)
+                                      Text(attemptLabel,
+                                          style: const TextStyle(color: kTextDim, fontSize: 9)),
                                     if (g.notes != null && g.notes!.isNotEmpty)
                                       Text(g.notes!,
                                           style: const TextStyle(color: kTextDim, fontSize: 10),

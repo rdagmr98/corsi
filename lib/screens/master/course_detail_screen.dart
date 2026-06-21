@@ -459,6 +459,8 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
         .where((g) => g.moduleNumber == module.number)
         .toList()
       ..sort((g1, g2) => g1.date.compareTo(g2.date));
+    final summary = AttendeeGradeSummary(
+        attendeeId: a.id, moduleNumber: module.number, grades: grades);
 
     showDialog(
       context: context,
@@ -482,6 +484,8 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
                   children: grades.map((g) {
                     final isEsame = g.assessmentType == AssessmentType.esame;
                     final typeColor = isEsame ? kWarning : kPrimary;
+                    final attemptLabel = summary.attemptLabel(g);
+                    final recoveryNote = summary.recoveryNote(g);
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 8),
                       child: Row(children: [
@@ -503,13 +507,24 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
                         const SizedBox(width: 8),
                         SizedBox(
                           width: 44,
-                          child: Text(
-                            g.score.toStringAsFixed(1),
-                            style: TextStyle(
-                              color: g.isPassing ? kAccent : kError,
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                g.score.toStringAsFixed(1),
+                                style: TextStyle(
+                                  color: g.isPassing ? kAccent : kError,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              if (recoveryNote != null)
+                                Text(recoveryNote,
+                                    style: TextStyle(
+                                        color: recoveryNote == 'da recuperare' ? kError : kTextDim,
+                                        fontSize: 8)),
+                            ],
                           ),
                         ),
                         Expanded(
@@ -518,6 +533,9 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
                             children: [
                               Text(DateFormat('dd/MM/yyyy').format(g.date),
                                   style: const TextStyle(color: kTextDim, fontSize: 11)),
+                              if (attemptLabel != null)
+                                Text(attemptLabel,
+                                    style: const TextStyle(color: kTextDim, fontSize: 9)),
                               if (g.notes != null && g.notes!.isNotEmpty)
                                 Text(g.notes!,
                                     style: const TextStyle(color: kTextDim, fontSize: 10),
