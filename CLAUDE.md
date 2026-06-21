@@ -68,9 +68,19 @@ GitHub Actions (`.github/workflows/deploy.yml`) deploya automaticamente su push 
 
 ---
 
-## STATO SESSIONE — aggiornato 2026-06-21 (sessione 17)
+## STATO SESSIONE — aggiornato 2026-06-21 (sessione 18)
 
-### Ultime modifiche (2026-06-21) — sessione 17 — coda TODO pendenti da s16, tutti chiusi
+### Ultime modifiche (2026-06-21) — sessione 18 — feedback critico utente post-s17: accertamenti distinti, assenza+recupero stessa riga, riverifica Excel (commit `9fbb23a`)
+Richiesta utente (verbatim): sezione ricerca senza data completa/recuperi/progressione sottomodulo; modifiche Controllo istruttori ignorate; "casini" coi recuperi degli accertamenti — ogni modulo ha un numero diverso di accertamenti, ognuno recuperabile fino a 3 volte (esame unico per modulo, recuperabile 2 volte); voleva assenza+recupero (o avviso da recuperare) sulla stessa riga nella situazione del singolo studente; "nei recuperi c'è sempre lo stesso progressivo".
+1. **Colonna data troppo stretta** (`lessons_log_tab.dart`): fix larghezza, data completa visibile.
+2. **Progressione per sottomodulo in Storico lezioni** (`lessons_log_tab.dart`): badge ore/totale per sottomodulo, prima assente.
+3. **Recuperi visibili in Storico lezioni** (`lessons_log_tab.dart`): i record di recupero non comparivano nel log direttore, ora esposti.
+4. **Assenza + recupero sulla stessa riga, vista per-studente direttore** (`attendance_tab.dart`) + selettore sottomodulo in `_addRecovery`.
+5. **Rework modello voti — accertamenti distinti per modulo** (`grade_models.dart`, `grade_service.dart`, `grades_tab.dart`, `attendee_grades_screen.dart`, `course_detail_screen.dart`): **root cause** del "sempre lo stesso progressivo": `Grade.type` era solo `'accertamento'`/`'esame'`, senza campo per distinguere QUALE accertamento di un modulo — `AttendeeGradeSummary` raggruppava tutti gli accertamenti di un modulo in un solo bucket per tipo, confondendo accertamenti diversi tra loro con i tentativi di recupero dello stesso. Fix: nuovo campo `accertamentoNumber` su `Grade`, raggruppamento su chiave composita `(AssessmentType, int)` (record Dart, funziona come chiave Map). Esame resta unico per modulo (`accertamentoNumber` forzato a 1), recuperabile 2 volte; accertamenti recuperabili 3 volte. Verificato con `flutter analyze` full-project: 0 errori, 0 regressioni (152 issue tutte pre-esistenti, non correlate).
+6. **Riverifica Controlloistruttori.xlsx dopo modifiche utente** ("aggiustato la matematica e aggiunto le ore del 6.6"): file modificato 20/06/2026 (confermato via `LastWriteTime`). Trovate 2 righe nuove: sottomodulo 6.6, istruttore Palmieri Biagio, datate **08/10/2026** — quasi certamente un errore di digitazione (tutte le righe 6.6 circostanti sono 2025; BTC3 è già al ~71%); da segnalare all'utente, non bloccante, nessuna azione presa. Riconciliazione (Excel "regolari" per sottomodulo normalizzato vs `reference.json` fresh via `gh api`): **6.6 ora esattamente 18/18** (era 16/18) — stesso gap già colmato lato app in s10 con inserimento sintetico 2025-11-07; quasi certamente le stesse 2 ore reali registrate due volte, nessuna ulteriore modifica richiesta lato app. **Riconciliazione estesa a TUTTI i moduli BTC3**: zero discrepanze reali confermate ovunque (1,2,3,4,5,6,8,9,10,16 match esatto; 7,11,12,15,17,18,50,51,53,54 sotto piano, normale per corso in corso; nessun modulo eccede il piano). Conclusione s16 ribadita project-wide. Nessuna modifica al codice per questo punto (verifica pura).
+7. **Build+push**: solo `lib/...` staged (8 file), mai `build/web` (tracciato per storia ma da NON committare, vedi `.gitignore` `/build/`), `flutter build web --release` + `flutter analyze` prima del commit. Commit `9fbb23a`.
+
+### [SUPERATO s18] Ultime modifiche (2026-06-21) — sessione 17 — coda TODO pendenti da s16, tutti chiusi
 Richiesta utente: chiudere i 6 TODO lasciati aperti a fine sessione 16 (vedi sezione TODO pendenti, ora svuotata).
 1. **Overflow badge task in calendario** (`schedule_tab.dart`, commit corsi `9961a5d`): badge cella mostra solo l'ID task invece del nome intero quando non entra.
 2. **Tab direttore "Storico lezioni"** (commit corsi `2fe1e4a`): nuova tab con filtri data/modulo/sottomodulo/task/istruttore/assenti/recuperi sulla lista lezioni fatte. Il filtro "in recupero" usa `computePerModuleStats(...)['toRecover'] > 0` per frequentatore selezionato.
@@ -231,9 +241,10 @@ Sia il frequentatore sia il direttore vedono ora **quante ORE il frequentatore d
 7. **Percentuali presenze/assenze ovunque**: "Pres. X% · Ass. Y%" (pres = (confirmed−absent)/confirmed, ass = absent/confirmed) in attendance_tab (card frequentatore + righe modulo), course_detail_screen (presenze admin), attendee_attendance_screen (stat "Assenza" nel riepilogo + righe modulo).
 
 ### TODO pendenti
-Nessuno al momento (tutti i TODO storici chiusi a fine sessione 17, 2026-06-21).
+Nessuno di sviluppo al momento (tutti i TODO storici chiusi a fine sessione 18, 2026-06-21).
 - Il direttore BTC3 deve rigenerare il calendario (pulsante genera) per sanare i contatori: ultima ora X/X, ~170h nette mancanti ri-pianificate. (TODO operativo lato direttore, non di sviluppo)
 - Nomi sottomoduli 11A in reference.json da verificare col programma corso ufficiale (probabile shift: numerazione EASA vs nomi attuali, vedi punto 19 sessione 12-storica).
+- **Da segnalare all'utente**: le 2 righe 6.6/Palmieri Biagio aggiunte in `Controlloistruttori.xlsx` (foglio `3btc`) sono datate 08/10/2026 — quasi certamente un errore di digitazione (tutte le altre righe 6.6 sono 2025). Non bloccante: i conti tornano comunque (6.6 = 18/18 sia in Excel che nell'app), solo la data è anomala nel registro Excel.
 
 ### Note importanti
 - Se RASPATA o altri sembrano ancora rossi: è cache stale → fare refresh nell'app (pull-to-refresh)
