@@ -1497,7 +1497,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                                 .firstOrNull;
                             return TableCell(
                               child: lesson == null
-                                  ? GestureDetector(
+                                  ? InkWell(
                                       onTap: () => _addLesson(day, slot.slot),
                                       onSecondaryTap: () => _editNote(day, slot.slot, slotNote),
                                       onLongPress: () => _editNote(day, slot.slot, slotNote),
