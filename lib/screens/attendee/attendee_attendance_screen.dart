@@ -123,11 +123,15 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
     // Recovery records (synthetic schedule IDs)
     final recoveryRecords = records.where((r) => r.justification == 'recupero').toList()
       ..sort((a, b) {
-        final da = _dateFromSyntheticId(a.scheduleId);
-        final db = _dateFromSyntheticId(b.scheduleId);
+        final da = a.recoveryDate;
+        final db = b.recoveryDate;
         if (da == null || db == null) return 0;
         return db.compareTo(da);
       });
+
+    // Per ogni assenza, la data del recupero che la "copre" (pool FIFO per modulo+tipo).
+    final recoveryPairing =
+        _attendanceService.pairAbsenceRecoveries(course.id, widget.userId, lessons);
 
     // Filtered lesson list for tabs (exclude timeSlot==0 and recovery schedule IDs)
     bool isPresent(l) {
@@ -311,7 +315,7 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
                       delegate: SliverChildBuilderDelegate(
                         (_, i) {
                           final r = recoveryRecords[i];
-                          final date = _dateFromSyntheticId(r.scheduleId);
+                          final date = r.recoveryDate;
                           final modNum = r.recoveredModule;
                           final sub = r.recoveredSubmodule;
                           final typLabel = r.recoveredType == 'pratica'
@@ -374,6 +378,7 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
                       displayTopic = subNames[normCode(l.topic)] ?? subNames[nc] ?? l.topic;
                     }
 
+                    final recoveredOn = recoveryPairing[l.id];
                     Color statusColor;
                     IconData statusIcon;
                     String statusText;
@@ -393,6 +398,10 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
                       statusColor = kAccent;
                       statusIcon  = Icons.check_circle;
                       statusText  = 'Presente';
+                    } else if (recoveredOn != null) {
+                      statusColor = kPrimary;
+                      statusIcon  = Icons.replay;
+                      statusText  = 'Recuperata il ${DateFormat('dd/MM/yyyy').format(recoveredOn)}';
                     } else if (isJustified) {
                       statusColor = kWarning;
                       statusIcon  = Icons.warning_amber;
@@ -433,13 +442,6 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
         ],
       ),
     );
-  }
-
-  DateTime? _dateFromSyntheticId(String id) {
-    // Format: 'recovery:courseId8:attendeeId8:YYYY-MM-DD:mN'
-    final parts = id.split(':');
-    if (parts.length >= 4) return DateTime.tryParse(parts[3]);
-    return null;
   }
 
   Widget _filterChip(String label, String? mode) {

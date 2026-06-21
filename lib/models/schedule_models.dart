@@ -168,6 +168,17 @@ class AttendanceRecord {
     this.confirmedAt,
   });
 
+  /// Per i record di recupero (justification == 'recupero'), la vera data
+  /// in cui il recupero è stato svolto — incorporata nello schedule_id
+  /// sintetico ('recovery:courseId8:attendeeId8:YYYY-MM-DD:mN[:tipo]'),
+  /// DIVERSA da confirmedAt che è solo il timestamp di inserimento dati.
+  DateTime? get recoveryDate {
+    if (justification != 'recupero') return null;
+    final parts = scheduleId.split(':');
+    if (parts.length < 4) return null;
+    return DateTime.tryParse(parts[3]);
+  }
+
   factory AttendanceRecord.fromJson(Map<String, dynamic> j) => AttendanceRecord(
     id: j['id'] as String,
     scheduleId: j['schedule_id'] as String,

@@ -434,8 +434,8 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
                             leading: const Icon(Icons.check_circle_outline,
                                 color: kAccent, size: 18),
                             title: Text(
-                              r.confirmedAt != null
-                                  ? 'Recupero del ${DateFormat('dd/MM/yyyy').format(r.confirmedAt!)}'
+                              r.recoveryDate != null
+                                  ? 'Recupero del ${DateFormat('dd/MM/yyyy').format(r.recoveryDate!)}'
                                   : 'Recupero',
                               style: const TextStyle(color: kText, fontSize: 12),
                             ),
@@ -483,20 +483,25 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
 
     final Map<String, List<AttendanceRecord>> recoveryByDate = {};
     for (final r in recoveryRecords) {
-      if (r.confirmedAt != null) {
-        final dk = DateFormat('yyyy-MM-dd').format(r.confirmedAt!);
+      if (r.recoveryDate != null) {
+        final dk = DateFormat('yyyy-MM-dd').format(r.recoveryDate!);
         recoveryByDate.putIfAbsent(dk, () => []).add(r);
       }
     }
 
     final attendeeMap = {for (final a in attendees) a.id: a};
+    // Per ogni frequentatore, l'abbinamento assenza→data di recupero (pool FIFO per modulo+tipo).
+    final pairingByAttendee = {
+      for (final a in attendees)
+        a.id: _attendanceService.pairAbsenceRecoveries(course.id, a.id, allLessons),
+    };
 
     final items = <Widget>[
       ...confirmedLessons.map((l) {
         final absentRecords = allRecords
             .where((r) => r.scheduleId == l.id && !r.present)
             .toList();
-        return _buildLessonCard(l, absentRecords, attendeeMap);
+        return _buildLessonCard(l, absentRecords, attendeeMap, pairingByAttendee);
       }),
       if (recoveryByDate.isNotEmpty)
         _buildRecoverySection(recoveryByDate, attendeeMap),
@@ -517,6 +522,7 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
     ScheduledLesson l,
     List<AttendanceRecord> absentRecords,
     Map<String, AppUser> attendeeMap,
+    Map<String, Map<String, DateTime>> pairingByAttendee,
   ) {
     return Card(
       color: kCard,
@@ -573,16 +579,21 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
                 runSpacing: 4,
                 children: absentRecords.map((r) {
                   final att = attendeeMap[r.attendeeId];
+                  final recoveredOn = pairingByAttendee[r.attendeeId]?[l.id];
+                  final color = recoveredOn != null ? kPrimary : kError;
+                  final name = att?.fullName ?? r.attendeeId.substring(0, 8);
                   return Container(
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
-                      color: kError.withOpacity(0.1),
+                      color: color.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: kError.withOpacity(0.3)),
+                      border: Border.all(color: color.withOpacity(0.3)),
                     ),
                     child: Text(
-                      att?.fullName ?? r.attendeeId.substring(0, 8),
-                      style: const TextStyle(color: kError, fontSize: 11),
+                      recoveredOn != null
+                          ? '$name (rec. ${DateFormat('dd/MM/yyyy').format(recoveredOn)})'
+                          : name,
+                      style: TextStyle(color: color, fontSize: 11),
                     ),
                   );
                 }).toList(),

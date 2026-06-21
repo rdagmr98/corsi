@@ -219,6 +219,65 @@ class AttendanceService {
     return result;
   }
 
+  /// Per ogni assenza (lezione confermata con record present=false), se la
+  /// sua ora è stata recuperata, la data del recupero che la "copre".
+  /// Il sistema registra i recuperi come pool per modulo+tipo (non un legame
+  /// 1:1 con l'assenza specifica), quindi l'abbinamento è FIFO: l'assenza
+  /// più vecchia è la prima a considerarsi recuperata, coerente con
+  /// l'ordine in cui maturano i conteggi aggregati di [computePerModuleStats].
+  /// Ritorna: scheduleId della lezione assente -> data del recupero.
+  Map<String, DateTime> pairAbsenceRecoveries(
+    String courseId,
+    String attendeeId,
+    List<ScheduledLesson> allLessons,
+  ) {
+    final lessonsById = {
+      for (final l in allLessons)
+        if (l.courseId == courseId) l.id: l,
+    };
+    final records = getRecordsForAttendee(courseId, attendeeId);
+
+    final absences = <Map<String, dynamic>>[];
+    for (final r in records) {
+      if (r.present) continue;
+      final l = lessonsById[r.scheduleId];
+      if (l == null || !l.confirmed || l.timeSlot == 0) continue;
+      absences.add({
+        'scheduleId': r.scheduleId,
+        'date': l.date,
+        'module': l.moduleNumber,
+        'type': l.isTheory ? 'teoria' : 'pratica',
+      });
+    }
+    absences.sort((a, b) => (a['date'] as DateTime).compareTo(b['date'] as DateTime));
+
+    final recoveries = <Map<String, dynamic>>[];
+    for (final r in records) {
+      final date = r.recoveryDate;
+      if (date == null || r.recoveredModule == null) continue;
+      recoveries.add({
+        'date': date,
+        'module': r.recoveredModule,
+        'type': r.recoveredType ?? 'pratica',
+      });
+    }
+    recoveries.sort((a, b) => (a['date'] as DateTime).compareTo(b['date'] as DateTime));
+
+    final result = <String, DateTime>{};
+    final usedRecoveryIdx = <int>{};
+    for (final absence in absences) {
+      for (var i = 0; i < recoveries.length; i++) {
+        if (usedRecoveryIdx.contains(i)) continue;
+        if (recoveries[i]['module'] != absence['module']) continue;
+        if (recoveries[i]['type'] != absence['type']) continue;
+        result[absence['scheduleId'] as String] = recoveries[i]['date'] as DateTime;
+        usedRecoveryIdx.add(i);
+        break;
+      }
+    }
+    return result;
+  }
+
   Future<void> saveRecovery({
     required String courseId,
     required String attendeeId,
