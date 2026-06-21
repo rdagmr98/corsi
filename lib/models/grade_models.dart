@@ -7,6 +7,10 @@ extension AssessmentTypeExt on AssessmentType {
       this == AssessmentType.accertamento ? 'Accertamento' : 'Esame';
   int get weight => this == AssessmentType.accertamento ? 1 : 2;
 
+  /// Numero massimo di tentativi consentiti: un accertamento (distinto) può
+  /// essere recuperato 3 volte, l'esame di modulo (uno solo) 2 volte.
+  int get maxAttempts => this == AssessmentType.accertamento ? 3 : 2;
+
   static AssessmentType fromString(String s) =>
       s == 'esame' ? AssessmentType.esame : AssessmentType.accertamento;
 }
@@ -17,6 +21,10 @@ class Grade {
   final String attendeeId;
   final int moduleNumber;
   final String type;
+  /// Numero dell'accertamento distinto all'interno del modulo (1, 2, 3...).
+  /// Ogni modulo può avere più accertamenti diversi, ciascuno recuperabile
+  /// fino a 3 volte; l'esame è sempre numero 1 (uno solo per modulo).
+  final int accertamentoNumber;
   final double score;
   final DateTime date;
   final String enteredBy;
@@ -29,6 +37,7 @@ class Grade {
     required this.attendeeId,
     required this.moduleNumber,
     required this.type,
+    this.accertamentoNumber = 1,
     required this.score,
     required this.date,
     required this.enteredBy,
@@ -39,12 +48,19 @@ class Grade {
   AssessmentType get assessmentType => AssessmentTypeExt.fromString(type);
   bool get isPassing => score >= 22.5;
 
-  Grade copyWith({String? type, double? score, DateTime? date, String? notes}) => Grade(
+  Grade copyWith({
+    String? type,
+    int? accertamentoNumber,
+    double? score,
+    DateTime? date,
+    String? notes,
+  }) => Grade(
     id: id,
     courseId: courseId,
     attendeeId: attendeeId,
     moduleNumber: moduleNumber,
     type: type ?? this.type,
+    accertamentoNumber: accertamentoNumber ?? this.accertamentoNumber,
     score: score ?? this.score,
     date: date ?? this.date,
     enteredBy: enteredBy,
@@ -58,6 +74,7 @@ class Grade {
     attendeeId: j['attendee_id'] as String,
     moduleNumber: j['module_number'] as int,
     type: j['type'] as String? ?? 'accertamento',
+    accertamentoNumber: j['accertamento_number'] as int? ?? 1,
     score: (j['score'] as num?)?.toDouble() ?? 0.0,
     date: DateTime.parse(j['date'] as String),
     enteredBy: j['entered_by'] as String? ?? '',
@@ -73,6 +90,7 @@ class Grade {
     'attendee_id': attendeeId,
     'module_number': moduleNumber,
     'type': type,
+    'accertamento_number': accertamentoNumber,
     'score': score,
     'date': date.toIso8601String().split('T').first,
     'entered_by': enteredBy,
@@ -141,12 +159,14 @@ class AttendeeGradeSummary {
     required this.grades,
   });
 
-  /// Voti raggruppati per tipo (accertamento/esame), ordinati dal più
-  /// vecchio al più recente: indice+1 = numero del tentativo.
-  Map<AssessmentType, List<Grade>> get byType {
-    final map = <AssessmentType, List<Grade>>{};
+  /// Voti raggruppati per accertamento/esame DISTINTO (tipo + numero),
+  /// ordinati dal più vecchio al più recente: indice+1 = numero del
+  /// tentativo per QUEL singolo accertamento (non per tutti quelli del
+  /// modulo, che possono essere più di uno).
+  Map<(AssessmentType, int), List<Grade>> get byAssessment {
+    final map = <(AssessmentType, int), List<Grade>>{};
     for (final g in grades) {
-      map.putIfAbsent(g.assessmentType, () => []).add(g);
+      map.putIfAbsent((g.assessmentType, g.accertamentoNumber), () => []).add(g);
     }
     for (final list in map.values) {
       list.sort((a, b) => a.date.compareTo(b.date));
@@ -154,10 +174,40 @@ class AttendeeGradeSummary {
     return map;
   }
 
-  /// Solo l'ultimo tentativo per ciascun tipo: è questo — non lo storico
-  /// completo — a determinare se il modulo è ancora "da recuperare".
+  /// Numeri di accertamento distinti già usati nel modulo, ordinati.
+  List<int> get accertamentoNumbers => byAssessment.keys
+      .where((k) => k.$1 == AssessmentType.accertamento)
+      .map((k) => k.$2)
+      .toSet()
+      .toList()
+    ..sort();
+
+  /// Prossimo numero libero da proporre per un NUOVO accertamento distinto.
+  int get nextAccertamentoNumber =>
+      accertamentoNumbers.isEmpty ? 1 : accertamentoNumbers.last + 1;
+
+  /// Numeri selezionabili quando si aggiunge un voto: gli accertamenti
+  /// esistenti ancora da recuperare (insufficienti, tentativi non esauriti)
+  /// più il prossimo numero libero per iniziarne uno nuovo. Un accertamento
+  /// già superato o con tentativi esauriti non va più proposto.
+  List<int> get addableAccertamentoNumbers {
+    final result = <int>[];
+    for (final n in accertamentoNumbers) {
+      final list = byAssessment[(AssessmentType.accertamento, n)]!;
+      final last = list.last;
+      if (!last.isPassing && list.length < AssessmentType.accertamento.maxAttempts) {
+        result.add(n);
+      }
+    }
+    result.add(nextAccertamentoNumber);
+    return result;
+  }
+
+  /// Solo l'ultimo tentativo per ciascun accertamento/esame distinto: sono
+  /// questi — non lo storico completo — a determinare se il modulo è
+  /// ancora "da recuperare", e quanti accertamenti/esame conta il modulo.
   List<Grade> get latestAttempts =>
-      byType.values.map((l) => l.last).toList();
+      byAssessment.values.map((l) => l.last).toList();
 
   double get weightedAverage {
     final valid = latestAttempts.where((g) => g.isPassing).toList();
@@ -177,24 +227,44 @@ class AttendeeGradeSummary {
   bool get isPassing => weightedAverage >= 22.5;
   bool get hasGrades => grades.isNotEmpty;
 
-  /// Numero di tentativo (1-based) di [g] tra i voti dello stesso tipo.
+  /// Numero di tentativo (1-based) di [g] tra i voti dello stesso
+  /// accertamento/esame distinto (stesso tipo E stesso numero).
   int attemptNumber(Grade g) {
-    final list = byType[g.assessmentType] ?? const [];
+    final list = byAssessment[(g.assessmentType, g.accertamentoNumber)] ?? const [];
     final idx = list.indexWhere((x) => x.id == g.id);
     return idx < 0 ? 1 : idx + 1;
   }
 
-  int attemptsCount(Grade g) => byType[g.assessmentType]?.length ?? 1;
+  int attemptsCount(Grade g) =>
+      byAssessment[(g.assessmentType, g.accertamentoNumber)]?.length ?? 1;
 
-  /// true se [g] non è l'ultimo tentativo del suo tipo (superato da un
-  /// tentativo successivo, indipendentemente dall'esito di quest'ultimo).
+  /// true se [g] non è l'ultimo tentativo del suo accertamento/esame
+  /// distinto (superato da un tentativo successivo sullo stesso numero).
   bool isSuperseded(Grade g) {
-    final list = byType[g.assessmentType];
+    final list = byAssessment[(g.assessmentType, g.accertamentoNumber)];
     return list != null && list.isNotEmpty && list.last.id != g.id;
   }
 
+  /// true se [g] è l'ultimo tentativo del suo accertamento/esame distinto,
+  /// è insufficiente e ha già raggiunto il numero massimo di tentativi
+  /// consentiti: non è più possibile un ulteriore tentativo.
+  bool isExhausted(Grade g) =>
+      !isSuperseded(g) && !g.isPassing && attemptsCount(g) >= g.assessmentType.maxAttempts;
+
+  /// Etichetta da mostrare al posto del generico "Accertamento"/"Esame":
+  /// se il modulo ha più di un accertamento distinto, specifica quale
+  /// ("Accertamento 2"), per non confondere tentativi su accertamenti
+  /// diversi. Per l'esame (uno solo per modulo) resta l'etichetta semplice.
+  String chipLabel(Grade g) {
+    if (g.assessmentType == AssessmentType.esame) return AssessmentType.esame.label;
+    return accertamentoNumbers.length > 1
+        ? 'Accertamento ${g.accertamentoNumber}'
+        : AssessmentType.accertamento.label;
+  }
+
   /// Etichetta "Tentativo N di M" da mostrare accanto al voto. Null se è
-  /// l'unico tentativo per quel tipo (nessuna ambiguità da chiarire).
+  /// l'unico tentativo per quell'accertamento/esame distinto (nessuna
+  /// ambiguità da chiarire).
   String? attemptLabel(Grade g) {
     final count = attemptsCount(g);
     if (count <= 1) return null;
@@ -202,10 +272,13 @@ class AttendeeGradeSummary {
   }
 
   /// Nota di stato da mostrare sotto un voto negativo. Null se il voto è
-  /// positivo. "da recuperare" solo se è l'ultimo tentativo del suo tipo;
+  /// positivo. "da recuperare" solo se è l'ultimo tentativo e ne restano
+  /// ancora; "tentativi esauriti" se ha raggiunto il massimo consentito;
   /// un voto negativo superato da un tentativo successivo è "superato".
   String? recoveryNote(Grade g) {
     if (g.isPassing) return null;
-    return isSuperseded(g) ? 'tentativo superato' : 'da recuperare';
+    if (isSuperseded(g)) return 'tentativo superato';
+    if (isExhausted(g)) return 'tentativi esauriti';
+    return 'da recuperare';
   }
 }

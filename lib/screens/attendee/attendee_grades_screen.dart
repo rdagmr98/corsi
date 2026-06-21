@@ -216,7 +216,7 @@ class _AttendeeGradesScreenState extends ConsumerState<AttendeeGradesScreen> {
                                         borderRadius: BorderRadius.circular(4),
                                       ),
                                       child: Text(
-                                        g.assessmentType.label,
+                                        s.chipLabel(g),
                                         style: TextStyle(
                                           color: g.assessmentType == AssessmentType.esame ? kWarning : kPrimary,
                                           fontSize: 10,
@@ -248,7 +248,7 @@ class _AttendeeGradesScreenState extends ConsumerState<AttendeeGradesScreen> {
                                         if (recoveryNote != null)
                                           Text(recoveryNote,
                                               style: TextStyle(
-                                                  color: recoveryNote == 'da recuperare' ? kError : kTextDim,
+                                                  color: recoveryNote == 'tentativo superato' ? kTextDim : kError,
                                                   fontSize: 9)),
                                       ],
                                     ),

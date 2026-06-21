@@ -203,7 +203,7 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
             ? []
             : typeInfo.modules
                 .where((mod) => modStats.containsKey(mod.number) && (modStats[mod.number]!['total'] ?? 0) > 0)
-                .map((mod) => _buildModuleRow(course, a, mod, modStats[mod.number]!))
+                .map((mod) => _buildModuleRow(course, a, allLessons, mod, modStats[mod.number]!))
                 .toList(),
       ),
     );
@@ -243,6 +243,7 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
   Widget _buildModuleRow(
     Course course,
     AppUser a,
+    List<ScheduledLesson> allLessons,
     ModuleInfo mod,
     Map<String, int> stats,
   ) {
@@ -261,63 +262,138 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
         ? (absent / modPlan * 100).toStringAsFixed(0)
         : '0';
 
-    return ListTile(
-      dense: true,
-      contentPadding: const EdgeInsets.fromLTRB(24, 0, 8, 0),
-      leading: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(
-          color: (warn ? kError : kPrimary).withOpacity(0.15),
-          borderRadius: BorderRadius.circular(6),
+    final details = absent > 0
+        ? _attendanceService.absenceDetailsForModule(
+            course.id, a.id, allLessons, mod.number, modules: [mod])
+        : const <AbsenceDetail>[];
+
+    String submoduleName(String? code) {
+      if (code == null) return '';
+      final nc = ScheduleService.normalizeSubCode(code);
+      for (final s in mod.submodules) {
+        if (ScheduleService.normalizeSubCode(s.code) == nc) return s.name;
+      }
+      return code;
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ListTile(
+          dense: true,
+          contentPadding: const EdgeInsets.fromLTRB(24, 0, 8, 0),
+          leading: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: (warn ? kError : kPrimary).withOpacity(0.15),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text('M${mod.displayCode}',
+                style: TextStyle(
+                    color: warn ? kError : kPrimary,
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold)),
+          ),
+          title: Text(mod.name,
+              style: const TextStyle(color: kText, fontSize: 12),
+              overflow: TextOverflow.ellipsis),
+          subtitle: warn
+              ? Text(
+                  [
+                    'Ass. $absPct% · $unrecovered non rec.',
+                    'Da recuperare: ${toRecover}h',
+                    if (toRecoverP > 0) 'P: ${toRecoverP}h (100%)',
+                    if (toRecoverT > 0) 'T: ${toRecoverT}h (oltre 10%)',
+                  ].join(' — '),
+                  style: const TextStyle(color: kError, fontSize: 11),
+                )
+              : Text(
+                  absent == 0
+                      ? 'Pres. 100% · Ass. 0% — nessuna assenza su $modPlan ore prev.'
+                      : 'Pres. $presPct% · Ass. $absPct% — $absent ass. · $recovered rec. · $unrecovered non rec. / $modPlan ore prev.',
+                  style: const TextStyle(color: kTextDim, fontSize: 11),
+                ),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (absent > 0)
+                IconButton(
+                  icon: const Icon(Icons.add_circle_outline, color: kAccent, size: 20),
+                  tooltip: 'Aggiungi recupero',
+                  onPressed: () => _addRecovery(course, a.id, mod),
+                ),
+              if (recovered > 0)
+                IconButton(
+                  icon: const Icon(Icons.history, color: kTextDim, size: 20),
+                  tooltip: 'Vedi recuperi',
+                  onPressed: () => _showRecoveries(course, a.id, a.fullName, mod),
+                ),
+            ],
+          ),
         ),
-        child: Text('M${mod.displayCode}',
-            style: TextStyle(
-                color: warn ? kError : kPrimary,
-                fontSize: 11,
-                fontWeight: FontWeight.bold)),
-      ),
-      title: Text(mod.name,
-          style: const TextStyle(color: kText, fontSize: 12),
-          overflow: TextOverflow.ellipsis),
-      subtitle: warn
-          ? Text(
-              [
-                'Ass. $absPct% · $unrecovered non rec.',
-                'Da recuperare: ${toRecover}h',
-                if (toRecoverP > 0) 'P: ${toRecoverP}h (100%)',
-                if (toRecoverT > 0) 'T: ${toRecoverT}h (oltre 10%)',
-              ].join(' — '),
-              style: const TextStyle(color: kError, fontSize: 11),
-            )
-          : Text(
-              absent == 0
-                  ? 'Pres. 100% · Ass. 0% — nessuna assenza su $modPlan ore prev.'
-                  : 'Pres. $presPct% · Ass. $absPct% — $absent ass. · $recovered rec. · $unrecovered non rec. / $modPlan ore prev.',
-              style: const TextStyle(color: kTextDim, fontSize: 11),
+        if (details.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(56, 0, 12, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: details.map((d) {
+                final color = d.isRecovered
+                    ? kPrimary
+                    : d.isTolerated
+                        ? kTextDim
+                        : kError;
+                final statusText = d.isRecovered
+                    ? 'Recuperata il ${DateFormat('dd/MM/yyyy').format(d.recoveryDate!)}'
+                        '${d.recoveredSubmodule != null ? ' · ${d.recoveredSubmodule} – ${submoduleName(d.recoveredSubmodule)}' : ''}'
+                    : d.isTolerated
+                        ? 'Tollerata (entro 10%)'
+                        : 'Da recuperare';
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: kSurface,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          d.type == 'pratica' ? 'P' : 'T',
+                          style: const TextStyle(
+                              color: kTextDim, fontSize: 9, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        DateFormat('dd/MM/yyyy').format(d.lesson.date),
+                        style: const TextStyle(color: kTextDim, fontSize: 11),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          '${d.lesson.submoduleCode} · $statusText',
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              color: color,
+                              fontSize: 11,
+                              fontWeight: d.needsRecovery ? FontWeight.w600 : FontWeight.normal),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
             ),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (absent > 0)
-            IconButton(
-              icon: const Icon(Icons.add_circle_outline, color: kAccent, size: 20),
-              tooltip: 'Aggiungi recupero',
-              onPressed: () => _addRecovery(course, a.id, mod.number),
-            ),
-          if (recovered > 0)
-            IconButton(
-              icon: const Icon(Icons.history, color: kTextDim, size: 20),
-              tooltip: 'Vedi recuperi',
-              onPressed: () => _showRecoveries(course, a.id, a.fullName, mod.number),
-            ),
-        ],
-      ),
+          ),
+      ],
     );
   }
 
-  Future<void> _addRecovery(Course course, String attendeeId, int moduleNumber) async {
+  Future<void> _addRecovery(Course course, String attendeeId, ModuleInfo mod) async {
     DateTime? selectedDate;
     String recoveryType = 'teoria';
+    String? recoveredSubmodule;
     final user = ref.read(authProvider).currentUser;
 
     final ok = await showDialog<bool>(
@@ -330,7 +406,7 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Modulo: M${_refService.moduleLabel(moduleNumber)}',
+              Text('Modulo: M${_refService.moduleLabel(mod.number)}',
                   style: const TextStyle(color: kTextDim, fontSize: 13)),
               const SizedBox(height: 12),
               const Text('Tipo ora recuperata:',
@@ -352,6 +428,27 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
                     ),
                 ],
               ),
+              if (mod.submodules.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                const Text('Sottomodulo recuperato:',
+                    style: TextStyle(color: kTextDim, fontSize: 13)),
+                const SizedBox(height: 4),
+                DropdownButtonFormField<String?>(
+                  value: recoveredSubmodule,
+                  isExpanded: true,
+                  dropdownColor: kSurface,
+                  style: const TextStyle(color: kText, fontSize: 12),
+                  decoration: const InputDecoration(isDense: true),
+                  items: [
+                    const DropdownMenuItem(value: null, child: Text('— Non specificato —')),
+                    ...mod.submodules.map((s) => DropdownMenuItem(
+                          value: s.code,
+                          child: Text('${s.code} – ${s.name}', overflow: TextOverflow.ellipsis),
+                        )),
+                  ],
+                  onChanged: (v) => setDlg(() => recoveredSubmodule = v),
+                ),
+              ],
               const SizedBox(height: 12),
               const Text('Data recupero:',
                   style: TextStyle(color: kTextDim, fontSize: 13)),
@@ -400,26 +497,36 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
         courseId: course.id,
         attendeeId: attendeeId,
         confirmedBy: user?.id ?? '',
-        recoveredModule: moduleNumber,
+        recoveredModule: mod.number,
         recoveryDate: selectedDate!,
         recoveredType: recoveryType,
+        recoveredSubmodule: recoveredSubmodule,
       );
       _reload();
     }
   }
 
   Future<void> _showRecoveries(
-      Course course, String attendeeId, String name, int moduleNumber) async {
+      Course course, String attendeeId, String name, ModuleInfo mod) async {
     final records = _attendanceService
         .getRecordsForAttendee(course.id, attendeeId)
-        .where((r) => r.justification == 'recupero' && r.recoveredModule == moduleNumber)
+        .where((r) => r.justification == 'recupero' && r.recoveredModule == mod.number)
         .toList();
+
+    String submoduleName(String? code) {
+      if (code == null) return '';
+      final nc = ScheduleService.normalizeSubCode(code);
+      for (final s in mod.submodules) {
+        if (ScheduleService.normalizeSubCode(s.code) == nc) return s.name;
+      }
+      return code;
+    }
 
     await showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: kCard,
-        title: Text('Recuperi M${_refService.moduleLabel(moduleNumber)} — $name',
+        title: Text('Recuperi M${_refService.moduleLabel(mod.number)} — $name',
             style: const TextStyle(color: kText)),
         content: SizedBox(
           width: 400,
@@ -428,28 +535,36 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
                   style: TextStyle(color: kTextDim))
               : ListView(
                   shrinkWrap: true,
-                  children: records
-                      .map((r) => ListTile(
-                            dense: true,
-                            leading: const Icon(Icons.check_circle_outline,
-                                color: kAccent, size: 18),
-                            title: Text(
-                              r.recoveryDate != null
-                                  ? 'Recupero del ${DateFormat('dd/MM/yyyy').format(r.recoveryDate!)}'
-                                  : 'Recupero',
-                              style: const TextStyle(color: kText, fontSize: 12),
-                            ),
-                            trailing: IconButton(
-                              icon: const Icon(Icons.delete_outline,
-                                  color: kError, size: 18),
-                              onPressed: () async {
-                                await _attendanceService.deleteRecovery(r.id);
-                                if (ctx.mounted) Navigator.pop(ctx);
-                                _reload();
-                              },
-                            ),
-                          ))
-                      .toList(),
+                  children: records.map((r) {
+                    final parts = <String>[
+                      r.recoveryDate != null
+                          ? DateFormat('dd/MM/yyyy').format(r.recoveryDate!)
+                          : 'data n.d.',
+                      if (r.recoveredType != null)
+                        r.recoveredType == 'pratica' ? 'Pratica' : 'Teoria',
+                      if (r.recoveredSubmodule != null)
+                        '${r.recoveredSubmodule} – ${submoduleName(r.recoveredSubmodule)}',
+                    ];
+                    return ListTile(
+                      dense: true,
+                      leading: const Icon(Icons.check_circle_outline,
+                          color: kAccent, size: 18),
+                      title: Text(
+                        parts.join(' · '),
+                        style: const TextStyle(color: kText, fontSize: 12),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.delete_outline,
+                            color: kError, size: 18),
+                        onPressed: () async {
+                          await _attendanceService.deleteRecovery(r.id);
+                          if (ctx.mounted) Navigator.pop(ctx);
+                          _reload();
+                        },
+                      ),
+                    );
+                  }).toList(),
                 ),
         ),
         actions: [

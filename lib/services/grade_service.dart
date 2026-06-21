@@ -37,6 +37,7 @@ class GradeService {
     required String attendeeId,
     required int moduleNumber,
     required AssessmentType type,
+    int accertamentoNumber = 1,
     required double score,
     required String enteredBy,
     DateTime? date,
@@ -51,6 +52,8 @@ class GradeService {
       'attendee_id': attendeeId,
       'module_number': moduleNumber,
       'type': type.value,
+      // l'esame è unico per modulo: il numero ha senso solo per gli accertamenti.
+      'accertamento_number': type == AssessmentType.esame ? 1 : accertamentoNumber,
       'score': score,
       'date': (date ?? now).toIso8601String().split('T').first,
       'entered_by': enteredBy,
@@ -154,8 +157,14 @@ class GradeService {
   }
 
   /// Overall graduation score: sum(score × weight) / sum(weights) for passing grades only.
+  /// Usa solo l'ultimo tentativo di ciascun accertamento/esame distinto
+  /// (via AttendeeGradeSummary), non lo storico completo: altrimenti un
+  /// accertamento recuperato dopo un primo tentativo insufficiente, o più
+  /// accertamenti distinti dello stesso modulo, falserebbero la media.
   double getGraduationScore(String courseId, String attendeeId) {
-    final grades = getGradesForAttendee(courseId, attendeeId)
+    final grades = getAttendeeSummary(courseId, attendeeId)
+        .values
+        .expand((s) => s.latestAttempts)
         .where((g) => g.isPassing)
         .toList();
     if (grades.isEmpty) return 0;

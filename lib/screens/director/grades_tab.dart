@@ -59,22 +59,42 @@ class _DirectorGradesTabState extends ConsumerState<DirectorGradesTab> {
                 : existing.score.toStringAsFixed(1)));
     final notesCtrl = TextEditingController(text: existing?.notes ?? '');
 
+    // Voti già esistenti per questo modulo/frequentatore: servono per
+    // proporre il numero di accertamento giusto (nuovo o da recuperare) e
+    // per bloccare un tentativo oltre il massimo consentito.
+    final existingGrades = _gradeService
+        .getGradesForAttendee(course.id, attendeeId)
+        .where((g) => g.moduleNumber == moduleNumber)
+        .toList();
+    final summary = AttendeeGradeSummary(
+        attendeeId: attendeeId, moduleNumber: moduleNumber, grades: existingGrades);
+    int accertamentoNumber =
+        existing?.accertamentoNumber ?? summary.addableAccertamentoNumbers.first;
+
     double? parseScore() {
       final v = double.tryParse(scoreCtrl.text.trim().replaceAll(',', '.'));
       if (v == null || v < 0 || v > 30) return null;
       return v;
     }
 
+    bool esameExhausted() {
+      if (type != AssessmentType.esame || existing != null) return false;
+      final list = existingGrades.where((g) => g.assessmentType == AssessmentType.esame).length;
+      return list >= AssessmentType.esame.maxAttempts;
+    }
+
     Future<void> save(BuildContext ctx) async {
       final score = parseScore();
-      if (score == null) return;
+      if (score == null || esameExhausted()) return;
       Navigator.pop(ctx);
+      final number = type == AssessmentType.esame ? 1 : accertamentoNumber;
       if (existing == null) {
         await _gradeService.addGrade(
           courseId: course.id,
           attendeeId: attendeeId,
           moduleNumber: moduleNumber,
           type: type,
+          accertamentoNumber: number,
           score: score,
           enteredBy: widget.userId,
           date: gradeDate,
@@ -83,6 +103,7 @@ class _DirectorGradesTabState extends ConsumerState<DirectorGradesTab> {
       } else {
         await _gradeService.updateGrade(existing.copyWith(
           type: type.value,
+          accertamentoNumber: number,
           score: score,
           date: gradeDate,
           notes: notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim(),
@@ -116,6 +137,40 @@ class _DirectorGradesTabState extends ConsumerState<DirectorGradesTab> {
                     ],
                     onChanged: (v) => setDlg(() => type = v ?? type),
                   ),
+                  if (type == AssessmentType.accertamento) ...[
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<int>(
+                      value: (existing == null
+                              ? summary.addableAccertamentoNumbers
+                              : {
+                                  ...summary.accertamentoNumbers,
+                                  summary.nextAccertamentoNumber,
+                                  existing.accertamentoNumber,
+                                })
+                          .contains(accertamentoNumber)
+                          ? accertamentoNumber
+                          : null,
+                      dropdownColor: kSurface,
+                      style: const TextStyle(color: kText),
+                      decoration: const InputDecoration(labelText: 'Accertamento', isDense: true),
+                      items: (existing == null
+                              ? summary.addableAccertamentoNumbers
+                              : ({
+                                  ...summary.accertamentoNumbers,
+                                  summary.nextAccertamentoNumber,
+                                  existing.accertamentoNumber,
+                                }.toList()
+                                ..sort()))
+                          .map((n) => DropdownMenuItem(
+                                value: n,
+                                child: Text(summary.accertamentoNumbers.contains(n)
+                                    ? 'Accertamento $n'
+                                    : 'Nuovo accertamento ($n)'),
+                              ))
+                          .toList(),
+                      onChanged: (v) => setDlg(() => accertamentoNumber = v ?? accertamentoNumber),
+                    ),
+                  ],
                   const SizedBox(height: 12),
                   InkWell(
                     onTap: () async {
@@ -168,6 +223,14 @@ class _DirectorGradesTabState extends ConsumerState<DirectorGradesTab> {
                       fontSize: 12,
                     ),
                   ),
+                  if (esameExhausted())
+                    const Padding(
+                      padding: EdgeInsets.only(top: 4),
+                      child: Text(
+                        'Numero massimo di tentativi raggiunto per l\'esame (2)',
+                        style: TextStyle(color: kError, fontSize: 11),
+                      ),
+                    ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: notesCtrl,
@@ -183,7 +246,7 @@ class _DirectorGradesTabState extends ConsumerState<DirectorGradesTab> {
                 child: const Text('Annulla', style: TextStyle(color: kTextDim)),
               ),
               ElevatedButton(
-                onPressed: score == null ? null : () => save(ctx),
+                onPressed: score == null || esameExhausted() ? null : () => save(ctx),
                 child: Text(existing == null ? 'Salva' : 'Aggiorna'),
               ),
             ],
@@ -193,14 +256,14 @@ class _DirectorGradesTabState extends ConsumerState<DirectorGradesTab> {
     );
   }
 
-  Future<bool> _confirmDeleteGrade(Grade g) async {
+  Future<bool> _confirmDeleteGrade(Grade g, AttendeeGradeSummary summary) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: kCard,
         title: const Text('Elimina voto', style: TextStyle(color: kText)),
         content: Text(
-          'Eliminare il voto ${g.score.toStringAsFixed(1)} (${g.assessmentType.label}) '
+          'Eliminare il voto ${g.score.toStringAsFixed(1)} (${summary.chipLabel(g)}) '
           'del ${DateFormat('dd/MM/yyyy').format(g.date)}?',
           style: const TextStyle(color: kTextDim),
         ),
@@ -277,7 +340,7 @@ class _DirectorGradesTabState extends ConsumerState<DirectorGradesTab> {
                                 alignment: Alignment.center,
                                 child: FittedBox(
                                   fit: BoxFit.scaleDown,
-                                  child: Text(g.assessmentType.label,
+                                  child: Text(summary.chipLabel(g),
                                       maxLines: 1,
                                       style: TextStyle(color: typeColor, fontSize: 10)),
                                 ),
@@ -300,7 +363,7 @@ class _DirectorGradesTabState extends ConsumerState<DirectorGradesTab> {
                                     if (recoveryNote != null)
                                       Text(recoveryNote,
                                           style: TextStyle(
-                                              color: recoveryNote == 'da recuperare' ? kError : kTextDim,
+                                              color: recoveryNote == 'tentativo superato' ? kTextDim : kError,
                                               fontSize: 8)),
                                   ],
                                 ),
@@ -334,7 +397,7 @@ class _DirectorGradesTabState extends ConsumerState<DirectorGradesTab> {
                                 icon: const Icon(Icons.delete_outline, color: kError, size: 18),
                                 tooltip: 'Elimina voto',
                                 onPressed: () async {
-                                  final deleted = await _confirmDeleteGrade(g);
+                                  final deleted = await _confirmDeleteGrade(g, summary);
                                   if (deleted) setDlg(() {});
                                 },
                               ),

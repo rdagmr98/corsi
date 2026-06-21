@@ -12,6 +12,39 @@ import '../../services/schedule_service.dart';
 import '../../services/user_service.dart';
 import '../../theme.dart';
 
+/// Recupero raggruppato per data+modulo+tipo+sottomodulo: più frequentatori
+/// che recuperano la stessa cosa nello stesso giorno appaiono in un'unica riga.
+class _RecoveryEntry {
+  final DateTime date;
+  final int moduleNumber;
+  final String? type; // 'teoria' | 'pratica' | null
+  final String? submoduleCode;
+  final List<AppUser> attendees;
+
+  const _RecoveryEntry({
+    required this.date,
+    required this.moduleNumber,
+    required this.type,
+    required this.submoduleCode,
+    required this.attendees,
+  });
+}
+
+/// Voce dello storico unificato: una lezione reale oppure un recupero.
+class _LogEntry {
+  final ScheduledLesson? lesson;
+  final _RecoveryEntry? recovery;
+
+  _LogEntry.lesson(ScheduledLesson l)
+      : lesson = l,
+        recovery = null;
+  _LogEntry.recovery(_RecoveryEntry r)
+      : lesson = null,
+        recovery = r;
+
+  DateTime get date => lesson?.date ?? recovery!.date;
+}
+
 class DirectorLessonsLogTab extends ConsumerStatefulWidget {
   final String userId;
   const DirectorLessonsLogTab({super.key, required this.userId});
@@ -123,6 +156,30 @@ class _DirectorLessonsLogTabState extends ConsumerState<DirectorLessonsLogTab> {
     return '';
   }
 
+  SubmoduleInfo? _subInfo(String code) {
+    final nc = _normSub(code);
+    for (final m in _typeInfo?.modules ?? const <ModuleInfo>[]) {
+      for (final s in m.submodules) {
+        if (_normSub(s.code) == nc) return s;
+      }
+    }
+    return null;
+  }
+
+  (Map<String, int>, Map<String, int>) get _submoduleProgress {
+    final doneT = <String, int>{};
+    final doneP = <String, int>{};
+    for (final l in _allLessons) {
+      final c = _normSub(l.submoduleCode);
+      if (l.isTheory) {
+        doneT[c] = (doneT[c] ?? 0) + 1;
+      } else {
+        doneP[c] = (doneP[c] ?? 0) + 1;
+      }
+    }
+    return (doneT, doneP);
+  }
+
   List<AppUser> _absentees(ScheduledLesson l) {
     final ids = _attendanceService
         .getRecordsForLesson(l.id)
@@ -167,12 +224,65 @@ class _DirectorLessonsLogTabState extends ConsumerState<DirectorLessonsLogTab> {
     return list;
   }
 
+  List<_RecoveryEntry> get _recoveryEntries {
+    if (_selected == null) return const [];
+    final records = _attendanceService.getRecoveriesForCourse(_selected!.id);
+    final groups = <String, List<AttendanceRecord>>{};
+    for (final r in records) {
+      final d = r.recoveryDate;
+      if (d == null || r.recoveredModule == null) continue;
+      final subKey = r.recoveredSubmodule != null ? _normSub(r.recoveredSubmodule!) : '';
+      final key = '${d.toIso8601String().split('T').first}|${r.recoveredModule}|${r.recoveredType ?? ''}|$subKey';
+      groups.putIfAbsent(key, () => []).add(r);
+    }
+    return groups.values.map((g) {
+      final first = g.first;
+      final ids = g.map((r) => r.attendeeId).toSet();
+      final attendees = _attendees.where((a) => ids.contains(a.id)).toList()
+        ..sort((a, b) => a.cognome.toLowerCase().compareTo(b.cognome.toLowerCase()));
+      return _RecoveryEntry(
+        date: first.recoveryDate!,
+        moduleNumber: first.recoveredModule!,
+        type: first.recoveredType,
+        submoduleCode: first.recoveredSubmodule,
+        attendees: attendees,
+      );
+    }).toList();
+  }
+
+  List<_RecoveryEntry> get _filteredRecoveries {
+    if (_fTaskId != null || _fInstructorId != null || _fAbsentId != null) return const [];
+    return _recoveryEntries.where((r) {
+      if (_fDateFrom != null && r.date.isBefore(_fDateFrom!)) return false;
+      if (_fDateTo != null && r.date.isAfter(_fDateTo!)) return false;
+      if (_fModule != null && r.moduleNumber != _fModule) return false;
+      if (_fSubmodule != null &&
+          (r.submoduleCode == null || _normSub(r.submoduleCode!) != _fSubmodule)) {
+        return false;
+      }
+      if (_fRecoveringId != null && !r.attendees.any((a) => a.id == _fRecoveringId)) {
+        return false;
+      }
+      return true;
+    }).toList();
+  }
+
+  List<_LogEntry> get _mergedEntries {
+    final list = <_LogEntry>[
+      ..._filtered.map(_LogEntry.lesson),
+      ..._filteredRecoveries.map(_LogEntry.recovery),
+    ];
+    list.sort((a, b) => b.date.compareTo(a.date));
+    return list;
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_courses.isEmpty) {
       return const Center(child: Text('Nessun corso assegnato', style: TextStyle(color: kTextDim)));
     }
-    final filtered = _filtered;
+    final filtered = _mergedEntries;
+    final (doneT, doneP) = _submoduleProgress;
     final hasFilters = _fDateFrom != null ||
         _fDateTo != null ||
         _fModule != null ||
@@ -207,7 +317,7 @@ class _DirectorLessonsLogTabState extends ConsumerState<DirectorLessonsLogTab> {
               else
                 Text(_selected?.title ?? '', style: Theme.of(context).textTheme.titleLarge),
               const Spacer(),
-              Text('${filtered.length} lezioni', style: const TextStyle(color: kTextDim, fontSize: 12)),
+              Text('${filtered.length} voci', style: const TextStyle(color: kTextDim, fontSize: 12)),
               if (hasFilters) ...[
                 const SizedBox(width: 12),
                 TextButton.icon(
@@ -232,7 +342,12 @@ class _DirectorLessonsLogTabState extends ConsumerState<DirectorLessonsLogTab> {
                   padding: const EdgeInsets.all(16),
                   itemCount: filtered.length,
                   separatorBuilder: (_, __) => const SizedBox(height: 6),
-                  itemBuilder: (_, i) => _lessonRow(filtered[i]),
+                  itemBuilder: (_, i) {
+                    final e = filtered[i];
+                    return e.lesson != null
+                        ? _lessonRow(e.lesson!, doneT, doneP)
+                        : _recoveryRow(e.recovery!);
+                  },
                 ),
         ),
       ],
@@ -401,10 +516,14 @@ class _DirectorLessonsLogTabState extends ConsumerState<DirectorLessonsLogTab> {
     );
   }
 
-  Widget _lessonRow(ScheduledLesson l) {
+  Widget _lessonRow(ScheduledLesson l, Map<String, int> doneT, Map<String, int> doneP) {
     final absentees = _absentees(l);
     final taskName = _refService.taskName(_typeInfo, l.taskId);
     final isPratica = l.type == 'pratica';
+    final subInfo = _subInfo(l.submoduleCode);
+    final nc = _normSub(l.submoduleCode);
+    final totalHours = subInfo == null ? 0 : (isPratica ? subInfo.practicalHours : subInfo.theoryHours);
+    final doneHours = isPratica ? (doneP[nc] ?? 0) : (doneT[nc] ?? 0);
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
@@ -416,7 +535,7 @@ class _DirectorLessonsLogTabState extends ConsumerState<DirectorLessonsLogTab> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 76,
+            width: 92,
             child: Text(
               DateFormat('dd/MM/yyyy').format(l.date),
               style: const TextStyle(color: kText, fontSize: 12),
@@ -436,6 +555,21 @@ class _DirectorLessonsLogTabState extends ConsumerState<DirectorLessonsLogTab> {
                   color: isPratica ? kAccent : kPrimary, fontSize: 10, fontWeight: FontWeight.bold),
             ),
           ),
+          if (totalHours > 0) ...[
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+              decoration: BoxDecoration(
+                color: kSurface,
+                borderRadius: BorderRadius.circular(3),
+                border: Border.all(color: kBorder),
+              ),
+              child: Text(
+                '$doneHours/${totalHours}h',
+                style: const TextStyle(color: kTextDim, fontSize: 10, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
           const SizedBox(width: 8),
           Expanded(
             flex: 3,
@@ -491,6 +625,91 @@ class _DirectorLessonsLogTabState extends ConsumerState<DirectorLessonsLogTab> {
                     overflow: TextOverflow.ellipsis,
                     maxLines: 1,
                   ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _recoveryRow(_RecoveryEntry r) {
+    final isPratica = r.type == 'pratica';
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: kCard,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: kPrimary.withOpacity(0.4)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 92,
+            child: Text(
+              DateFormat('dd/MM/yyyy').format(r.date),
+              style: const TextStyle(color: kText, fontSize: 12),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+            decoration: BoxDecoration(
+              color: kPrimary.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(3),
+            ),
+            child: const Text(
+              'RECUPERO',
+              style: TextStyle(color: kPrimary, fontSize: 9, fontWeight: FontWeight.bold),
+            ),
+          ),
+          if (r.type != null) ...[
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+              decoration: BoxDecoration(
+                color: (isPratica ? kAccent : kPrimary).withOpacity(0.15),
+                borderRadius: BorderRadius.circular(3),
+              ),
+              child: Text(
+                isPratica ? 'P' : 'T',
+                style: TextStyle(
+                    color: isPratica ? kAccent : kPrimary, fontSize: 10, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+          const SizedBox(width: 8),
+          Expanded(
+            flex: 3,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  r.submoduleCode != null
+                      ? 'M${_moduleLabel(r.moduleNumber)} · ${r.submoduleCode}'
+                      : 'M${_moduleLabel(r.moduleNumber)}',
+                  style: const TextStyle(color: kText, fontSize: 12, fontWeight: FontWeight.w600),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (r.submoduleCode != null)
+                  Text(
+                    _subName(r.submoduleCode!),
+                    style: const TextStyle(color: kTextDim, fontSize: 11),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            flex: 4,
+            child: Text(
+              'Recuperato da: ${r.attendees.map((a) => a.cognome).join(', ')}',
+              style: const TextStyle(color: kPrimary, fontSize: 11),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
+            ),
           ),
         ],
       ),

@@ -499,7 +499,7 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
                           ),
                           child: FittedBox(
                             fit: BoxFit.scaleDown,
-                            child: Text(g.assessmentType.label,
+                            child: Text(summary.chipLabel(g),
                                 maxLines: 1,
                                 style: TextStyle(color: typeColor, fontSize: 10)),
                           ),
@@ -522,7 +522,7 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
                               if (recoveryNote != null)
                                 Text(recoveryNote,
                                     style: TextStyle(
-                                        color: recoveryNote == 'da recuperare' ? kError : kTextDim,
+                                        color: recoveryNote == 'tentativo superato' ? kTextDim : kError,
                                         fontSize: 8)),
                             ],
                           ),

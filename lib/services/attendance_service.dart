@@ -4,6 +4,30 @@ import '../models/reference_models.dart';
 import '../models/schedule_models.dart';
 import 'gh_db_service.dart';
 
+/// Dettaglio di una singola assenza (una lezione) per la vista per-studente
+/// del direttore: se è stata recuperata (con data e, se nota, sottomodulo/tipo
+/// dell'ora di recupero) oppure no, e in tal caso se è tollerata (teoria entro
+/// la soglia 10%) o da recuperare.
+class AbsenceDetail {
+  final ScheduledLesson lesson;
+  final String type; // 'teoria' | 'pratica'
+  final bool isRecovered;
+  final bool isTolerated;
+  final DateTime? recoveryDate;
+  final String? recoveredSubmodule;
+
+  const AbsenceDetail({
+    required this.lesson,
+    required this.type,
+    required this.isRecovered,
+    required this.isTolerated,
+    this.recoveryDate,
+    this.recoveredSubmodule,
+  });
+
+  bool get needsRecovery => !isRecovered && !isTolerated;
+}
+
 class AttendanceService {
   final _db = GhDbService();
 
@@ -17,6 +41,10 @@ class AttendanceService {
       getAllRecords()
           .where((r) => r.courseId == courseId && r.attendeeId == attendeeId)
           .toList();
+
+  List<AttendanceRecord> getRecoveriesForCourse(String courseId) => getAllRecords()
+      .where((r) => r.courseId == courseId && r.justification == 'recupero')
+      .toList();
 
   AttendanceRecord? getRecord(String scheduleId, String attendeeId) {
     try {
@@ -275,6 +303,114 @@ class AttendanceService {
         break;
       }
     }
+    return result;
+  }
+
+  /// Dettaglio per-assenza (una riga per lezione persa) di un modulo, per la
+  /// vista per-studente del direttore. A differenza di [pairAbsenceRecoveries]
+  /// (solo data, solo per chi NON ha sottomodulo/tipo) qui si espone anche
+  /// sottomodulo/tipo recuperato quando noto, e lo stato "tollerata" vs
+  /// "da recuperare". Stessa convenzione FIFO (assenza più vecchia ↔ recupero
+  /// più vecchio nello stesso pool tipo) e stessa eristica di distribuzione dei
+  /// recuperi legacy non tipizzati di [computePerModuleStats], in modo che i
+  /// conteggi per-riga (recuperate/tollerate/da recuperare) coincidano sempre
+  /// con i totali aggregati di quel metodo.
+  List<AbsenceDetail> absenceDetailsForModule(
+    String courseId,
+    String attendeeId,
+    List<ScheduledLesson> allLessons,
+    int moduleNumber, {
+    List<ModuleInfo>? modules,
+  }) {
+    final records = getRecordsForAttendee(courseId, attendeeId);
+    final recordMap = {for (final r in records) r.scheduleId: r};
+
+    final absT = <ScheduledLesson>[];
+    final absP = <ScheduledLesson>[];
+    for (final l in allLessons) {
+      if (l.courseId != courseId || l.moduleNumber != moduleNumber) continue;
+      if (!l.confirmed || l.timeSlot == 0) continue;
+      final r = recordMap[l.id];
+      if (r == null || r.present) continue;
+      (l.isTheory ? absT : absP).add(l);
+    }
+    absT.sort((a, b) => a.date.compareTo(b.date));
+    absP.sort((a, b) => a.date.compareTo(b.date));
+
+    final recT = <Map<String, dynamic>>[];
+    final recP = <Map<String, dynamic>>[];
+    final recUntyped = <Map<String, dynamic>>[];
+    for (final r in records) {
+      if (r.recoveredModule != moduleNumber) continue;
+      final d = r.recoveryDate;
+      if (d == null) continue;
+      final entry = {'date': d, 'submodule': r.recoveredSubmodule};
+      if (r.recoveredType == 'pratica') {
+        recP.add(entry);
+      } else if (r.recoveredType == 'teoria') {
+        recT.add(entry);
+      } else {
+        recUntyped.add(entry);
+      }
+    }
+    recT.sort((a, b) => (a['date'] as DateTime).compareTo(b['date'] as DateTime));
+    recP.sort((a, b) => (a['date'] as DateTime).compareTo(b['date'] as DateTime));
+    recUntyped.sort((a, b) => (a['date'] as DateTime).compareTo(b['date'] as DateTime));
+
+    // Stessa eristica di computePerModuleStats: i recuperi non tipizzati
+    // (legacy) riempiono prima il fabbisogno pratica residuo.
+    final remAbsP = (absP.length - recP.length).clamp(0, absP.length);
+    final addP = min(recUntyped.length, remAbsP);
+    recP.addAll(recUntyped.take(addP));
+    recT.addAll(recUntyped.skip(addP));
+    recP.sort((a, b) => (a['date'] as DateTime).compareTo(b['date'] as DateTime));
+    recT.sort((a, b) => (a['date'] as DateTime).compareTo(b['date'] as DateTime));
+
+    var total = 0;
+    if (modules != null) {
+      for (final m in modules) {
+        if (m.number == moduleNumber) { total = m.totalHours; break; }
+      }
+    }
+    final threshold = total ~/ 10;
+
+    List<AbsenceDetail> buildDetails(
+      List<ScheduledLesson> abs,
+      List<Map<String, dynamic>> rec,
+      String type,
+      bool toleranceApplies,
+    ) {
+      final recoveredCount = min(abs.length, rec.length);
+      final toleratedCount =
+          toleranceApplies ? min(threshold, abs.length - recoveredCount) : 0;
+      final details = <AbsenceDetail>[];
+      for (var i = 0; i < abs.length; i++) {
+        if (i < recoveredCount) {
+          details.add(AbsenceDetail(
+            lesson: abs[i],
+            type: type,
+            isRecovered: true,
+            isTolerated: false,
+            recoveryDate: rec[i]['date'] as DateTime,
+            recoveredSubmodule: rec[i]['submodule'] as String?,
+          ));
+        } else {
+          details.add(AbsenceDetail(
+            lesson: abs[i],
+            type: type,
+            isRecovered: false,
+            isTolerated: (i - recoveredCount) < toleratedCount,
+          ));
+        }
+      }
+      return details;
+    }
+
+    final result = [
+      ...buildDetails(absT, recT, 'teoria', true),
+      ...buildDetails(absP, recP, 'pratica', false),
+    ];
+    result.sort((a, b) => a.lesson.date.compareTo(b.lesson.date));
     return result;
   }
 
