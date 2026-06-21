@@ -25,6 +25,7 @@ class _AttendeeScheduleScreenState extends ConsumerState<AttendeeScheduleScreen>
   List<Course> _courses = [];
   Course? _selected;
   List<ScheduledLesson> _lessons = [];
+  List<SlotNote> _notes = [];
 
   @override
   void initState() {
@@ -40,6 +41,9 @@ class _AttendeeScheduleScreenState extends ConsumerState<AttendeeScheduleScreen>
         final now = DateTime.now();
         _lessons = _scheduleService.getLessonsForCourse(_selected!.id)
             .where((l) => !l.date.isBefore(now.subtract(const Duration(days: 1))))
+            .toList();
+        _notes = _scheduleService.getNotesForCourse(_selected!.id)
+            .where((n) => !n.date.isBefore(now.subtract(const Duration(days: 1))))
             .toList();
       }
     });
@@ -61,7 +65,12 @@ class _AttendeeScheduleScreenState extends ConsumerState<AttendeeScheduleScreen>
       final key = DateFormat('yyyy-MM-dd').format(l.date);
       grouped.putIfAbsent(key, () => []).add(l);
     }
-    final dates = grouped.keys.toList()..sort();
+    final notesByDate = <String, List<SlotNote>>{};
+    for (final n in _notes) {
+      final key = DateFormat('yyyy-MM-dd').format(n.date);
+      notesByDate.putIfAbsent(key, () => []).add(n);
+    }
+    final dates = {...grouped.keys, ...notesByDate.keys}.toList()..sort();
 
     final effectiveType = _selected == null
         ? null
@@ -104,7 +113,8 @@ class _AttendeeScheduleScreenState extends ConsumerState<AttendeeScheduleScreen>
                     itemCount: dates.length,
                     itemBuilder: (_, i) {
                       final date = DateTime.parse(dates[i]);
-                      final dayLessons = grouped[dates[i]]!;
+                      final dayLessons = grouped[dates[i]] ?? [];
+                      final dayNotes = notesByDate[dates[i]] ?? [];
                       final isToday = _isToday(date);
 
                       return Column(
@@ -126,6 +136,29 @@ class _AttendeeScheduleScreenState extends ConsumerState<AttendeeScheduleScreen>
                                     style: const TextStyle(color: kTextDim, fontSize: 13, fontWeight: FontWeight.w500),
                                   ),
                           ),
+                          if (dayNotes.isNotEmpty)
+                            Container(
+                              margin: const EdgeInsets.only(bottom: 6),
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: kWarning.withOpacity(0.12),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: kWarning.withOpacity(0.3)),
+                              ),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Icon(Icons.sticky_note_2_outlined, color: kWarning, size: 16),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      dayNotes.map((n) => n.text).join(' · '),
+                                      style: const TextStyle(color: kWarning, fontSize: 12),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ...dayLessons.map((l) {
                             final isTheory = l.isTheory;
                             final color = moduleColor(l.moduleNumber);

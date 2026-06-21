@@ -25,6 +25,7 @@ class _InstructorTodayScreenState extends ConsumerState<InstructorTodayScreen> {
   final _userService = UserService();
   final _refService = ReferenceService();
   List<ScheduledLesson> _todayLessons = [];
+  List<SlotNote> _todayNotes = [];
 
   @override
   void initState() {
@@ -35,6 +36,13 @@ class _InstructorTodayScreenState extends ConsumerState<InstructorTodayScreen> {
   void _load() {
     setState(() {
       _todayLessons = _scheduleService.getLessonsRelevantForInstructorToday(widget.userId);
+      final today = DateTime.now();
+      _todayNotes = _courseService.getCoursesForInstructor(widget.userId)
+          .expand((c) => _scheduleService.getNotesForCourse(c.id))
+          .where((n) => n.date.year == today.year &&
+              n.date.month == today.month &&
+              n.date.day == today.day)
+          .toList();
     });
   }
 
@@ -160,14 +168,22 @@ class _InstructorTodayScreenState extends ConsumerState<InstructorTodayScreen> {
             ),
           ),
           if (_todayLessons.isEmpty)
-            const SliverFillRemaining(
+            SliverFillRemaining(
               child: Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.check_circle_outline, color: kAccent, size: 48),
-                    SizedBox(height: 12),
-                    Text('Nessuna lezione oggi', style: TextStyle(color: kTextDim)),
+                    Icon(
+                      _todayNotes.isEmpty ? Icons.check_circle_outline : Icons.event_busy,
+                      color: kAccent,
+                      size: 48,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      _todayNotes.isEmpty ? 'Nessuna lezione oggi' : 'Nessuna lezione: ${_todayNotes.map((n) => n.text).join(', ')}',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: kTextDim),
+                    ),
                   ],
                 ),
               ),

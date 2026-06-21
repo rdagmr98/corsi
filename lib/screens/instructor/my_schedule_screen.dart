@@ -21,6 +21,7 @@ class _InstructorScheduleScreenState extends ConsumerState<InstructorScheduleScr
   final _courseService   = CourseService();
   final _refService      = ReferenceService();
   List<ScheduledLesson> _lessons = [];
+  List<SlotNote> _notes = [];
 
   @override
   void initState() {
@@ -31,6 +32,10 @@ class _InstructorScheduleScreenState extends ConsumerState<InstructorScheduleScr
   void _load() => setState(() {
     _lessons = _scheduleService.getAllRelevantLessonsForInstructor(widget.userId)
         .where((l) => !l.date.isBefore(DateTime.now().subtract(const Duration(days: 7))))
+        .toList();
+    _notes = _courseService.getCoursesForInstructor(widget.userId)
+        .expand((c) => _scheduleService.getNotesForCourse(c.id))
+        .where((n) => !n.date.isBefore(DateTime.now().subtract(const Duration(days: 7))))
         .toList();
   });
 
@@ -96,7 +101,12 @@ class _InstructorScheduleScreenState extends ConsumerState<InstructorScheduleScr
       final key = DateFormat('yyyy-MM-dd').format(l.date);
       grouped.putIfAbsent(key, () => []).add(l);
     }
-    final dates = grouped.keys.toList()..sort();
+    final notesByDate = <String, List<SlotNote>>{};
+    for (final n in _notes) {
+      final key = DateFormat('yyyy-MM-dd').format(n.date);
+      notesByDate.putIfAbsent(key, () => []).add(n);
+    }
+    final dates = {...grouped.keys, ...notesByDate.keys}.toList()..sort();
 
     return RefreshIndicator(
       onRefresh: _reload,
@@ -108,7 +118,8 @@ class _InstructorScheduleScreenState extends ConsumerState<InstructorScheduleScr
               itemCount: dates.length,
               itemBuilder: (_, i) {
                 final date = DateTime.parse(dates[i]);
-                final dayLessons = grouped[dates[i]]!;
+                final dayLessons = grouped[dates[i]] ?? [];
+                final dayNotes = notesByDate[dates[i]] ?? [];
                 final isToday = _isToday(date);
 
                 return Column(
@@ -139,6 +150,29 @@ class _InstructorScheduleScreenState extends ConsumerState<InstructorScheduleScr
                         ],
                       ),
                     ),
+                    if (dayNotes.isNotEmpty)
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 6),
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: kWarning.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: kWarning.withOpacity(0.3)),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(Icons.sticky_note_2_outlined, color: kWarning, size: 16),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                dayNotes.map((n) => n.text).join(' · '),
+                                style: const TextStyle(color: kWarning, fontSize: 12),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ...dayLessons.map((l) {
                       final isTheory = l.isTheory;
                       final color = moduleColor(l.moduleNumber);
