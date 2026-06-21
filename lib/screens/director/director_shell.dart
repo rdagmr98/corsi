@@ -8,6 +8,7 @@ import 'schedule_tab.dart';
 import 'grades_tab.dart';
 import 'attendance_tab.dart';
 import 'overview_tab.dart';
+import 'lessons_log_tab.dart';
 
 class DirectorShell extends ConsumerStatefulWidget {
   const DirectorShell({super.key});
@@ -24,6 +25,7 @@ class _DirectorShellState extends ConsumerState<DirectorShell> {
     (Icons.calendar_month, 'Pianificazione'),
     (Icons.people_outline, 'Presenze'),
     (Icons.grade, 'Voti'),
+    (Icons.history, 'Storico'),
   ];
 
   @override
@@ -96,6 +98,7 @@ class _DirectorShellState extends ConsumerState<DirectorShell> {
               1 => DirectorScheduleTab(userId: user?.id ?? ''),
               2 => DirectorAttendanceTab(userId: user?.id ?? ''),
               3 => DirectorGradesTab(userId: user?.id ?? ''),
+              4 => DirectorLessonsLogTab(userId: user?.id ?? ''),
               _ => const SizedBox(),
             },
           ),
