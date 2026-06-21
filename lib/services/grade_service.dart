@@ -1,8 +1,11 @@
+import '../models/course_models.dart';
 import '../models/grade_models.dart';
 import 'gh_db_service.dart';
+import 'reference_service.dart';
 
 class GradeService {
   final _db = GhDbService();
+  final _refService = ReferenceService();
 
   List<Grade> getAllGrades() => _db.grades.map(Grade.fromJson).toList();
 
@@ -26,10 +29,29 @@ class GradeService {
     for (final g in grades) {
       map.putIfAbsent(g.moduleNumber, () => []).add(g);
     }
+    final assessmentCounts = _assessmentCountsByModule(courseId);
     return map.map((k, v) => MapEntry(
       k,
-      AttendeeGradeSummary(attendeeId: attendeeId, moduleNumber: k, grades: v),
+      AttendeeGradeSummary(
+        attendeeId: attendeeId,
+        moduleNumber: k,
+        grades: v,
+        assessmentCount: assessmentCounts[k] ?? 1,
+      ),
     ));
+  }
+
+  // Numero di accertamenti previsti per modulo (assessmentCount), dal tipo
+  // corso effettivo: serve ad AttendeeGradeSummary per non proporre in
+  // aggiunta accertamenti oltre quelli previsti dal programma.
+  Map<int, int> _assessmentCountsByModule(String courseId) {
+    final raw = _db.courses.where((c) => c['id'] == courseId);
+    if (raw.isEmpty) return {};
+    final course = Course.fromJson(raw.first);
+    final typeInfo =
+        _refService.getEffectiveCourseType(course.courseTypeId, course.extensionTypeId);
+    if (typeInfo == null) return {};
+    return {for (final m in typeInfo.modules) m.number: m.assessmentCount};
   }
 
   Future<Grade> addGrade({

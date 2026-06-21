@@ -358,29 +358,101 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
                   : '100';
               final mAbsPct =
                   modPlan > 0 ? (absent / modPlan * 100).toStringAsFixed(0) : '0';
-              return ListTile(
-                dense: true,
-                contentPadding: const EdgeInsets.fromLTRB(24, 0, 8, 0),
-                leading: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: (warn ? kError : kPrimary).withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(6),
+              final details = absent > 0
+                  ? _attendanceService.absenceDetailsForModule(
+                      _course.id, a.id, _lessons, mod.number, modules: [mod])
+                  : const <AbsenceDetail>[];
+              String submoduleName(String? code) {
+                if (code == null) return '';
+                final nc = ScheduleService.normalizeSubCode(code);
+                for (final s in mod.submodules) {
+                  if (ScheduleService.normalizeSubCode(s.code) == nc) return s.name;
+                }
+                return code;
+              }
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ListTile(
+                    dense: true,
+                    contentPadding: const EdgeInsets.fromLTRB(24, 0, 8, 0),
+                    leading: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: (warn ? kError : kPrimary).withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text('M${mod.displayCode}',
+                          style: TextStyle(color: warn ? kError : kPrimary, fontSize: 11, fontWeight: FontWeight.bold)),
+                    ),
+                    title: Text(mod.name, style: const TextStyle(color: kText, fontSize: 12), overflow: TextOverflow.ellipsis),
+                    subtitle: Text(
+                      absent == 0
+                          ? 'Pres. 100% · Ass. 0% — nessuna assenza su $modPlan ore prev.'
+                          : [
+                              'Pres. $mPresPct% · Ass. $mAbsPct% — $unrecovered non rec.',
+                              if (unrecoveredP > 0) 'P: $unrecoveredP ⚠ recupero 100%',
+                              if (pct > 0.10) 'T: $unrecoveredT/${mod.theoryHours} (${(pct * 100).toStringAsFixed(1)}%) ⚠ >10%',
+                            ].join(' — '),
+                      style: TextStyle(color: warn ? kError : kTextDim, fontSize: 11),
+                    ),
                   ),
-                  child: Text('M${mod.displayCode}',
-                      style: TextStyle(color: warn ? kError : kPrimary, fontSize: 11, fontWeight: FontWeight.bold)),
-                ),
-                title: Text(mod.name, style: const TextStyle(color: kText, fontSize: 12), overflow: TextOverflow.ellipsis),
-                subtitle: Text(
-                  absent == 0
-                      ? 'Pres. 100% · Ass. 0% — nessuna assenza su $modPlan ore prev.'
-                      : [
-                          'Pres. $mPresPct% · Ass. $mAbsPct% — $unrecovered non rec.',
-                          if (unrecoveredP > 0) 'P: $unrecoveredP ⚠ recupero 100%',
-                          if (pct > 0.10) 'T: $unrecoveredT/${mod.theoryHours} (${(pct * 100).toStringAsFixed(1)}%) ⚠ >10%',
-                        ].join(' — '),
-                  style: TextStyle(color: warn ? kError : kTextDim, fontSize: 11),
-                ),
+                  if (details.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(56, 0, 12, 8),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: details.map((d) {
+                          final color = d.isRecovered
+                              ? kPrimary
+                              : d.isTolerated
+                                  ? kTextDim
+                                  : kError;
+                          final statusText = d.isRecovered
+                              ? 'Recuperata il ${DateFormat('dd/MM/yyyy').format(d.recoveryDate!)}'
+                                  '${d.recoveredSubmodule != null ? ' · ${d.recoveredSubmodule} – ${submoduleName(d.recoveredSubmodule)}' : ''}'
+                              : d.isTolerated
+                                  ? 'Tollerata (entro 10%)'
+                                  : 'Da recuperare';
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 2),
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                  decoration: BoxDecoration(
+                                    color: kSurface,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    d.type == 'pratica' ? 'P' : 'T',
+                                    style: const TextStyle(
+                                        color: kTextDim, fontSize: 9, fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  DateFormat('dd/MM/yyyy').format(d.lesson.date),
+                                  style: const TextStyle(color: kTextDim, fontSize: 11),
+                                ),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    '${d.lesson.submoduleCode} · $statusText',
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                        color: color,
+                                        fontSize: 11,
+                                        fontWeight: d.needsRecovery ? FontWeight.w600 : FontWeight.normal),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                ],
               );
             }).toList(),
           ),
@@ -460,7 +532,10 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
         .toList()
       ..sort((g1, g2) => g1.date.compareTo(g2.date));
     final summary = AttendeeGradeSummary(
-        attendeeId: a.id, moduleNumber: module.number, grades: grades);
+        attendeeId: a.id,
+        moduleNumber: module.number,
+        grades: grades,
+        assessmentCount: module.assessmentCount);
 
     showDialog(
       context: context,

@@ -224,17 +224,23 @@ class _AttendeeGradesScreenState extends ConsumerState<AttendeeGradesScreen> {
                                       ),
                                     ),
                                     const SizedBox(width: 8),
-                                    Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(DateFormat('dd/MM/yyyy').format(g.date),
-                                            style: const TextStyle(color: kTextDim, fontSize: 11)),
-                                        if (attemptLabel != null)
-                                          Text(attemptLabel,
-                                              style: const TextStyle(color: kTextDim, fontSize: 9)),
-                                      ],
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(DateFormat('dd/MM/yyyy').format(g.date),
+                                              style: const TextStyle(color: kTextDim, fontSize: 11)),
+                                          if (attemptLabel != null)
+                                            Text(attemptLabel,
+                                                style: const TextStyle(color: kTextDim, fontSize: 9)),
+                                          if (g.notes != null && g.notes!.isNotEmpty)
+                                            Text(g.notes!,
+                                                style: const TextStyle(color: kTextDim, fontSize: 10),
+                                                maxLines: 2,
+                                                overflow: TextOverflow.ellipsis),
+                                        ],
+                                      ),
                                     ),
-                                    const Spacer(),
                                     Column(
                                       crossAxisAlignment: CrossAxisAlignment.end,
                                       children: [
