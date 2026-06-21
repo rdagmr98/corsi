@@ -47,9 +47,28 @@ class _DirectorGradesTabState extends ConsumerState<DirectorGradesTab> {
   }
 
   // Dialog di inserimento/modifica voto con input da tastiera (0–30, virgola o punto).
-  Future<void> _gradeDialog(Course course, String attendeeId, int moduleNumber,
+  Future<void> _gradeDialog(Course course, String attendeeId, ModuleInfo module,
       {Grade? existing}) async {
-    AssessmentType type = existing?.assessmentType ?? AssessmentType.accertamento;
+    final moduleNumber = module.number;
+
+    // Voti già esistenti per questo modulo/frequentatore: servono per
+    // proporre il numero di accertamento giusto (nuovo o da recuperare) e
+    // per bloccare un tentativo oltre il massimo consentito o oltre il
+    // numero di accertamenti previsti dal modulo (assessmentCount).
+    final existingGrades = _gradeService
+        .getGradesForAttendee(course.id, attendeeId)
+        .where((g) => g.moduleNumber == moduleNumber)
+        .toList();
+    final summary = AttendeeGradeSummary(
+        attendeeId: attendeeId,
+        moduleNumber: moduleNumber,
+        grades: existingGrades,
+        assessmentCount: module.assessmentCount);
+
+    AssessmentType type = existing?.assessmentType ??
+        (summary.addableAccertamentoNumbers.isEmpty
+            ? AssessmentType.esame
+            : AssessmentType.accertamento);
     DateTime gradeDate = existing?.date ?? DateTime.now();
     final scoreCtrl = TextEditingController(
         text: existing == null
@@ -59,17 +78,10 @@ class _DirectorGradesTabState extends ConsumerState<DirectorGradesTab> {
                 : existing.score.toStringAsFixed(1)));
     final notesCtrl = TextEditingController(text: existing?.notes ?? '');
 
-    // Voti già esistenti per questo modulo/frequentatore: servono per
-    // proporre il numero di accertamento giusto (nuovo o da recuperare) e
-    // per bloccare un tentativo oltre il massimo consentito.
-    final existingGrades = _gradeService
-        .getGradesForAttendee(course.id, attendeeId)
-        .where((g) => g.moduleNumber == moduleNumber)
-        .toList();
-    final summary = AttendeeGradeSummary(
-        attendeeId: attendeeId, moduleNumber: moduleNumber, grades: existingGrades);
-    int accertamentoNumber =
-        existing?.accertamentoNumber ?? summary.addableAccertamentoNumbers.first;
+    int accertamentoNumber = existing?.accertamentoNumber ??
+        (summary.addableAccertamentoNumbers.isNotEmpty
+            ? summary.addableAccertamentoNumbers.first
+            : summary.assessmentCount);
 
     double? parseScore() {
       final v = double.tryParse(scoreCtrl.text.trim().replaceAll(',', '.'));
@@ -83,9 +95,17 @@ class _DirectorGradesTabState extends ConsumerState<DirectorGradesTab> {
       return list >= AssessmentType.esame.maxAttempts;
     }
 
+    // true se si vuole inserire un NUOVO accertamento ma il modulo non ne
+    // prevede altri (assessmentCount già raggiunto, o tentativi esauriti su
+    // tutti gli accertamenti esistenti): non c'è più nulla da proporre.
+    bool accertamentoBlocked() {
+      if (type != AssessmentType.accertamento || existing != null) return false;
+      return summary.addableAccertamentoNumbers.isEmpty;
+    }
+
     Future<void> save(BuildContext ctx) async {
       final score = parseScore();
-      if (score == null || esameExhausted()) return;
+      if (score == null || esameExhausted() || accertamentoBlocked()) return;
       Navigator.pop(ctx);
       final number = type == AssessmentType.esame ? 1 : accertamentoNumber;
       if (existing == null) {
@@ -224,11 +244,22 @@ class _DirectorGradesTabState extends ConsumerState<DirectorGradesTab> {
                     ),
                   ),
                   if (esameExhausted())
-                    const Padding(
-                      padding: EdgeInsets.only(top: 4),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
                       child: Text(
-                        'Numero massimo di tentativi raggiunto per l\'esame (2)',
-                        style: TextStyle(color: kError, fontSize: 11),
+                        'Numero massimo di tentativi raggiunto per l\'esame '
+                        '(${AssessmentType.esame.maxAttempts})',
+                        style: const TextStyle(color: kError, fontSize: 11),
+                      ),
+                    ),
+                  if (accertamentoBlocked())
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        'Il modulo prevede ${summary.assessmentCount} '
+                        '${summary.assessmentCount == 1 ? "accertamento" : "accertamenti"}: '
+                        'già tutti inseriti o con tentativi esauriti',
+                        style: const TextStyle(color: kError, fontSize: 11),
                       ),
                     ),
                   const SizedBox(height: 12),
@@ -246,7 +277,9 @@ class _DirectorGradesTabState extends ConsumerState<DirectorGradesTab> {
                 child: const Text('Annulla', style: TextStyle(color: kTextDim)),
               ),
               ElevatedButton(
-                onPressed: score == null || esameExhausted() ? null : () => save(ctx),
+                onPressed: score == null || esameExhausted() || accertamentoBlocked()
+                    ? null
+                    : () => save(ctx),
                 child: Text(existing == null ? 'Salva' : 'Aggiorna'),
               ),
             ],
@@ -301,7 +334,10 @@ class _DirectorGradesTabState extends ConsumerState<DirectorGradesTab> {
               .where((g) => g.moduleNumber == module.number)
               .toList();
           final summary = AttendeeGradeSummary(
-              attendeeId: attendeeId, moduleNumber: module.number, grades: grades);
+              attendeeId: attendeeId,
+              moduleNumber: module.number,
+              grades: grades,
+              assessmentCount: module.assessmentCount);
           return AlertDialog(
             backgroundColor: kCard,
             title: Column(
@@ -389,7 +425,7 @@ class _DirectorGradesTabState extends ConsumerState<DirectorGradesTab> {
                                 icon: const Icon(Icons.edit, color: kTextDim, size: 18),
                                 tooltip: 'Modifica voto',
                                 onPressed: () async {
-                                  await _gradeDialog(course, attendeeId, module.number, existing: g);
+                                  await _gradeDialog(course, attendeeId, module, existing: g);
                                   setDlg(() {});
                                 },
                               ),
@@ -412,7 +448,7 @@ class _DirectorGradesTabState extends ConsumerState<DirectorGradesTab> {
                 icon: const Icon(Icons.add, size: 16),
                 label: const Text('Aggiungi voto'),
                 onPressed: () async {
-                  await _gradeDialog(course, attendeeId, module.number);
+                  await _gradeDialog(course, attendeeId, module);
                   setDlg(() {});
                 },
               ),
@@ -534,7 +570,7 @@ class _DirectorGradesTabState extends ConsumerState<DirectorGradesTab> {
                                     return TableCell(
                                       child: InkWell(
                                         onTap: () => s == null || !s.hasGrades
-                                            ? _gradeDialog(course, a.id, m.number)
+                                            ? _gradeDialog(course, a.id, m)
                                             : _moduleGradesDialog(course, a.id, a.fullName, m),
                                         child: Container(
                                           padding: const EdgeInsets.all(4),

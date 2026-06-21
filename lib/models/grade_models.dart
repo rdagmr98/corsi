@@ -7,9 +7,11 @@ extension AssessmentTypeExt on AssessmentType {
       this == AssessmentType.accertamento ? 'Accertamento' : 'Esame';
   int get weight => this == AssessmentType.accertamento ? 1 : 2;
 
-  /// Numero massimo di tentativi consentiti: un accertamento (distinto) può
-  /// essere recuperato 3 volte, l'esame di modulo (uno solo) 2 volte.
-  int get maxAttempts => this == AssessmentType.accertamento ? 3 : 2;
+  /// Numero massimo di tentativi consentiti (tentativo iniziale incluso): un
+  /// accertamento (distinto) può essere recuperato 3 volte (4 tentativi
+  /// totali), l'esame di modulo (uno solo) 2 volte (3 tentativi totali).
+  /// Da struttura colonne file 'voti graduatoria' (Test/Esame + N Recupero).
+  int get maxAttempts => this == AssessmentType.accertamento ? 4 : 3;
 
   static AssessmentType fromString(String s) =>
       s == 'esame' ? AssessmentType.esame : AssessmentType.accertamento;
@@ -152,11 +154,16 @@ class AttendeeGradeSummary {
   final String attendeeId;
   final int moduleNumber;
   final List<Grade> grades;
+  /// Numero di accertamenti distinti richiesti dal modulo (da ModuleInfo,
+  /// file 'voti graduatoria'). Limita le proposte di NUOVI accertamenti:
+  /// non si propone mai un accertamento oltre questo numero.
+  final int assessmentCount;
 
   const AttendeeGradeSummary({
     required this.attendeeId,
     required this.moduleNumber,
     required this.grades,
+    this.assessmentCount = 1,
   });
 
   /// Voti raggruppati per accertamento/esame DISTINTO (tipo + numero),
@@ -189,7 +196,9 @@ class AttendeeGradeSummary {
   /// Numeri selezionabili quando si aggiunge un voto: gli accertamenti
   /// esistenti ancora da recuperare (insufficienti, tentativi non esauriti)
   /// più il prossimo numero libero per iniziarne uno nuovo. Un accertamento
-  /// già superato o con tentativi esauriti non va più proposto.
+  /// già superato o con tentativi esauriti non va più proposto. Il prossimo
+  /// numero libero non viene proposto se supera assessmentCount: il modulo
+  /// non prevede un altro accertamento distinto (resta solo l'esame).
   List<int> get addableAccertamentoNumbers {
     final result = <int>[];
     for (final n in accertamentoNumbers) {
@@ -199,7 +208,9 @@ class AttendeeGradeSummary {
         result.add(n);
       }
     }
-    result.add(nextAccertamentoNumber);
+    if (nextAccertamentoNumber <= assessmentCount) {
+      result.add(nextAccertamentoNumber);
+    }
     return result;
   }
 

@@ -82,6 +82,10 @@ class ModuleInfo {
   final int practicalHours;
   final int examQuestions;
   final int examMinutes;
+  // Numero di accertamenti distinti richiesti per il modulo prima dell'esame
+  // finale (es. 2 = 1° e 2° accertamento, ciascuno recuperabile fino a
+  // AssessmentType.accertamento.maxAttempts volte). Da file 'voti graduatoria'.
+  final int assessmentCount;
   final List<SubmoduleInfo> submodules;
 
   const ModuleInfo({
@@ -92,6 +96,7 @@ class ModuleInfo {
     required this.practicalHours,
     this.examQuestions = 0,
     this.examMinutes = 0,
+    this.assessmentCount = 1,
     this.submodules = const [],
   });
 
@@ -107,6 +112,7 @@ class ModuleInfo {
     practicalHours: j['practicalHours'] as int? ?? 0,
     examQuestions: j['examQuestions'] as int? ?? 0,
     examMinutes: j['examMinutes'] as int? ?? 0,
+    assessmentCount: j['assessmentCount'] as int? ?? 1,
     submodules: (j['submodules'] as List? ?? [])
         .map((s) => SubmoduleInfo.fromJson(s as Map<String, dynamic>))
         .toList(),
@@ -120,6 +126,7 @@ class ModuleInfo {
     'practicalHours': practicalHours,
     'examQuestions': examQuestions,
     'examMinutes': examMinutes,
+    'assessmentCount': assessmentCount,
     'submodules': submodules.map((s) => s.toJson()).toList(),
   };
 }
