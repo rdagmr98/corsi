@@ -1413,13 +1413,6 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                           ),
                         ),
                         ...weekDays.map((day) {
-                          final isWeekend = day.weekday == DateTime.saturday ||
-                              day.weekday == DateTime.sunday;
-                          if (isWeekend) {
-                            return TableCell(
-                              child: Container(height: 50, color: kBorder.withOpacity(0.04)),
-                            );
-                          }
                           final recs = recoveryLessons.where((l) => _sameDay(l.date, day)).toList();
                           return TableCell(
                             child: InkWell(
@@ -1471,22 +1464,26 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                           ...weekDays.map((day) {
                             final isWeekend = day.weekday == DateTime.saturday ||
                                 day.weekday == DateTime.sunday;
-                            if (isWeekend) {
+                            // Venerdì ore 4ª-6ª + intero sabato/domenica: fuori
+                            // dall'orario regolare, disponibili solo per i recuperi.
+                            final isExtraSlot = isWeekend ||
+                                (day.weekday == DateTime.friday && slot.slot > 3);
+                            if (isExtraSlot) {
                               return TableCell(
-                                child: Container(
-                                  height: 120,
-                                  color: kBorder.withOpacity(0.04),
-                                  child: const Center(
-                                    child: Text('—', style: TextStyle(color: kBorder, fontSize: 10)),
+                                child: InkWell(
+                                  onTap: () => _addRecovery(day),
+                                  child: Tooltip(
+                                    message: 'Fuori orario regolare — disponibile per recuperi',
+                                    waitDuration: const Duration(milliseconds: 500),
+                                    child: Container(
+                                      height: 120,
+                                      color: kWarning.withOpacity(0.05),
+                                      child: const Center(
+                                        child: Icon(Icons.restore, color: kWarning, size: 14),
+                                      ),
+                                    ),
                                   ),
                                 ),
-                              );
-                            }
-                            if (day.weekday == DateTime.friday && slot.slot > 3) {
-                              return const TableCell(
-                                child: SizedBox(height: 120, child: Center(
-                                  child: Text('—', style: TextStyle(color: kBorder)),
-                                )),
                               );
                             }
                             final lesson = regularLessons
