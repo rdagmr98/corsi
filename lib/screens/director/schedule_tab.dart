@@ -1181,10 +1181,15 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                 Navigator.pop(ctx);
                 final subChanged = selectedSubmodule != lesson.submoduleCode;
                 int newModuleNum = lesson.moduleNumber;
+                String newTopic = lesson.topic;
                 if (subChanged) {
                   for (final m in _typeInfo!.modules) {
-                    if (m.submodules.any((s) => s.code == selectedSubmodule)) {
+                    final sub = m.submodules
+                        .where((s) => s.code == selectedSubmodule)
+                        .firstOrNull;
+                    if (sub != null) {
                       newModuleNum = m.number;
+                      newTopic = sub.name;
                       break;
                     }
                   }
@@ -1193,7 +1198,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                   instructorId: selectedInstructor,
                   submoduleCode: selectedSubmodule,
                   moduleNumber: newModuleNum,
-                  topic: selectedSubmodule,
+                  topic: newTopic,
                 ));
                 await saveAbsences(force: false);
                 if (subChanged && recompile) {
