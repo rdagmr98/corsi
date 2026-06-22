@@ -673,22 +673,9 @@ class _CourseTypesTabState extends ConsumerState<CourseTypesTab> {
                     SizedBox(
                       width: 100,
                       child: _labeledField(
-                        'Livello B1',
+                        'Livello',
                         TextField(
-                          controller: s.levelB1,
-                          keyboardType: TextInputType.number,
-                          style: const TextStyle(color: kText),
-                          decoration: const InputDecoration(isDense: true),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    SizedBox(
-                      width: 100,
-                      child: _labeledField(
-                        'Livello B2',
-                        TextField(
-                          controller: s.levelB2,
+                          controller: s.level,
                           keyboardType: TextInputType.number,
                           style: const TextStyle(color: kText),
                           decoration: const InputDecoration(isDense: true),
@@ -909,8 +896,7 @@ class _SubmoduleDraft {
   final TextEditingController name;
   final TextEditingController theory;
   final TextEditingController practical;
-  final TextEditingController levelB1;
-  final TextEditingController levelB2;
+  final TextEditingController level;
   final TextEditingController topics;
   final List<_TaskDraft> tasks;
   final int? perDifferenzaOf;
@@ -920,8 +906,7 @@ class _SubmoduleDraft {
     String name = '',
     String theory = '0',
     String practical = '0',
-    String levelB1 = '',
-    String levelB2 = '',
+    String level = '',
     String topics = '',
     List<_TaskDraft>? tasks,
     this.perDifferenzaOf,
@@ -929,8 +914,7 @@ class _SubmoduleDraft {
         name = TextEditingController(text: name),
         theory = TextEditingController(text: theory),
         practical = TextEditingController(text: practical),
-        levelB1 = TextEditingController(text: levelB1),
-        levelB2 = TextEditingController(text: levelB2),
+        level = TextEditingController(text: level),
         topics = TextEditingController(text: topics),
         tasks = tasks ?? [];
 
@@ -939,8 +923,7 @@ class _SubmoduleDraft {
         name: s.name,
         theory: '${s.theoryHours}',
         practical: '${s.practicalHours}',
-        levelB1: s.levelB1?.toString() ?? '',
-        levelB2: s.levelB2?.toString() ?? '',
+        level: s.level?.toString() ?? '',
         topics: s.topics.join(', '),
         tasks: s.practicalTasks.map(_TaskDraft.fromTask).toList(),
         perDifferenzaOf: s.perDifferenzaOf,
@@ -951,8 +934,7 @@ class _SubmoduleDraft {
         name: name.text.trim(),
         theoryHours: int.tryParse(theory.text.trim()) ?? 0,
         practicalHours: int.tryParse(practical.text.trim()) ?? 0,
-        levelB1: int.tryParse(levelB1.text.trim()),
-        levelB2: int.tryParse(levelB2.text.trim()),
+        level: int.tryParse(level.text.trim()),
         topics: topics.text.trim().isEmpty
             ? const []
             : topics.text.split(',').map((t) => t.trim()).where((t) => t.isNotEmpty).toList(),
@@ -965,8 +947,7 @@ class _SubmoduleDraft {
     name.dispose();
     theory.dispose();
     practical.dispose();
-    levelB1.dispose();
-    levelB2.dispose();
+    level.dispose();
     topics.dispose();
     for (final t in tasks) {
       t.dispose();
@@ -1037,8 +1018,7 @@ class _ModuleDraft {
                 name: subsRaw[0].name,
                 theoryHours: th,
                 practicalHours: pr,
-                levelB1: subsRaw[0].levelB1,
-                levelB2: subsRaw[0].levelB2,
+                level: subsRaw[0].level,
                 topics: subsRaw[0].topics,
                 practicalTasks: subsRaw[0].practicalTasks,
                 perDifferenzaOf: subsRaw[0].perDifferenzaOf,

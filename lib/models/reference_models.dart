@@ -23,8 +23,7 @@ class SubmoduleInfo {
   final String name;
   final int theoryHours;
   final int practicalHours;
-  final int? levelB1;
-  final int? levelB2;
+  final int? level;
   final List<String> topics;
   final List<PracticalTask> practicalTasks;
   // Numero del modulo che deve essere completamente schedulato prima di questo.
@@ -36,8 +35,7 @@ class SubmoduleInfo {
     required this.name,
     required this.theoryHours,
     required this.practicalHours,
-    this.levelB1,
-    this.levelB2,
+    this.level,
     this.topics = const [],
     this.practicalTasks = const [],
     this.perDifferenzaOf,
@@ -48,8 +46,7 @@ class SubmoduleInfo {
     name: j['name'] as String,
     theoryHours: j['theoryHours'] as int? ?? 0,
     practicalHours: j['practicalHours'] as int? ?? 0,
-    levelB1: j['levelB1'] as int?,
-    levelB2: j['levelB2'] as int?,
+    level: j['level'] as int?,
     topics: List<String>.from(j['topics'] as List? ?? []),
     practicalTasks: (j['practicalTasks'] as List? ?? [])
         .whereType<Map<String, dynamic>>()
@@ -63,8 +60,7 @@ class SubmoduleInfo {
     'name': name,
     'theoryHours': theoryHours,
     'practicalHours': practicalHours,
-    if (levelB1 != null) 'levelB1': levelB1,
-    if (levelB2 != null) 'levelB2': levelB2,
+    if (level != null) 'level': level,
     if (topics.isNotEmpty) 'topics': topics,
     if (practicalTasks.isNotEmpty)
       'practicalTasks': practicalTasks.map((t) => t.toJson()).toList(),
