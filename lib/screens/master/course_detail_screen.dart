@@ -561,6 +561,7 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
                     final typeColor = isEsame ? kWarning : kPrimary;
                     final attemptLabel = summary.attemptLabel(g);
                     final recoveryNote = summary.recoveryNote(g);
+                    final capNote = summary.recoveryCapNote(g);
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 8),
                       child: Row(children: [
@@ -599,6 +600,9 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
                                     style: TextStyle(
                                         color: recoveryNote == 'tentativo superato' ? kTextDim : kError,
                                         fontSize: 8)),
+                              if (capNote != null)
+                                Text(capNote,
+                                    style: const TextStyle(color: kWarning, fontSize: 8)),
                             ],
                           ),
                         ),

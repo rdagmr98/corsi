@@ -227,7 +227,7 @@ class AttendeeGradeSummary {
     int totalWeight = 0;
     for (final g in valid) {
       final w = g.assessmentType.weight;
-      totalWeightedScore += g.score * w;
+      totalWeightedScore += effectiveScore(g) * w;
       totalWeight += w;
     }
     return totalWeight == 0 ? 0 : totalWeightedScore / totalWeight;
@@ -245,6 +245,23 @@ class AttendeeGradeSummary {
     final idx = list.indexWhere((x) => x.id == g.id);
     return idx < 0 ? 1 : idx + 1;
   }
+
+  /// true se [g] è un tentativo di recupero (non il primo per quel singolo
+  /// accertamento/esame) con punteggio superiore a 25: per regola del corso
+  /// un punteggio pieno ottenuto solo al recupero non vale per intero in
+  /// media/graduatoria, resta tappato alla soglia di sufficienza (22,5).
+  bool isCappedRecovery(Grade g) => attemptNumber(g) > 1 && g.score > 25;
+
+  /// Punteggio da usare in media di modulo e graduatoria del corso: il voto
+  /// resta salvato come inserito (vedi [Grade.score]), ma se è un recupero
+  /// tappato (vedi [isCappedRecovery]) conta come 22,5, non per intero.
+  double effectiveScore(Grade g) => isCappedRecovery(g) ? 22.5 : g.score;
+
+  /// Nota da mostrare accanto al voto quando [isCappedRecovery] è vero, per
+  /// chiarire che il punteggio registrato non è quello usato in media/
+  /// graduatoria.
+  String? recoveryCapNote(Grade g) =>
+      isCappedRecovery(g) ? 'conta 22,5 (recupero)' : null;
 
   int attemptsCount(Grade g) =>
       byAssessment[(g.assessmentType, g.accertamentoNumber)]?.length ?? 1;

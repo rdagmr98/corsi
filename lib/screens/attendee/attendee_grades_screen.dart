@@ -205,6 +205,7 @@ class _AttendeeGradesScreenState extends ConsumerState<AttendeeGradesScreen> {
                               ...s.grades.map((g) {
                                 final attemptLabel = s.attemptLabel(g);
                                 final recoveryNote = s.recoveryNote(g);
+                                final capNote = s.recoveryCapNote(g);
                                 return Padding(
                                 padding: const EdgeInsets.only(bottom: 4),
                                 child: Row(
@@ -256,6 +257,9 @@ class _AttendeeGradesScreenState extends ConsumerState<AttendeeGradesScreen> {
                                               style: TextStyle(
                                                   color: recoveryNote == 'tentativo superato' ? kTextDim : kError,
                                                   fontSize: 9)),
+                                        if (capNote != null)
+                                          Text(capNote,
+                                              style: const TextStyle(color: kWarning, fontSize: 9)),
                                       ],
                                     ),
                                   ],

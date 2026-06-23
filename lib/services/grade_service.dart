@@ -184,18 +184,15 @@ class GradeService {
   /// accertamento recuperato dopo un primo tentativo insufficiente, o più
   /// accertamenti distinti dello stesso modulo, falserebbero la media.
   double getGraduationScore(String courseId, String attendeeId) {
-    final grades = getAttendeeSummary(courseId, attendeeId)
-        .values
-        .expand((s) => s.latestAttempts)
-        .where((g) => g.isPassing)
-        .toList();
-    if (grades.isEmpty) return 0;
+    final summaries = getAttendeeSummary(courseId, attendeeId).values;
     double total = 0;
     int totalWeight = 0;
-    for (final g in grades) {
-      final w = g.assessmentType.weight;
-      total += g.score * w;
-      totalWeight += w;
+    for (final s in summaries) {
+      for (final g in s.latestAttempts.where((g) => g.isPassing)) {
+        final w = g.assessmentType.weight;
+        total += s.effectiveScore(g) * w;
+        totalWeight += w;
+      }
     }
     return totalWeight == 0 ? 0 : total / totalWeight;
   }
