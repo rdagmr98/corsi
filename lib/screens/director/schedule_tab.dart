@@ -69,6 +69,9 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
 
   String _normSubCode(String code) => ScheduleService.normalizeSubCode(code);
 
+  // Evita lo ".0" superfluo per le ore intere, mantenendo i decimali (es. 1.5h) quando presenti.
+  String _fmtNum(num n) => n == n.truncate() ? n.truncate().toString() : n.toString();
+
   /// GO/NO GO per istruttore (stessa formula di currency_tab):
   /// override, oppure ≥6h insegnamento/anno + ≥35h agg. professionale/2 anni
   /// + DAA non scaduta.
@@ -384,7 +387,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                     const SizedBox(height: 12),
                     Builder(builder: (_) {
                       final nc = _normSubCode(selSub.code);
-                      final taskRemaining = <dynamic, int>{};
+                      final taskRemaining = <dynamic, num>{};
                       for (final t in selSub.practicalTasks) {
                         final used = _allCourseLessons
                             .where((l) => !l.isTheory &&
@@ -412,7 +415,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                           return DropdownMenuItem<dynamic>(
                             value: t.id,
                             child: Text(
-                                'Task ${t.id}${t.name.isNotEmpty ? " ${t.name}" : ""} – ${rem > 0 ? "$rem/${t.plannedHours}h rim." : "completo"}',
+                                'Task ${t.id}${t.name.isNotEmpty ? " ${t.name}" : ""} – ${rem > 0 ? "${_fmtNum(rem)}/${_fmtNum(t.plannedHours)}h rim." : "completo"}',
                                 style: TextStyle(
                                     color: rem > 0 ? kText : kTextDim,
                                     overflow: TextOverflow.ellipsis)),

@@ -748,7 +748,7 @@ class _CourseTypesTabState extends ConsumerState<CourseTypesTab> {
                           width: 80,
                           child: TextField(
                             controller: t.hours,
-                            keyboardType: TextInputType.number,
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
                             style: const TextStyle(color: kText, fontSize: 12),
                             decoration: const InputDecoration(isDense: true),
                             onChanged: (_) => setDlg(() {}),
@@ -865,6 +865,9 @@ class _CourseTypesTabState extends ConsumerState<CourseTypesTab> {
 
 // ── Draft locali per editing in memoria prima del salvataggio ──────────────
 
+// Evita lo ".0" superfluo per le ore intere, mantenendo i decimali (es. 1.5h) quando presenti.
+String _fmtNum(num n) => n == n.truncate() ? n.truncate().toString() : n.toString();
+
 class _TaskDraft {
   final TextEditingController id;
   final TextEditingController name;
@@ -876,12 +879,12 @@ class _TaskDraft {
         hours = TextEditingController(text: hours);
 
   factory _TaskDraft.fromTask(PracticalTask t) =>
-      _TaskDraft(id: '${t.id}', name: t.name, hours: '${t.plannedHours}');
+      _TaskDraft(id: '${t.id}', name: t.name, hours: _fmtNum(t.plannedHours));
 
   PracticalTask toTask() => PracticalTask(
         id: int.tryParse(id.text.trim()) ?? 0,
         name: name.text.trim(),
-        plannedHours: int.tryParse(hours.text.trim()) ?? 0,
+        plannedHours: double.tryParse(hours.text.trim().replaceAll(',', '.')) ?? 0,
       );
 
   void dispose() {

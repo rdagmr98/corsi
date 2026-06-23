@@ -1,14 +1,14 @@
 class PracticalTask {
   final int id;
   final String name;
-  final int plannedHours;
+  final double plannedHours;
 
   const PracticalTask({required this.id, this.name = '', required this.plannedHours});
 
   factory PracticalTask.fromJson(Map<String, dynamic> j) => PracticalTask(
     id: (j['id'] as num).toInt(),
     name: j['name'] as String? ?? '',
-    plannedHours: j['plannedHours'] as int? ?? 0,
+    plannedHours: (j['plannedHours'] as num?)?.toDouble() ?? 0,
   );
 
   Map<String, dynamic> toJson() => {
