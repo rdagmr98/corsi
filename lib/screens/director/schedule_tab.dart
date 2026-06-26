@@ -1298,11 +1298,13 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
         subPlanP[nc] = (subPlanP[nc] ?? 0) + s.practicalHours;
       }
     }
-    final doneTask = <String, int>{};
-    for (final l in _allCourseLessons) {
+    final taskCnt = <String, int>{};
+    final taskOrdinals = <String, int>{};
+    for (final l in sortedAll) {
       if (!l.isTheory && l.taskId != null) {
         final k = l.taskId.toString();
-        doneTask[k] = (doneTask[k] ?? 0) + 1;
+        taskCnt[k] = (taskCnt[k] ?? 0) + 1;
+        taskOrdinals[l.id] = taskCnt[k]!;
       }
     }
     final taskPlanMap = <int, double>{};
@@ -1539,7 +1541,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                                   : _lessonCell(lesson, subNameMap, instrNames,
                                       ordinals: lessonOrdinals,
                                       planT: subPlanT, planP: subPlanP,
-                                      doneTask: doneTask, taskPlanMap: taskPlanMap),
+                                      taskOrdinals: taskOrdinals, taskPlanMap: taskPlanMap),
                             );
                           }),
                         ],
@@ -1664,7 +1666,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
     required Map<String, int> ordinals,
     required Map<String, int> planT,
     required Map<String, int> planP,
-    required Map<String, int> doneTask,
+    required Map<String, int> taskOrdinals,
     required Map<int, double> taskPlanMap,
   }) {
     final isTheory = lesson.type != 'pratica';
@@ -1678,11 +1680,11 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
     final typeLabel = isTheory ? 'T' : 'P';
     final String hoursStr;
     if (!isTheory && lesson.taskId != null) {
-      final taskPlan = taskPlanMap[lesson.taskId!] ?? 0.0;
-      final taskDone = doneTask[lesson.taskId!.toString()] ?? 0;
+      final taskPlan = taskPlanMap[lesson.taskId] ?? 0.0;
+      final taskOrd = taskOrdinals[lesson.id] ?? rawOrd;
       hoursStr = taskPlan > 0
-          ? 'P $taskDone/${_fmtNum(taskPlan)}h'
-          : 'P ${rawOrd}h';
+          ? 'P $taskOrd/${_fmtNum(taskPlan)}h'
+          : 'P ${taskOrd}h';
     } else {
       final plan = isTheory ? (planT[nc] ?? 0) : (planP[nc] ?? 0);
       // Le ore oltre il piano ufficiale sono recuperi: il contatore non deve
