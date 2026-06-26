@@ -1298,6 +1298,21 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
         subPlanP[nc] = (subPlanP[nc] ?? 0) + s.practicalHours;
       }
     }
+    final doneTask = <String, int>{};
+    for (final l in _allCourseLessons) {
+      if (!l.isTheory && l.taskId != null) {
+        final k = l.taskId.toString();
+        doneTask[k] = (doneTask[k] ?? 0) + 1;
+      }
+    }
+    final taskPlanMap = <int, double>{};
+    for (final m in _typeInfo?.modules ?? <ModuleInfo>[]) {
+      for (final s in m.submodules) {
+        for (final t in s.practicalTasks) {
+          taskPlanMap.putIfAbsent(t.id, () => t.plannedHours);
+        }
+      }
+    }
     final instrNames = <String, String>{
       for (final u in _userService.getInstructors()) u.id: u.cognome,
     };
@@ -1523,7 +1538,8 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                                     )
                                   : _lessonCell(lesson, subNameMap, instrNames,
                                       ordinals: lessonOrdinals,
-                                      planT: subPlanT, planP: subPlanP),
+                                      planT: subPlanT, planP: subPlanP,
+                                      doneTask: doneTask, taskPlanMap: taskPlanMap),
                             );
                           }),
                         ],
@@ -1648,6 +1664,8 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
     required Map<String, int> ordinals,
     required Map<String, int> planT,
     required Map<String, int> planP,
+    required Map<String, int> doneTask,
+    required Map<int, double> taskPlanMap,
   }) {
     final isTheory = lesson.type != 'pratica';
     final nc = _normSubCode(lesson.submoduleCode);
@@ -1657,15 +1675,24 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
     final displayTopic = '$nc – ${subNames[nc] ?? lesson.topic}';
 
     final rawOrd = ordinals[lesson.id] ?? 1;
-    final plan = isTheory ? (planT[nc] ?? 0) : (planP[nc] ?? 0);
-    // Le ore oltre il piano ufficiale sono recuperi: il contatore non deve
-    // mai superare il monte ore del programma.
-    final isExtra = plan > 0 && rawOrd > plan;
-    final conf = isExtra ? plan : rawOrd;
     final typeLabel = isTheory ? 'T' : 'P';
-    final hoursStr = plan > 0
-        ? '$typeLabel $conf/$plan h${isExtra ? ' (rec.)' : ''}'
-        : '$typeLabel ${rawOrd}h';
+    final String hoursStr;
+    if (!isTheory && lesson.taskId != null) {
+      final taskPlan = taskPlanMap[lesson.taskId!] ?? 0.0;
+      final taskDone = doneTask[lesson.taskId!.toString()] ?? 0;
+      hoursStr = taskPlan > 0
+          ? 'P $taskDone/${_fmtNum(taskPlan)}h'
+          : 'P ${rawOrd}h';
+    } else {
+      final plan = isTheory ? (planT[nc] ?? 0) : (planP[nc] ?? 0);
+      // Le ore oltre il piano ufficiale sono recuperi: il contatore non deve
+      // mai superare il monte ore del programma.
+      final isExtra = plan > 0 && rawOrd > plan;
+      final conf = isExtra ? plan : rawOrd;
+      hoursStr = plan > 0
+          ? '$typeLabel $conf/$plan h${isExtra ? ' (rec.)' : ''}'
+          : '$typeLabel ${rawOrd}h';
+    }
     final instrName = lesson.instructorId != null
         ? (instrNames[lesson.instructorId!] ?? '?')
         : null;
