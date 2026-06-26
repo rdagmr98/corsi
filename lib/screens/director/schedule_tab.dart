@@ -1299,12 +1299,14 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
       }
     }
     final taskCnt = <String, int>{};
+    // Key: "YYYY-MM-DD_slot_taskId" — deterministic across independent getAllLessons() calls
     final taskOrdinals = <String, int>{};
     for (final l in sortedAll) {
       if (!l.isTheory && l.taskId != null) {
         final k = l.taskId.toString();
         taskCnt[k] = (taskCnt[k] ?? 0) + 1;
-        taskOrdinals[l.id] = taskCnt[k]!;
+        final dateStr = l.date.toIso8601String().split('T').first;
+        taskOrdinals['${dateStr}_${l.timeSlot}_$k'] = taskCnt[k]!;
       }
     }
     final taskPlanMap = <int, double>{};
@@ -1681,7 +1683,9 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
     final String hoursStr;
     if (!isTheory && lesson.taskId != null) {
       final taskPlan = taskPlanMap[lesson.taskId] ?? 0.0;
-      final taskOrd = taskOrdinals[lesson.id] ?? rawOrd;
+      final taskDateStr = lesson.date.toIso8601String().split('T').first;
+      final taskKey = '${taskDateStr}_${lesson.timeSlot}_${lesson.taskId}';
+      final taskOrd = taskOrdinals[taskKey] ?? rawOrd;
       hoursStr = taskPlan > 0
           ? 'P $taskOrd/${_fmtNum(taskPlan)}h'
           : 'P ${taskOrd}h';
