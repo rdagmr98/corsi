@@ -132,11 +132,45 @@ class _DirectorLessonsLogTabState extends ConsumerState<DirectorLessonsLogTab> {
   List<SubmoduleInfo> get _submodulesForFilter => _selectedModuleInfo?.submodules ?? const [];
 
   List<PracticalTask> get _tasksForFilter {
-    if (_fSubmodule == null) return const [];
-    for (final s in _submodulesForFilter) {
-      if (_normSub(s.code) == _fSubmodule) return s.practicalTasks;
+    final allModules = _typeInfo?.modules ?? const <ModuleInfo>[];
+    final filteredModules = _fModule != null
+        ? allModules.where((m) => m.number == _fModule).toList()
+        : allModules;
+    final tasks = <PracticalTask>[];
+    final seen = <int>{};
+    for (final m in filteredModules) {
+      final subs = _fSubmodule != null
+          ? m.submodules.where((s) => _normSub(s.code) == _fSubmodule).toList()
+          : m.submodules;
+      for (final s in subs) {
+        for (final t in s.practicalTasks) {
+          if (seen.add(t.id)) tasks.add(t);
+        }
+      }
     }
-    return const [];
+    return tasks;
+  }
+
+  PracticalTask? _findTask(int taskId) {
+    for (final m in _typeInfo?.modules ?? const <ModuleInfo>[]) {
+      for (final s in m.submodules) {
+        for (final t in s.practicalTasks) {
+          if (t.id == taskId) return t;
+        }
+      }
+    }
+    return null;
+  }
+
+  Map<String, int> get _taskProgress {
+    final done = <String, int>{};
+    for (final l in _allLessons) {
+      if (l.taskId != null) {
+        final k = l.taskId.toString();
+        done[k] = (done[k] ?? 0) + 1;
+      }
+    }
+    return done;
   }
 
   String _moduleLabel(int number) {
@@ -283,6 +317,7 @@ class _DirectorLessonsLogTabState extends ConsumerState<DirectorLessonsLogTab> {
     }
     final filtered = _mergedEntries;
     final (doneT, doneP) = _submoduleProgress;
+    final doneTask = _taskProgress;
     final hasFilters = _fDateFrom != null ||
         _fDateTo != null ||
         _fModule != null ||
@@ -345,7 +380,7 @@ class _DirectorLessonsLogTabState extends ConsumerState<DirectorLessonsLogTab> {
                   itemBuilder: (_, i) {
                     final e = filtered[i];
                     return e.lesson != null
-                        ? _lessonRow(e.lesson!, doneT, doneP)
+                        ? _lessonRow(e.lesson!, doneT, doneP, doneTask)
                         : _recoveryRow(e.recovery!);
                   },
                 ),
@@ -455,7 +490,7 @@ class _DirectorLessonsLogTabState extends ConsumerState<DirectorLessonsLogTab> {
                     child: Text('T${t.id} – ${t.name}', overflow: TextOverflow.ellipsis),
                   )),
             ],
-            onChanged: _fSubmodule == null ? null : (v) => setState(() => _fTaskId = v),
+            onChanged: (v) => setState(() => _fTaskId = v),
           ),
         ),
         _labeled(
@@ -516,14 +551,21 @@ class _DirectorLessonsLogTabState extends ConsumerState<DirectorLessonsLogTab> {
     );
   }
 
-  Widget _lessonRow(ScheduledLesson l, Map<String, int> doneT, Map<String, int> doneP) {
+  String _fmtHours(num h) => h == h.truncate() ? '${h.toInt()}' : '$h';
+
+  Widget _lessonRow(ScheduledLesson l, Map<String, int> doneT, Map<String, int> doneP, Map<String, int> doneTask) {
     final absentees = _absentees(l);
     final taskName = _refService.taskName(_typeInfo, l.taskId);
     final isPratica = l.type == 'pratica';
     final subInfo = _subInfo(l.submoduleCode);
     final nc = _normSub(l.submoduleCode);
-    final totalHours = subInfo == null ? 0 : (isPratica ? subInfo.practicalHours : subInfo.theoryHours);
-    final doneHours = isPratica ? (doneP[nc] ?? 0) : (doneT[nc] ?? 0);
+    final task = (isPratica && l.taskId != null) ? _findTask(l.taskId!) : null;
+    final num totalHours = task != null
+        ? task.plannedHours
+        : (subInfo == null ? 0 : (isPratica ? subInfo.practicalHours : subInfo.theoryHours));
+    final doneHours = task != null
+        ? (doneTask[l.taskId.toString()] ?? 0)
+        : (isPratica ? (doneP[nc] ?? 0) : (doneT[nc] ?? 0));
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
@@ -565,7 +607,7 @@ class _DirectorLessonsLogTabState extends ConsumerState<DirectorLessonsLogTab> {
                 border: Border.all(color: kBorder),
               ),
               child: Text(
-                '$doneHours/${totalHours}h',
+                '$doneHours/${_fmtHours(totalHours)}h',
                 style: const TextStyle(color: kTextDim, fontSize: 10, fontWeight: FontWeight.w600),
               ),
             ),
