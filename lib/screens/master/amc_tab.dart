@@ -27,7 +27,7 @@ class _AmcTabState extends ConsumerState<AmcTab>
   String? _selectedCourseId;
   final _searchCtrl = TextEditingController();
   String _search = '';
-  bool _onlyGo = false; // false = tutti gli istruttori, true = solo i GO
+  bool _onlyGo = true; // false = tutti gli istruttori, true = solo i GO
 
   @override
   void initState() {

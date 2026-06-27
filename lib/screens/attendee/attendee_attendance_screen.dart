@@ -26,7 +26,7 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
 
   List<Course> _courses = [];
   Course? _selected;
-  String? _filterMode; // null = tutti, 'present', 'absent', 'recovery'
+  String? _filterMode = 'to_recover'; // null=tutti, 'present','absent','recovery','to_recover'
 
   @override
   void initState() {
@@ -108,6 +108,9 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
     final totalToRecoverT = modStats.values.fold(0, (s, m) => s + (m['toRecoverT'] ?? 0));
     final totalToRecoverP = modStats.values.fold(0, (s, m) => s + (m['toRecoverP'] ?? 0));
     final anyWarn         = totalToRecover > 0;
+    final completionPct   = totalPlanned > 0
+        ? (totalConfirmed.clamp(0, totalPlanned) / totalPlanned)
+        : 0.0;
 
     final modNames = <int, String>{
       for (final m in typeInfo?.modules ?? <ModuleInfo>[]) m.number: m.name,
@@ -146,8 +149,9 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
 
     final visibleLessons = lessons.where((l) {
       if (l.timeSlot == 0) return false;
-      if (_filterMode == 'present') return isPresent(l);
-      if (_filterMode == 'absent')  return isAbsent(l);
+      if (_filterMode == 'present')    return isPresent(l);
+      if (_filterMode == 'absent')     return isAbsent(l);
+      if (_filterMode == 'to_recover') return isAbsent(l) && recoveryPairing[l.id] == null;
       return true;
     }).toList();
 
@@ -174,7 +178,7 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
                           .toList(),
                       onChanged: (id) => setState(() {
                         _selected = _courses.firstWhere((c) => c.id == id);
-                        _filterMode = null;
+                        _filterMode = 'to_recover';
                       }),
                     ),
                   const SizedBox(height: 12),
@@ -201,22 +205,17 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
                               _stat('$totalAbsent', 'Assenze', totalAbsent > 0 ? kError : kAccent),
                               _stat('$totalRecovered', 'Recuperate', kPrimary),
                               _stat(
-                                '${(globalPct * 100).toStringAsFixed(0)}%',
-                                'Presenza',
-                                globalPct >= 0.90 ? kAccent : kError,
-                              ),
-                              _stat(
-                                '${(globalAbsPct * 100).toStringAsFixed(0)}%',
-                                'Assenza',
-                                totalAbsent > 0 ? kError : kAccent,
+                                '${(completionPct * 100).toStringAsFixed(0)}%',
+                                'Completamento',
+                                completionPct >= 0.75 ? kAccent : kWarning,
                               ),
                             ],
                           ),
                           const SizedBox(height: 12),
                           LinearProgressIndicator(
-                            value: globalPct,
+                            value: completionPct,
                             backgroundColor: kSurface,
-                            color: globalPct >= 0.90 ? kAccent : kError,
+                            color: completionPct >= 0.75 ? kAccent : kWarning,
                             minHeight: 6,
                             borderRadius: BorderRadius.circular(3),
                           ),
@@ -291,6 +290,7 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
                     spacing: 8,
                     runSpacing: 6,
                     children: [
+                      _filterChip('Da recuperare', 'to_recover'),
                       _filterChip('Tutte', null),
                       _filterChip('Presenze', 'present'),
                       _filterChip('Assenze', 'absent'),
