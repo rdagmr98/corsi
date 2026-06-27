@@ -35,6 +35,7 @@ class CourseService {
     required String title,
     required String createdBy,
     DateTime? startDate,
+    String? mamlCombinationId,
     List<String> directorIds = const [],
     List<String> attendeeIds = const [],
     List<String> instructorIds = const [],
@@ -45,6 +46,7 @@ class CourseService {
     final newCourse = {
       'id': id,
       'course_type_id': courseTypeId,
+      if (mamlCombinationId != null) 'maml_combination_id': mamlCombinationId,
       'title': title,
       'start_date': startDate?.toIso8601String().split('T').first,
       'end_date': null,

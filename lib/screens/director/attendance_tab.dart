@@ -72,7 +72,7 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
         .where((u) => course.attendeeIds.contains(u.id))
         .toList()
       ..sort((a, b) => a.cognome.compareTo(b.cognome));
-    final typeInfo = _refService.getEffectiveCourseType(course.courseTypeId, course.extensionTypeId);
+    final typeInfo = _refService.getEffectiveCourseType(course.courseTypeId, course.extensionTypeId, course.mamlCombinationId);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

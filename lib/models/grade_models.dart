@@ -175,9 +175,8 @@ class AttendeeGradeSummary {
     for (final g in grades) {
       map.putIfAbsent((g.assessmentType, g.accertamentoNumber), () => []).add(g);
     }
-    for (final list in map.values) {
-      list.sort((a, b) => a.date.compareTo(b.date));
-    }
+    // NON sort per data: alcune date recupero sono errate (< data esame).
+    // L'ordine dell'array JSON è già cronologico (confermato dall'utente).
     return map;
   }
 

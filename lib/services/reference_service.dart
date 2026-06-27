@@ -22,19 +22,62 @@ class ReferenceService {
   }
 
   // Returns a merged CourseTypeInfo combining base modules with optional extension modules (e.g. b1 + b1mil).
-  CourseTypeInfo? getEffectiveCourseType(String typeId, [String? extensionTypeId]) {
+  // For maml courses, pass mamlCombinationId to filter/override modules per the VFI table.
+  CourseTypeInfo? getEffectiveCourseType(String typeId, [String? extensionTypeId, String? mamlCombinationId]) {
     final base = getCourseType(typeId);
-    if (extensionTypeId == null || base == null) return base;
-    final ext = getCourseType(extensionTypeId);
-    if (ext == null) return base;
+    if (base == null) return null;
+    CourseTypeInfo result = base;
+    if (extensionTypeId != null) {
+      final ext = getCourseType(extensionTypeId);
+      if (ext != null) {
+        result = CourseTypeInfo(
+          id: '${base.id}+${ext.id}',
+          code: base.code,
+          name: base.name,
+          category: base.category,
+          maxAttendees: base.maxAttendees,
+          schedule: base.schedule,
+          modules: [...base.modules, ...ext.modules],
+          vfiCombinations: base.vfiCombinations,
+        );
+      }
+    }
+    if (mamlCombinationId != null && result.vfiCombinations.isNotEmpty) {
+      result = _applyMamlCombination(result, mamlCombinationId);
+    }
+    return result;
+  }
+
+  CourseTypeInfo _applyMamlCombination(CourseTypeInfo base, String comboId) {
+    final combo = base.vfiCombinations.where((c) => c.id == comboId).firstOrNull;
+    if (combo == null) return base;
+    final hoursMap = {for (final mh in combo.moduleHours) mh.moduleNumber: mh};
+    final filteredModules = base.modules
+        .where((m) => hoursMap.containsKey(m.number))
+        .map((m) {
+          final h = hoursMap[m.number]!;
+          return ModuleInfo(
+            number: m.number,
+            label: m.label,
+            name: m.name,
+            theoryHours: h.theoryHours,
+            practicalHours: h.practicalHours,
+            examQuestions: m.examQuestions,
+            examMinutes: m.examMinutes,
+            assessmentCount: m.assessmentCount,
+            submodules: m.submodules,
+          );
+        })
+        .toList();
     return CourseTypeInfo(
-      id: '${base.id}+${ext.id}',
+      id: '${base.id}+$comboId',
       code: base.code,
       name: base.name,
       category: base.category,
       maxAttendees: base.maxAttendees,
       schedule: base.schedule,
-      modules: [...base.modules, ...ext.modules],
+      modules: filteredModules,
+      vfiCombinations: base.vfiCombinations,
     );
   }
 

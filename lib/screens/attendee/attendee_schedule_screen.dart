@@ -74,7 +74,7 @@ class _AttendeeScheduleScreenState extends ConsumerState<AttendeeScheduleScreen>
 
     final effectiveType = _selected == null
         ? null
-        : _refService.getEffectiveCourseType(_selected!.courseTypeId, _selected!.extensionTypeId);
+        : _refService.getEffectiveCourseType(_selected!.courseTypeId, _selected!.extensionTypeId, _selected!.mamlCombinationId);
     final taskNames = <int, String>{
       for (final m in effectiveType?.modules ?? [])
         for (final s in m.submodules)

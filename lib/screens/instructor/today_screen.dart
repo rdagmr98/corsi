@@ -204,7 +204,7 @@ class _InstructorTodayScreenState extends ConsumerState<InstructorTodayScreen> {
                             course == null
                                 ? null
                                 : _refService.getEffectiveCourseType(
-                                    course.courseTypeId, course.extensionTypeId),
+                                    course.courseTypeId, course.extensionTypeId, course.mamlCombinationId),
                             lesson.taskId);
 
                     return Card(

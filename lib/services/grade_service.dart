@@ -12,11 +12,13 @@ class GradeService {
   List<Grade> getGradesForCourse(String courseId) =>
       getAllGrades().where((g) => g.courseId == courseId).toList();
 
+  // Ordine preservato dal JSON array: l'utente conferma che i voti sono
+  // registrati cronologicamente da sinistra a destra nell'array. Il sort per
+  // data inverte i recuperi che hanno date errate (recupero < esame originale).
   List<Grade> getGradesForAttendee(String courseId, String attendeeId) =>
       getGradesForCourse(courseId)
           .where((g) => g.attendeeId == attendeeId)
-          .toList()
-        ..sort((a, b) => a.date.compareTo(b.date));
+          .toList();
 
   List<Grade> getGradesForModule(String courseId, int moduleNumber) =>
       getGradesForCourse(courseId)
@@ -49,7 +51,7 @@ class GradeService {
     if (raw.isEmpty) return {};
     final course = Course.fromJson(raw.first);
     final typeInfo =
-        _refService.getEffectiveCourseType(course.courseTypeId, course.extensionTypeId);
+        _refService.getEffectiveCourseType(course.courseTypeId, course.extensionTypeId, course.mamlCombinationId);
     if (typeInfo == null) return {};
     return {for (final m in typeInfo.modules) m.number: m.assessmentCount};
   }

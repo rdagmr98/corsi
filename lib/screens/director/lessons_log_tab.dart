@@ -92,7 +92,7 @@ class _DirectorLessonsLogTabState extends ConsumerState<DirectorLessonsLogTab> {
   void _refresh() {
     if (_selected == null) return;
     setState(() {
-      _typeInfo = _refService.getEffectiveCourseType(_selected!.courseTypeId, _selected!.extensionTypeId);
+      _typeInfo = _refService.getEffectiveCourseType(_selected!.courseTypeId, _selected!.extensionTypeId, _selected!.mamlCombinationId);
       _allLessons = _scheduleService.getLessonsForCourse(_selected!.id)
           .where((l) => l.confirmed && l.timeSlot > 0)
           .toList();

@@ -174,6 +174,66 @@ class ScheduleTemplate {
   };
 }
 
+class VfiModuleHours {
+  final int moduleNumber;
+  final int theoryHours;
+  final int practicalHours;
+
+  const VfiModuleHours({
+    required this.moduleNumber,
+    required this.theoryHours,
+    required this.practicalHours,
+  });
+
+  factory VfiModuleHours.fromJson(Map<String, dynamic> j) => VfiModuleHours(
+    moduleNumber: j['number'] as int,
+    theoryHours: j['theoryHours'] as int? ?? 0,
+    practicalHours: j['practicalHours'] as int? ?? 0,
+  );
+
+  Map<String, dynamic> toJson() => {
+    'number': moduleNumber,
+    'theoryHours': theoryHours,
+    if (practicalHours > 0) 'practicalHours': practicalHours,
+  };
+}
+
+class VfiCombination {
+  final String id;
+  final String inputLicense;
+  final String outputLicense;
+  final int weeks;
+  final List<VfiModuleHours> moduleHours;
+
+  const VfiCombination({
+    required this.id,
+    required this.inputLicense,
+    required this.outputLicense,
+    required this.weeks,
+    required this.moduleHours,
+  });
+
+  String get label => '$inputLicense → $outputLicense';
+
+  factory VfiCombination.fromJson(Map<String, dynamic> j) => VfiCombination(
+    id: j['id'] as String,
+    inputLicense: j['inputLicense'] as String,
+    outputLicense: j['outputLicense'] as String,
+    weeks: j['weeks'] as int? ?? 12,
+    moduleHours: (j['moduleHours'] as List? ?? [])
+        .map((m) => VfiModuleHours.fromJson(m as Map<String, dynamic>))
+        .toList(),
+  );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'inputLicense': inputLicense,
+    'outputLicense': outputLicense,
+    'weeks': weeks,
+    'moduleHours': moduleHours.map((m) => m.toJson()).toList(),
+  };
+}
+
 class CourseTypeInfo {
   final String id;
   final String code;
@@ -182,6 +242,7 @@ class CourseTypeInfo {
   final int maxAttendees;
   final ScheduleTemplate schedule;
   final List<ModuleInfo> modules;
+  final List<VfiCombination> vfiCombinations;
 
   const CourseTypeInfo({
     required this.id,
@@ -191,6 +252,7 @@ class CourseTypeInfo {
     required this.maxAttendees,
     required this.schedule,
     required this.modules,
+    this.vfiCombinations = const [],
   });
 
   int get totalTheoryHours =>
@@ -210,6 +272,9 @@ class CourseTypeInfo {
     modules: (j['modules'] as List? ?? [])
         .map((m) => ModuleInfo.fromJson(m as Map<String, dynamic>))
         .toList(),
+    vfiCombinations: (j['vfiCombinations'] as List? ?? [])
+        .map((c) => VfiCombination.fromJson(c as Map<String, dynamic>))
+        .toList(),
   );
 
   Map<String, dynamic> toJson() => {
@@ -220,6 +285,8 @@ class CourseTypeInfo {
     'maxAttendees': maxAttendees,
     'schedule': schedule.toJson(),
     'modules': modules.map((m) => m.toJson()).toList(),
+    if (vfiCombinations.isNotEmpty)
+      'vfiCombinations': vfiCombinations.map((c) => c.toJson()).toList(),
   };
 }
 

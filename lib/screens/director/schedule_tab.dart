@@ -63,7 +63,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
       _weekNotes = _scheduleService.getNotesForWeek(_selected!.id, _weekStart);
       _allCourseLessons = _scheduleService.getLessonsForCourse(_selected!.id)
           .where((l) => l.timeSlot > 0).toList();
-      _typeInfo = _refService.getEffectiveCourseType(_selected!.courseTypeId, _selected!.extensionTypeId);
+      _typeInfo = _refService.getEffectiveCourseType(_selected!.courseTypeId, _selected!.extensionTypeId, _selected!.mamlCombinationId);
     });
   }
 

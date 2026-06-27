@@ -67,6 +67,7 @@ class _CoursesTabState extends ConsumerState<CoursesTab> {
     final isNew = course == null;
 
     String? selectedType = course?.courseTypeId ?? (courseTypes.isNotEmpty ? courseTypes.first.id : null);
+    String? selectedMamlCombo = course?.mamlCombinationId;
     final titleCtrl     = TextEditingController(text: course?.title ?? '');
     DateTime? startDate = course?.startDate;
     Set<String> selectedDirectors  = Set.from(course?.directorIds ?? []);
@@ -96,8 +97,45 @@ class _CoursesTabState extends ConsumerState<CoursesTab> {
                     items: courseTypes
                         .map((t) => DropdownMenuItem(value: t.id, child: Text(t.code)))
                         .toList(),
-                    onChanged: (v) => setDlg(() => selectedType = v),
+                    onChanged: (v) {
+                      setDlg(() {
+                        selectedType = v;
+                        if (v != 'maml') selectedMamlCombo = null;
+                      });
+                    },
                   ),
+                  Builder(builder: (_) {
+                    if (selectedType != 'maml') return const SizedBox.shrink();
+                    final combos = _refService.getCourseType('maml')?.vfiCombinations ?? [];
+                    if (combos.isEmpty) return const SizedBox.shrink();
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 12),
+                        _label('Combinazione VFI (licenza in ingresso → in uscita)'),
+                        DropdownButtonFormField<String?>(
+                          value: selectedMamlCombo,
+                          dropdownColor: kSurface,
+                          style: const TextStyle(color: kText),
+                          decoration: const InputDecoration(isDense: true),
+                          hint: const Text('Nessuna (usa orario BTC standard)',
+                              style: TextStyle(color: kTextDim, fontSize: 13)),
+                          items: [
+                            const DropdownMenuItem<String?>(
+                              value: null,
+                              child: Text('Nessuna (usa orario BTC standard)',
+                                  style: TextStyle(color: kTextDim)),
+                            ),
+                            ...combos.map((c) => DropdownMenuItem<String?>(
+                                  value: c.id,
+                                  child: Text(c.label),
+                                )),
+                          ],
+                          onChanged: (v) => setDlg(() => selectedMamlCombo = v),
+                        ),
+                      ],
+                    );
+                  }),
                   const SizedBox(height: 12),
                   _label('Titolo'),
                   TextField(
@@ -169,6 +207,7 @@ class _CoursesTabState extends ConsumerState<CoursesTab> {
                       title: title,
                       createdBy: masterId,
                       startDate: startDate,
+                      mamlCombinationId: selectedMamlCombo,
                       directorIds: selectedDirectors.toList(),
                       instructorIds: selectedInstructors.toList(),
                       attendeeIds: selectedAttendees.toList(),
@@ -176,6 +215,7 @@ class _CoursesTabState extends ConsumerState<CoursesTab> {
                   } else {
                     await _courseService.updateCourse(course!.copyWith(
                       courseTypeId: selectedType,
+                      mamlCombinationId: selectedMamlCombo,
                       title: title,
                       startDate: startDate,
                       directorIds: selectedDirectors.toList(),
@@ -311,7 +351,7 @@ class _CoursesTabState extends ConsumerState<CoursesTab> {
       );
       if (confirm != true) return;
 
-      final typeInfo = _refService.getEffectiveCourseType(c.courseTypeId, c.extensionTypeId);
+      final typeInfo = _refService.getEffectiveCourseType(c.courseTypeId, c.extensionTypeId, c.mamlCombinationId);
       final lessons = _scheduleService.getLessonsForCourse(c.id);
       final allUsers = _userService.getAllUsers();
       final attendees = allUsers.where((u) => c.attendeeIds.contains(u.id)).toList();
@@ -402,7 +442,7 @@ class _CoursesTabState extends ConsumerState<CoursesTab> {
                   itemCount: _courses.length,
                   itemBuilder: (_, i) {
                     final c = _courses[i];
-                    final typeInfo = _refService.getEffectiveCourseType(c.courseTypeId, c.extensionTypeId);
+                    final typeInfo = _refService.getEffectiveCourseType(c.courseTypeId, c.extensionTypeId, c.mamlCombinationId);
                     final color = _statusColor(c.courseStatus);
                     return Card(
                       color: kCard,

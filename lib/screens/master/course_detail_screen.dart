@@ -65,7 +65,7 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
 
   @override
   Widget build(BuildContext context) {
-    final typeInfo = _refService.getEffectiveCourseType(_course.courseTypeId, _course.extensionTypeId);
+    final typeInfo = _refService.getEffectiveCourseType(_course.courseTypeId, _course.extensionTypeId, _course.mamlCombinationId);
     final confirmedLessons = _lessons.where((l) => l.confirmed && l.timeSlot > 0).toList();
 
     return Dialog(

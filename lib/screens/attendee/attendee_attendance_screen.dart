@@ -58,7 +58,7 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
     final lessons   = _scheduleService.getLessonsForCourse(course.id);
     final records   = _attendanceService.getRecordsForAttendee(course.id, widget.userId);
     final recordMap = {for (final r in records) r.scheduleId: r};
-    final typeInfo  = _refService.getEffectiveCourseType(course.courseTypeId, course.extensionTypeId);
+    final typeInfo  = _refService.getEffectiveCourseType(course.courseTypeId, course.extensionTypeId, course.mamlCombinationId);
 
     String normCode(String code) => ScheduleService.normalizeSubCode(code);
 

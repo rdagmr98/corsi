@@ -27,6 +27,7 @@ class Course {
   final String id;
   final String courseTypeId;
   final String? extensionTypeId; // optional mil extension (e.g. 'b1mil' for a b1 course)
+  final String? mamlCombinationId; // VFI combination id for maml courses
   final String title;
   final DateTime? startDate;
   final DateTime? endDate;
@@ -43,6 +44,7 @@ class Course {
     required this.id,
     required this.courseTypeId,
     this.extensionTypeId,
+    this.mamlCombinationId,
     required this.title,
     this.startDate,
     this.endDate,
@@ -63,6 +65,7 @@ class Course {
     id: j['id'] as String,
     courseTypeId: j['course_type_id'] as String,
     extensionTypeId: j['extension_type_id'] as String?,
+    mamlCombinationId: j['maml_combination_id'] as String?,
     title: j['title'] as String,
     startDate: j['start_date'] != null
         ? DateTime.tryParse(j['start_date'] as String)
@@ -88,6 +91,7 @@ class Course {
     'id': id,
     'course_type_id': courseTypeId,
     if (extensionTypeId != null) 'extension_type_id': extensionTypeId,
+    if (mamlCombinationId != null) 'maml_combination_id': mamlCombinationId,
     'title': title,
     'start_date': startDate?.toIso8601String().split('T').first,
     'end_date': endDate?.toIso8601String().split('T').first,
@@ -104,6 +108,7 @@ class Course {
   Course copyWith({
     String? courseTypeId,
     Object? extensionTypeId = _s,
+    Object? mamlCombinationId = _s,
     String? title,
     Object? startDate = _s,
     Object? endDate = _s,
@@ -116,6 +121,7 @@ class Course {
     id: id,
     courseTypeId: courseTypeId ?? this.courseTypeId,
     extensionTypeId: identical(extensionTypeId, _s) ? this.extensionTypeId : extensionTypeId as String?,
+    mamlCombinationId: identical(mamlCombinationId, _s) ? this.mamlCombinationId : mamlCombinationId as String?,
     title: title ?? this.title,
     startDate: identical(startDate, _s) ? this.startDate : startDate as DateTime?,
     endDate: identical(endDate, _s) ? this.endDate : endDate as DateTime?,

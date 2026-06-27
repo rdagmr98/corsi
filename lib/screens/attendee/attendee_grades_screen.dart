@@ -52,7 +52,7 @@ class _AttendeeGradesScreenState extends ConsumerState<AttendeeGradesScreen> {
     final course = _selected;
     if (course == null) return const SizedBox();
 
-    final typeInfo = _refService.getEffectiveCourseType(course.courseTypeId, course.extensionTypeId);
+    final typeInfo = _refService.getEffectiveCourseType(course.courseTypeId, course.extensionTypeId, course.mamlCombinationId);
     final summary = _gradeService.getAttendeeSummary(course.id, widget.userId);
 
     final gradScore = _gradeService.getGraduationScore(course.id, widget.userId);

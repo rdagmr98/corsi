@@ -476,7 +476,7 @@ class _DirectorGradesTabState extends ConsumerState<DirectorGradesTab> {
     final course = _selected;
     if (course == null) return const SizedBox();
 
-    final typeInfo = _refService.getEffectiveCourseType(course.courseTypeId, course.extensionTypeId);
+    final typeInfo = _refService.getEffectiveCourseType(course.courseTypeId, course.extensionTypeId, course.mamlCombinationId);
     final attendees = _userService.getAllUsers()
         .where((u) => course.attendeeIds.contains(u.id))
         .toList();
