@@ -5,6 +5,7 @@ import '../../models/schedule_models.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/attendance_service.dart';
 import '../../services/course_service.dart';
+import '../../services/notification_service.dart';
 import '../../services/reference_service.dart';
 import '../../services/schedule_service.dart';
 import '../../services/user_service.dart';
@@ -24,6 +25,7 @@ class _InstructorTodayScreenState extends ConsumerState<InstructorTodayScreen> {
   final _courseService = CourseService();
   final _userService = UserService();
   final _refService = ReferenceService();
+  final _notifService = NotificationService();
   List<ScheduledLesson> _todayLessons = [];
   List<SlotNote> _todayNotes = [];
 
@@ -31,6 +33,28 @@ class _InstructorTodayScreenState extends ConsumerState<InstructorTodayScreen> {
   void initState() {
     super.initState();
     _load();
+    _generateDayBeforeReminders();
+  }
+
+  Future<void> _generateDayBeforeReminders() async {
+    final tomorrow = DateTime.now().add(const Duration(days: 1));
+    final lessons = _scheduleService
+        .getLessonsForInstructor(widget.userId)
+        .where((l) =>
+            !l.confirmed &&
+            l.date.year == tomorrow.year &&
+            l.date.month == tomorrow.month &&
+            l.date.day == tomorrow.day)
+        .toList();
+    for (final l in lessons) {
+      final course = _courseService.findById(l.courseId);
+      await _notifService.notifyLessonReminder(
+        instructorId: widget.userId,
+        courseTitle: course?.title ?? '',
+        dateLabel: DateFormat('dd/MM/yyyy').format(l.date),
+        moduleLabel: l.topic.isNotEmpty ? l.topic : 'M${l.moduleNumber}',
+      );
+    }
   }
 
   void _load() {
@@ -137,6 +161,13 @@ class _InstructorTodayScreenState extends ConsumerState<InstructorTodayScreen> {
                         confirmedBy: widget.userId,
                       );
                       await _scheduleService.confirmLesson(lesson.id, widget.userId);
+                      await _notifService.notifyLessonValidated(
+                        directorIds: course.directorIds,
+                        instructorName: _userService.findById(widget.userId)?.fullName ?? widget.userId,
+                        courseTitle: course.title,
+                        dateLabel: DateFormat('dd/MM/yyyy').format(lesson.date),
+                        moduleLabel: lesson.topic.isNotEmpty ? lesson.topic : 'M${lesson.moduleNumber}',
+                      );
                       _reload();
                     },
                     child: const Text('Conferma presenze'),

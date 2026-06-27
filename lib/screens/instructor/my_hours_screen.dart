@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/course_service.dart';
 import '../../services/grade_service.dart';
+import '../../services/notification_service.dart';
 import '../../services/user_service.dart';
 import '../../theme.dart';
 
@@ -16,9 +17,10 @@ class InstructorHoursScreen extends ConsumerStatefulWidget {
 }
 
 class _InstructorHoursScreenState extends ConsumerState<InstructorHoursScreen> {
-  final _gradeService  = GradeService();
-  final _userService   = UserService();
-  final _courseService = CourseService();
+  final _gradeService   = GradeService();
+  final _userService    = UserService();
+  final _courseService  = CourseService();
+  final _notifService   = NotificationService();
 
   @override
   void initState() {
@@ -107,7 +109,17 @@ class _InstructorHoursScreenState extends ConsumerState<InstructorHoursScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 const Text('Storico registrazioni', style: TextStyle(color: kText, fontWeight: FontWeight.w600)),
-                const SizedBox(),
+                OutlinedButton.icon(
+                  onPressed: () => _showAddUpdateDialog(),
+                  icon: const Icon(Icons.add, size: 16),
+                  label: const Text('Aggiungi'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: kPrimary,
+                    side: const BorderSide(color: kPrimary),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    textStyle: const TextStyle(fontSize: 12),
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 8),
@@ -120,7 +132,12 @@ class _InstructorHoursScreenState extends ConsumerState<InstructorHoursScreen> {
               ...updates.reversed.map((u) => Card(
                 color: kCard,
                 margin: const EdgeInsets.only(bottom: 6),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  side: u.isPending
+                      ? BorderSide(color: kWarning.withOpacity(0.4))
+                      : BorderSide.none,
+                ),
                 child: ListTile(
                   leading: Icon(
                     u.isTeaching ? Icons.school : Icons.update,
@@ -130,12 +147,123 @@ class _InstructorHoursScreenState extends ConsumerState<InstructorHoursScreen> {
                   title: Text(u.description, style: const TextStyle(color: kText, fontSize: 13)),
                   subtitle: Text(DateFormat('dd/MM/yyyy').format(u.date),
                       style: const TextStyle(color: kTextDim, fontSize: 11)),
-                  trailing: Text(
-                    '${u.hours}h',
-                    style: const TextStyle(color: kText, fontWeight: FontWeight.bold),
-                  ),
+                  trailing: u.isPending
+                      ? Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: kWarning.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Text('In attesa',
+                              style: TextStyle(color: kWarning, fontSize: 10, fontWeight: FontWeight.bold)),
+                        )
+                      : Text(
+                          '${u.hours}h',
+                          style: const TextStyle(color: kText, fontWeight: FontWeight.bold),
+                        ),
                 ),
               )),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showAddUpdateDialog() async {
+    String type = 'professional';
+    final descCtrl = TextEditingController();
+    final hoursCtrl = TextEditingController();
+    DateTime date = DateTime.now();
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialog) => AlertDialog(
+          backgroundColor: kCard,
+          title: const Text('Aggiungi aggiornamento', style: TextStyle(color: kText)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Tipo', style: TextStyle(color: kTextDim, fontSize: 12)),
+              const SizedBox(height: 4),
+              DropdownButtonFormField<String>(
+                value: type,
+                dropdownColor: kSurface,
+                style: const TextStyle(color: kText, fontSize: 13),
+                items: const [
+                  DropdownMenuItem(value: 'professional', child: Text('Aggiornamento professionale')),
+                  DropdownMenuItem(value: 'teaching', child: Text('Insegnamento esterno')),
+                ],
+                onChanged: (v) => setDialog(() => type = v!),
+              ),
+              const SizedBox(height: 12),
+              const Text('Descrizione', style: TextStyle(color: kTextDim, fontSize: 12)),
+              const SizedBox(height: 4),
+              TextField(
+                controller: descCtrl,
+                style: const TextStyle(color: kText, fontSize: 13),
+                decoration: const InputDecoration(
+                  hintText: 'Es. Corso sicurezza volo',
+                  hintStyle: TextStyle(color: kTextDim),
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text('Ore', style: TextStyle(color: kTextDim, fontSize: 12)),
+              const SizedBox(height: 4),
+              TextField(
+                controller: hoursCtrl,
+                keyboardType: TextInputType.number,
+                style: const TextStyle(color: kText, fontSize: 13),
+                decoration: const InputDecoration(hintText: '0', hintStyle: TextStyle(color: kTextDim)),
+              ),
+              const SizedBox(height: 12),
+              const Text('Data', style: TextStyle(color: kTextDim, fontSize: 12)),
+              const SizedBox(height: 4),
+              InkWell(
+                onTap: () async {
+                  final picked = await showDatePicker(
+                    context: ctx,
+                    initialDate: date,
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime.now(),
+                  );
+                  if (picked != null) setDialog(() => date = picked);
+                },
+                child: Text(
+                  DateFormat('dd/MM/yyyy').format(date),
+                  style: const TextStyle(color: kPrimary, fontSize: 13),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annulla', style: TextStyle(color: kTextDim)),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final desc = descCtrl.text.trim();
+                final hours = double.tryParse(hoursCtrl.text.replaceAll(',', '.')) ?? 0;
+                if (desc.isEmpty || hours <= 0) return;
+                Navigator.pop(ctx);
+                await _gradeService.addPendingUpdate(
+                  instructorId: widget.userId,
+                  type: type,
+                  hours: hours,
+                  description: desc,
+                  date: date,
+                );
+                final me = _userService.findById(widget.userId);
+                await _notifService.notifyUpdateSubmitted(
+                  instructorName: me?.fullName ?? widget.userId,
+                  updateDescription: desc,
+                );
+                _reload();
+              },
+              child: const Text('Invia'),
+            ),
           ],
         ),
       ),

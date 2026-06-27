@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../providers/auth_provider.dart';
 import '../../theme.dart';
 import '../../widgets/change_password_dialog.dart';
+import '../../widgets/notification_panel_widget.dart';
 import 'attendee_schedule_screen.dart';
 import 'attendee_grades_screen.dart';
 import 'attendee_attendance_screen.dart';
@@ -18,10 +19,29 @@ class AttendeeShell extends ConsumerStatefulWidget {
 class _AttendeeShellState extends ConsumerState<AttendeeShell> {
   int _tab = 0;
 
+  void _openNotifications(BuildContext context, String userId) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: kSurface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (_, __) => NotificationPanelWidget(userId: userId),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final user = ref.watch(authProvider).currentUser;
+    final auth = ref.watch(authProvider);
+    final user = auth.currentUser;
     final userId = user?.id ?? '';
+    final unreadCount = auth.unreadCount;
 
     return Scaffold(
       backgroundColor: kBg,
@@ -35,6 +55,25 @@ class _AttendeeShellState extends ConsumerState<AttendeeShell> {
           ],
         ),
         actions: [
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.notifications_outlined, color: kTextDim),
+                tooltip: 'Notifiche',
+                onPressed: () => _openNotifications(context, userId),
+              ),
+              if (unreadCount > 0)
+                Positioned(
+                  top: 6, right: 6,
+                  child: Container(
+                    width: 16, height: 16,
+                    decoration: const BoxDecoration(color: kError, shape: BoxShape.circle),
+                    child: Center(child: Text('$unreadCount', style: const TextStyle(color: Colors.white, fontSize: 9))),
+                  ),
+                ),
+            ],
+          ),
           IconButton(
             icon: const Icon(Icons.lock_reset, color: kTextDim),
             tooltip: 'Cambia password',

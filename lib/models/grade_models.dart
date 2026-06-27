@@ -110,6 +110,7 @@ class InstructorUpdate {
   final DateTime date;
   final String description;
   final DateTime createdAt;
+  final String status;
 
   const InstructorUpdate({
     required this.id,
@@ -120,10 +121,13 @@ class InstructorUpdate {
     required this.date,
     required this.description,
     required this.createdAt,
+    this.status = 'approved',
   });
 
   bool get isTeaching => type == 'teaching';
   bool get isProfessional => type == 'professional';
+  bool get isApproved => status == 'approved';
+  bool get isPending => status == 'pending';
 
   factory InstructorUpdate.fromJson(Map<String, dynamic> j) => InstructorUpdate(
     id: j['id'] as String,
@@ -136,6 +140,7 @@ class InstructorUpdate {
     createdAt: DateTime.parse(
       j['created_at'] as String? ?? DateTime.now().toIso8601String(),
     ),
+    status: j['status'] as String? ?? 'approved',
   );
 
   Map<String, dynamic> toJson() => {
@@ -147,6 +152,7 @@ class InstructorUpdate {
     'date': date.toIso8601String().split('T').first,
     'description': description,
     'created_at': createdAt.toIso8601String(),
+    'status': status,
   };
 }
 

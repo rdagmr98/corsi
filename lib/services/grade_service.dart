@@ -110,11 +110,16 @@ class GradeService {
           .toList()
         ..sort((a, b) => a.date.compareTo(b.date));
 
+  List<InstructorUpdate> getPendingUpdates() =>
+      _db.updates.map(InstructorUpdate.fromJson).where((u) => u.isPending).toList()
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
   /// Ore insegnamento da registrazioni manuali (updates.json), ultimi 365 gg.
+  /// Conta solo update approvati (non pending).
   double getManualTeachingHoursRollingYear(String instructorId) {
     final cutoff = DateTime.now().subtract(const Duration(days: 365));
     return getUpdatesForInstructor(instructorId)
-        .where((u) => u.isTeaching && u.date.isAfter(cutoff))
+        .where((u) => u.isTeaching && u.isApproved && u.date.isAfter(cutoff))
         .fold(0.0, (s, u) => s + u.hours);
   }
 
@@ -150,7 +155,7 @@ class GradeService {
   double getProfessionalUpdateHoursLast2Years(String instructorId) {
     final cutoff = DateTime.now().subtract(const Duration(days: 730));
     return getUpdatesForInstructor(instructorId)
-        .where((u) => u.isProfessional && u.date.isAfter(cutoff))
+        .where((u) => u.isProfessional && u.isApproved && u.date.isAfter(cutoff))
         .fold(0.0, (s, u) => s + u.hours);
   }
 
@@ -174,10 +179,46 @@ class GradeService {
       'date': (date ?? now).toIso8601String().split('T').first,
       'description': description,
       'created_at': now.toIso8601String(),
+      'status': 'approved',
     };
     updates.add(entry);
     await _db.saveUpdates(updates);
     return InstructorUpdate.fromJson(entry);
+  }
+
+  Future<InstructorUpdate> addPendingUpdate({
+    required String instructorId,
+    required String type,
+    required double hours,
+    required String description,
+    String? courseId,
+    DateTime? date,
+  }) async {
+    final updates = _db.updates.toList();
+    final now = DateTime.now();
+    final id = now.microsecondsSinceEpoch.toRadixString(16);
+    final entry = {
+      'id': id,
+      'instructor_id': instructorId,
+      'type': type,
+      'course_id': courseId,
+      'hours': hours,
+      'date': (date ?? now).toIso8601String().split('T').first,
+      'description': description,
+      'created_at': now.toIso8601String(),
+      'status': 'pending',
+    };
+    updates.add(entry);
+    await _db.saveUpdates(updates);
+    return InstructorUpdate.fromJson(entry);
+  }
+
+  Future<void> approveUpdate(String updateId) async {
+    final updates = _db.updates.toList();
+    final idx = updates.indexWhere((u) => u['id'] == updateId);
+    if (idx < 0) return;
+    updates[idx] = {...updates[idx], 'status': 'approved'};
+    await _db.saveUpdates(updates);
   }
 
   /// Overall graduation score: sum(score × weight) / sum(weights) for passing grades only.

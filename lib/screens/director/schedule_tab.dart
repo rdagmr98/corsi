@@ -10,6 +10,7 @@ import '../../services/attendance_service.dart';
 import '../../services/course_service.dart';
 import '../../services/gh_db_service.dart';
 import '../../services/grade_service.dart';
+import '../../services/notification_service.dart';
 import '../../services/reference_service.dart';
 import '../../services/schedule_service.dart';
 import '../../services/user_service.dart';
@@ -30,6 +31,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
   final _attendanceService = AttendanceService();
   final _userService = UserService();
   final _gradeService = GradeService();
+  final _notifService = NotificationService();
 
   List<Course> _courses = [];
   Course? _selected;
@@ -465,6 +467,13 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                     instructorId: selectedInstructor,
                     taskId: tid,
                   );
+                  await _notifService.notifyLessonScheduled(
+                    attendeeIds: _selected!.attendeeIds,
+                    instructorId: selectedInstructor,
+                    courseTitle: _selected!.title,
+                    dateLabel: DateFormat('dd/MM/yyyy').format(date),
+                    moduleLabel: selSub?.name ?? module?.name ?? '',
+                  );
                   _refreshWeek();
                   final next = _nextFreeSlot(date, slot);
                   if (next == null) {
@@ -500,6 +509,13 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                     timeSlot: slot,
                     instructorId: selectedInstructor,
                     taskId: tid,
+                  );
+                  await _notifService.notifyLessonScheduled(
+                    attendeeIds: _selected!.attendeeIds,
+                    instructorId: selectedInstructor,
+                    courseTitle: _selected!.title,
+                    dateLabel: DateFormat('dd/MM/yyyy').format(date),
+                    moduleLabel: selSub?.name ?? module?.name ?? '',
                   );
                   _refreshWeek();
                 },
@@ -1203,6 +1219,15 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                   moduleNumber: newModuleNum,
                   topic: newTopic,
                 ));
+                if (selectedInstructor != null &&
+                    selectedInstructor != lesson.instructorId) {
+                  await _notifService.notifyLessonChanged(
+                    instructorId: selectedInstructor!,
+                    courseTitle: _selected!.title,
+                    dateLabel: DateFormat('dd/MM/yyyy').format(lesson.date),
+                    moduleLabel: newTopic,
+                  );
+                }
                 await saveAbsences(force: false);
                 if (subChanged && recompile) {
                   final nextDay = lesson.date.add(const Duration(days: 1));

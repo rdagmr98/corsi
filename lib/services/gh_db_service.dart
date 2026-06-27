@@ -122,6 +122,7 @@ class GhDbService {
       _loadFile('updates.json'),
       _loadFile('amc.json'),
       _loadFile('notes.json'),
+      _loadFile('notifications.json'),
     ]);
   }
 
@@ -417,6 +418,12 @@ class GhDbService {
 
   Future<void> saveSlotNotes(List<Map<String, dynamic>> data) async =>
       _enqueueWrite('notes.json', data, 'aggiornamento note slot');
+
+  List<Map<String, dynamic>> get notifications =>
+      List<Map<String, dynamic>>.from(_getData('notifications.json') as List? ?? []);
+
+  Future<void> saveNotifications(List<Map<String, dynamic>> data) async =>
+      _enqueueWrite('notifications.json', data, 'aggiornamento notifiche');
 
   Future<void> updateUserPassword(String userId, String newHash) async {
     final all = users;

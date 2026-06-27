@@ -5,6 +5,7 @@ import '../../models/user_models.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/gh_db_service.dart';
 import '../../services/grade_service.dart';
+import '../../services/notification_service.dart';
 import '../../services/user_service.dart';
 import '../../theme.dart';
 import '../../utils/snackbar.dart';
@@ -16,9 +17,10 @@ class CurrencyTab extends ConsumerStatefulWidget {
 }
 
 class _CurrencyTabState extends ConsumerState<CurrencyTab> {
-  final _userService  = UserService();
-  final _gradeService = GradeService();
-  final _db           = GhDbService();
+  final _userService   = UserService();
+  final _gradeService  = GradeService();
+  final _notifService  = NotificationService();
+  final _db            = GhDbService();
   List<AppUser> _instructors = [];
   bool? _filterGo; // null=tutti, true=GO, false=NO-GO
   _SortMode _sortMode = _SortMode.name;
@@ -85,7 +87,8 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
   List<Map<String, dynamic>> _teachingByYear(String uid) {
     final byYear = <int, double>{};
     for (final u in _db.updates
-        .where((u) => u['instructor_id'] == uid && u['type'] == 'teaching')) {
+        .where((u) => u['instructor_id'] == uid && u['type'] == 'teaching'
+            && (u['status'] as String? ?? 'approved') == 'approved')) {
       final yr = DateTime.tryParse(u['date'] as String? ?? '')?.year ?? 0;
       byYear[yr] = (byYear[yr] ?? 0) + ((u['hours'] as num?)?.toDouble() ?? 0);
     }
@@ -867,6 +870,12 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
           style: TextStyle(color: kTextDim, fontSize: 11),
         ),
       ),
+      _PendingUpdatesSection(
+        gradeService: _gradeService,
+        notifService: _notifService,
+        userService: _userService,
+        onChanged: _reload,
+      ),
       Expanded(
         child: Builder(builder: (context) {
           final theoryH  = _confirmedHoursMap(true);
@@ -987,6 +996,103 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
 }
 
 enum _SortMode { name, goFirst, noGoFirst, teachH, profH }
+
+class _PendingUpdatesSection extends StatelessWidget {
+  final GradeService gradeService;
+  final NotificationService notifService;
+  final UserService userService;
+  final VoidCallback onChanged;
+
+  const _PendingUpdatesSection({
+    required this.gradeService,
+    required this.notifService,
+    required this.userService,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final pending = gradeService.getPendingUpdates();
+    if (pending.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+      decoration: BoxDecoration(
+        color: kWarning.withOpacity(0.07),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: kWarning.withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
+            child: Row(children: [
+              const Icon(Icons.pending_actions, color: kWarning, size: 16),
+              const SizedBox(width: 6),
+              Text(
+                'Aggiornamenti in attesa di validazione (${pending.length})',
+                style: const TextStyle(color: kWarning, fontSize: 12, fontWeight: FontWeight.bold),
+              ),
+            ]),
+          ),
+          const Divider(color: kBorder, height: 1),
+          ...pending.map((u) {
+            final instr = userService.findById(u.instructorId);
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              child: Row(children: [
+                const Icon(Icons.update, color: kWarning, size: 16),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        instr?.fullName ?? u.instructorId,
+                        style: const TextStyle(color: kText, fontSize: 12, fontWeight: FontWeight.w600),
+                      ),
+                      Text(
+                        '${u.description} · ${u.hours.toStringAsFixed(0)}h · ${DateFormat('dd/MM/yyyy').format(u.date)}',
+                        style: const TextStyle(color: kTextDim, fontSize: 11),
+                      ),
+                    ],
+                  ),
+                ),
+                TextButton(
+                  onPressed: () async {
+                    await gradeService.approveUpdate(u.id);
+                    await notifService.notifyUpdateApproved(
+                      instructorId: u.instructorId,
+                      description: u.description,
+                    );
+                    onChanged();
+                  },
+                  style: TextButton.styleFrom(
+                    foregroundColor: kAccent,
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  ),
+                  child: const Text('Approva', style: TextStyle(fontSize: 11)),
+                ),
+                TextButton(
+                  onPressed: () async {
+                    await gradeService.deleteUpdate(u.id);
+                    onChanged();
+                  },
+                  style: TextButton.styleFrom(
+                    foregroundColor: kError,
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  ),
+                  child: const Text('Rifiuta', style: TextStyle(fontSize: 11)),
+                ),
+              ]),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+}
 
 class _RemoveDate {
   const _RemoveDate();
