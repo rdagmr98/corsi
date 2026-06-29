@@ -489,6 +489,16 @@ class ScheduleService {
       return keptIds.contains(s['id']);
     }).toList();
 
+    // Slot già occupati dalle lezioni mantenute (confermate + manuali):
+    // il generatore non deve sovrascriverli.
+    final occupiedSlots = <String>{
+      for (final s in rawSchedules)
+        if (keptIds.contains(s['id'] as String) &&
+            s['course_id'] == courseId &&
+            (s['time_slot'] as int? ?? 0) > 0)
+          '${s['date']}_${s['time_slot']}',
+    };
+
     if (queue.isEmpty) {
       await _db.saveSchedules(cleaned);
       return;
@@ -553,6 +563,7 @@ class ScheduleService {
 
       for (final slot in slots) {
         if (qi >= queue.length) break;
+        if (occupiedSlots.contains('${dateStr}_${slot.slot}')) continue;
         final (code, modNum, lessonType) = queue[qi++];
 
         // Auto-assign task_id for practice lessons
