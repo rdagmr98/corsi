@@ -71,7 +71,6 @@ class _CoursesTabState extends ConsumerState<CoursesTab> {
     final titleCtrl     = TextEditingController(text: course?.title ?? '');
     DateTime? startDate = course?.startDate;
     Set<String> selectedDirectors  = Set.from(course?.directorIds ?? []);
-    Set<String> selectedInstructors = Set.from(course?.instructorIds ?? []);
     Set<String> selectedAttendees  = Set.from(course?.attendeeIds ?? []);
 
     await showDialog(
@@ -179,8 +178,6 @@ class _CoursesTabState extends ConsumerState<CoursesTab> {
                   else
                     _multiSelect(existingDirectors, selectedDirectors, setDlg),
                   const Divider(color: kBorder, height: 28),
-                  _label('Istruttori'),
-                  _multiSelect(instructors, selectedInstructors, setDlg),
                   const SizedBox(height: 12),
                   _label('Frequentatori'),
                   _multiSelect(attendees, selectedAttendees, setDlg),
@@ -209,7 +206,7 @@ class _CoursesTabState extends ConsumerState<CoursesTab> {
                       startDate: startDate,
                       mamlCombinationId: selectedMamlCombo,
                       directorIds: selectedDirectors.toList(),
-                      instructorIds: selectedInstructors.toList(),
+                      instructorIds: instructors.map((u) => u.id).toList(),
                       attendeeIds: selectedAttendees.toList(),
                     );
                   } else {
@@ -219,7 +216,7 @@ class _CoursesTabState extends ConsumerState<CoursesTab> {
                       title: title,
                       startDate: startDate,
                       directorIds: selectedDirectors.toList(),
-                      instructorIds: selectedInstructors.toList(),
+                      instructorIds: instructors.map((u) => u.id).toList(),
                       attendeeIds: selectedAttendees.toList(),
                     ));
                   }

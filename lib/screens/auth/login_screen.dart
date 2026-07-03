@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../models/course_models.dart';
 import '../../models/user_models.dart';
 import '../../providers/auth_provider.dart';
+import '../../services/course_service.dart';
 import '../../services/user_service.dart';
 import '../../theme.dart';
 
@@ -17,6 +19,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _usernameCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
   final _userService = UserService();
+  final _courseService = CourseService();
   bool _obscure = true;
 
   @override
@@ -52,6 +55,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     String? error;
     bool busy = false;
     bool obscure = true;
+
+    await ref.read(authProvider).initDb();
+    final courses = _courseService
+        .getAllCourses()
+        .where((c) => c.status == 'planning' || c.status == 'active')
+        .toList();
+    String? selectedCourseId = courses.isNotEmpty ? courses.first.id : null;
 
     await showDialog(
       context: context,
@@ -120,6 +130,26 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ],
                     onChanged: (v) => setDlg(() => role = v ?? UserRole.attendee),
                   ),
+                  if (role == UserRole.attendee) ...[
+                    const SizedBox(height: 10),
+                    if (courses.isEmpty)
+                      const Text(
+                        'Nessun corso disponibile al momento.',
+                        style: TextStyle(color: kWarning, fontSize: 11),
+                      )
+                    else
+                      DropdownButtonFormField<String>(
+                        value: selectedCourseId,
+                        dropdownColor: kSurface,
+                        isExpanded: true,
+                        style: const TextStyle(color: kText),
+                        decoration: const InputDecoration(labelText: 'Corso', isDense: true),
+                        items: courses
+                            .map((c) => DropdownMenuItem(value: c.id, child: Text(c.title)))
+                            .toList(),
+                        onChanged: (v) => setDlg(() => selectedCourseId = v),
+                      ),
+                  ],
                   if (error != null) ...[
                     const SizedBox(height: 10),
                     Text(error!,
@@ -164,13 +194,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           });
                           return;
                         }
-                        await _userService.createUser(
+                        final newUser = await _userService.createUser(
                           nome: nome,
                           cognome: cognome,
                           username: username,
                           password: password,
                           role: role,
                         );
+                        if (role == UserRole.attendee && selectedCourseId != null) {
+                          final course = _courseService.findById(selectedCourseId!);
+                          if (course != null) {
+                            await _courseService.updateCourse(course.copyWith(
+                              attendeeIds: [...course.attendeeIds, newUser.id],
+                            ));
+                          }
+                        }
                         if (ctx.mounted) Navigator.pop(ctx);
                         _usernameCtrl.text = username;
                         _passwordCtrl.text = password;
