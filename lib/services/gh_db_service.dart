@@ -137,7 +137,7 @@ class GhDbService {
         'Accept': 'application/vnd.github+json',
         'X-GitHub-Api-Version': '2022-11-28',
       },
-    );
+    ).timeout(const Duration(seconds: 30));
     if (res.statusCode == 200) {
       final j = jsonDecode(res.body) as Map<String, dynamic>;
       final sha = j['sha'] as String;
@@ -156,7 +156,7 @@ class GhDbService {
             'Accept': 'application/vnd.github.raw+json',
             'X-GitHub-Api-Version': '2022-11-28',
           },
-        );
+        ).timeout(const Duration(seconds: 30));
         if (blobRes.statusCode != 200) {
           throw Exception('GitHub blob ${blobRes.statusCode} loading $fileName');
         }
@@ -234,56 +234,119 @@ class GhDbService {
   }
 
   Future<void> _putLatest(String fileName, dynamic data, String msg) async {
-    const maxAttempts = 3;
-    for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+    final newSha = await _putToGitHub(fileName, data, msg);
+    // Aggiorna solo lo sha: la cache può già contenere dati più recenti
+    // in attesa di scrittura.
+    final cur = _cache[fileName];
+    _cache[fileName] = {'data': cur?['data'] ?? data, 'sha': newSha};
+  }
+
+  /// Tentativi massimi per una scrittura (1 iniziale + retry).
+  static const int _maxWriteAttempts = 6;
+  final _rng = Random();
+
+  /// PUT su GitHub con retry ed exponential backoff. Ritenta sia sui
+  /// conflitti (409, con refresh dello sha) sia sugli errori transitori
+  /// (403/429/5xx, timeout, rete assente): con un token condiviso da tutti
+  /// gli utenti un rate-limit momentaneo o un hiccup di rete non deve far
+  /// fallire il salvataggio al primo colpo. Ritorna lo sha aggiornato.
+  Future<String> _putToGitHub(String fileName, dynamic data, String msg) async {
+    for (var attempt = 1; attempt <= _maxWriteAttempts; attempt++) {
+      final sha = _getSha(fileName);
       final body = <String, dynamic>{
         'message': msg,
         'content': base64.encode(utf8.encode(jsonEncode(data))),
+        if (sha.isNotEmpty) 'sha': sha,
       };
-      final sha = _getSha(fileName);
-      if (sha.isNotEmpty) body['sha'] = sha;
-      final res = await http.put(
-        Uri.parse('$_base/$fileName'),
-        headers: {
-          ...GhConfig.authHeaders(),
-          'Accept': 'application/vnd.github+json',
-          'Content-Type': 'application/json',
-          'X-GitHub-Api-Version': '2022-11-28',
-        },
-        body: jsonEncode(body),
-      );
-      if (res.statusCode == 200 || res.statusCode == 201) {
-        final newSha =
-            ((jsonDecode(res.body) as Map)['content'] as Map)['sha'] as String;
-        // Aggiorna solo lo sha: la cache può già contenere dati più recenti
-        // in attesa di scrittura.
-        final cur = _cache[fileName];
-        _cache[fileName] = {'data': cur?['data'] ?? data, 'sha': newSha};
-        return;
-      }
-      if (res.statusCode == 409 && attempt < maxAttempts) {
-        await _refreshSha(fileName);
-        await Future<void>.delayed(const Duration(seconds: 1));
+
+      final http.Response res;
+      try {
+        res = await http
+            .put(
+              Uri.parse('$_base/$fileName'),
+              headers: {
+                ...GhConfig.authHeaders(),
+                'Accept': 'application/vnd.github+json',
+                'Content-Type': 'application/json',
+                'X-GitHub-Api-Version': '2022-11-28',
+              },
+              body: jsonEncode(body),
+            )
+            .timeout(const Duration(seconds: 30));
+      } catch (e) {
+        if (attempt == _maxWriteAttempts) {
+          throw Exception('Rete non raggiungibile scrivendo $fileName: $e');
+        }
+        await _backoff(attempt);
         continue;
       }
-      if (res.statusCode == 409) {
-        throw ConflictException('Conflitto scrittura dopo $maxAttempts tentativi.');
+
+      if (res.statusCode == 200 || res.statusCode == 201) {
+        return ((jsonDecode(res.body) as Map)['content'] as Map)['sha'] as String;
       }
-      throw Exception('GitHub API ${res.statusCode}: ${res.body}');
+
+      final retryable = res.statusCode == 409 ||
+          res.statusCode == 403 ||
+          res.statusCode == 429 ||
+          res.statusCode >= 500;
+      if (!retryable || attempt == _maxWriteAttempts) {
+        if (res.statusCode == 409) {
+          throw ConflictException('Conflitto scrittura dopo $attempt tentativi.');
+        }
+        throw Exception('GitHub API ${res.statusCode}: ${res.body}');
+      }
+
+      if (res.statusCode == 409) {
+        await _refreshSha(fileName);
+        await _backoff(attempt);
+      } else {
+        await _waitForRateLimit(res);
+      }
     }
+    throw Exception('Salvataggio $fileName non riuscito dopo $_maxWriteAttempts tentativi.');
+  }
+
+  Future<void> _backoff(int attempt) async {
+    final ms = min(1000 * (1 << (attempt - 1)), 16000);
+    await Future<void>.delayed(Duration(milliseconds: ms + _rng.nextInt(400)));
+  }
+
+  /// Attende secondo l'header Retry-After / X-RateLimit-Reset di GitHub
+  /// quando presente (rate-limit primario o secondario), altrimenti applica
+  /// un'attesa di default.
+  Future<void> _waitForRateLimit(http.Response res) async {
+    final retryAfter = int.tryParse(res.headers['retry-after'] ?? '');
+    if (retryAfter != null) {
+      await Future<void>.delayed(Duration(seconds: retryAfter.clamp(1, 30)));
+      return;
+    }
+    final resetEpoch = int.tryParse(res.headers['x-ratelimit-reset'] ?? '');
+    if (resetEpoch != null) {
+      final waitSecs = resetEpoch - DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      if (waitSecs > 0) {
+        await Future<void>.delayed(Duration(seconds: waitSecs.clamp(1, 30)));
+        return;
+      }
+    }
+    await Future<void>.delayed(const Duration(seconds: 2));
   }
 
   /// Recupera solo lo sha corrente del file (listing della directory, senza
   /// scaricare il contenuto) mantenendo i dati ottimistici in cache.
   Future<void> _refreshSha(String fileName) async {
-    final res = await http.get(
-      Uri.parse(_base),
-      headers: {
-        ...GhConfig.authHeaders(),
-        'Accept': 'application/vnd.github+json',
-        'X-GitHub-Api-Version': '2022-11-28',
-      },
-    );
+    final http.Response res;
+    try {
+      res = await http.get(
+        Uri.parse(_base),
+        headers: {
+          ...GhConfig.authHeaders(),
+          'Accept': 'application/vnd.github+json',
+          'X-GitHub-Api-Version': '2022-11-28',
+        },
+      ).timeout(const Duration(seconds: 15));
+    } catch (_) {
+      return;
+    }
     if (res.statusCode != 200) return;
     for (final e in (jsonDecode(res.body) as List).cast<Map<String, dynamic>>()) {
       if (e['name'] == fileName) {
@@ -316,42 +379,13 @@ class GhDbService {
   }
 
   Future<void> _writeFile(String fileName, dynamic data, String msg) async {
-    const maxAttempts = 3;
-    for (var attempt = 1; attempt <= maxAttempts; attempt++) {
-      final body = <String, dynamic>{
-        'message': msg,
-        'content': base64.encode(utf8.encode(jsonEncode(data))),
-      };
-      final sha = _getSha(fileName);
-      if (sha.isNotEmpty) body['sha'] = sha;
-      final res = await http.put(
-        Uri.parse('$_base/$fileName'),
-        headers: {
-          ...GhConfig.authHeaders(),
-          'Accept': 'application/vnd.github+json',
-          'Content-Type': 'application/json',
-          'X-GitHub-Api-Version': '2022-11-28',
-        },
-        body: jsonEncode(body),
-      );
-      if (res.statusCode == 200 || res.statusCode == 201) {
-        final newSha =
-            ((jsonDecode(res.body) as Map)['content'] as Map)['sha'] as String;
-        _cache[fileName] = {'data': data, 'sha': newSha};
-        saveError.value = null;
-        return;
-      }
-      if (res.statusCode == 409) {
-        await _loadFile(fileName);
-        if (attempt < maxAttempts) {
-          await Future<void>.delayed(const Duration(seconds: 1));
-          continue;
-        }
-        saveError.value = 'Salvataggio $fileName non riuscito: conflitto.';
-        throw ConflictException('Conflitto scrittura dopo $maxAttempts tentativi.');
-      }
-      saveError.value = 'Salvataggio $fileName non riuscito (${res.statusCode}).';
-      throw Exception('GitHub API ${res.statusCode}: ${res.body}');
+    try {
+      final newSha = await _putToGitHub(fileName, data, msg);
+      _cache[fileName] = {'data': data, 'sha': newSha};
+      saveError.value = null;
+    } catch (e) {
+      saveError.value = 'Salvataggio $fileName non riuscito: $e';
+      rethrow;
     }
   }
 
