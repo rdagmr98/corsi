@@ -416,13 +416,29 @@ class GhDbService {
   Future<void> saveUsers(List<Map<String, dynamic>> data) async {
     final encrypted = data.map(_encryptUser).toList();
     _enqueueWrite('users.json', data, 'aggiornamento utenti', wire: encrypted);
+    await _awaitWrite('users.json');
   }
 
   List<Map<String, dynamic>> get courses =>
       List<Map<String, dynamic>>.from(_getData('courses.json') as List? ?? []);
 
-  Future<void> saveCourses(List<Map<String, dynamic>> data) async =>
-      _enqueueWrite('courses.json', data, 'aggiornamento corsi');
+  Future<void> saveCourses(List<Map<String, dynamic>> data) async {
+    _enqueueWrite('courses.json', data, 'aggiornamento corsi');
+    await _awaitWrite('courses.json');
+  }
+
+  /// Attende che la scrittura in coda per [fileName] arrivi davvero su
+  /// GitHub. users.json/courses.json sono a bassa frequenza: meglio bloccare
+  /// il chiamante che rischiare una ricarica pagina prima che il PUT sia
+  /// arrivato (la cache ottimistica da sola non basta, viene svuotata da
+  /// init()). Rilancia l'errore se il salvataggio ha esaurito i retry.
+  Future<void> _awaitWrite(String fileName) async {
+    final drain = _drains[fileName];
+    if (drain != null) await drain;
+    if (_pending.containsKey(fileName)) {
+      throw Exception(saveError.value ?? 'Salvataggio $fileName non riuscito');
+    }
+  }
 
   List<Map<String, dynamic>> get schedules =>
       List<Map<String, dynamic>>.from(_getData('schedules.json') as List? ?? []);
