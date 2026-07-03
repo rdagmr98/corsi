@@ -193,16 +193,18 @@ class GhDbService {
   /// Ultimo errore di salvataggio in background (null = tutto ok).
   static final ValueNotifier<String?> saveError = ValueNotifier<String?>(null);
 
-  final Map<String, ({dynamic data, String msg})> _pending = {};
+  final Map<String, ({dynamic data, dynamic wire, String msg})> _pending = {};
   final Map<String, Future<void>> _drains = {};
 
   void _updatePendingCount() {
     pendingSaves.value = {..._drains.keys, ..._pending.keys}.length;
   }
 
-  void _enqueueWrite(String fileName, dynamic data, String msg) {
+  /// [wire] è il payload effettivamente spedito a GitHub, se diverso da
+  /// [data] (es. users.json: cache in chiaro, scrittura cifrata).
+  void _enqueueWrite(String fileName, dynamic data, String msg, {dynamic wire}) {
     _cache[fileName] = {'data': data, 'sha': _getSha(fileName)};
-    _pending[fileName] = (data: data, msg: msg);
+    _pending[fileName] = (data: data, wire: wire ?? data, msg: msg);
     saveError.value = null;
     _startDrain(fileName);
   }
@@ -221,7 +223,7 @@ class GhDbService {
     while (_pending.containsKey(fileName)) {
       final job = _pending.remove(fileName)!;
       try {
-        await _putLatest(fileName, job.data, job.msg);
+        await _putLatest(fileName, job.wire, job.msg);
       } catch (e) {
         // Non perdere il payload: se nel frattempo non ne è arrivato uno più
         // recente, rimettilo in coda; verrà ritentato al prossimo salvataggio
@@ -413,15 +415,14 @@ class GhDbService {
 
   Future<void> saveUsers(List<Map<String, dynamic>> data) async {
     final encrypted = data.map(_encryptUser).toList();
-    await _writeFile('users.json', encrypted, 'aggiornamento utenti');
-    _cache['users.json'] = {'data': data, 'sha': _getSha('users.json')};
+    _enqueueWrite('users.json', data, 'aggiornamento utenti', wire: encrypted);
   }
 
   List<Map<String, dynamic>> get courses =>
       List<Map<String, dynamic>>.from(_getData('courses.json') as List? ?? []);
 
-  Future<void> saveCourses(List<Map<String, dynamic>> data) =>
-      _writeFile('courses.json', data, 'aggiornamento corsi');
+  Future<void> saveCourses(List<Map<String, dynamic>> data) async =>
+      _enqueueWrite('courses.json', data, 'aggiornamento corsi');
 
   List<Map<String, dynamic>> get schedules =>
       List<Map<String, dynamic>>.from(_getData('schedules.json') as List? ?? []);
