@@ -69,7 +69,16 @@ GitHub Actions (`.github/workflows/deploy.yml`) deploya automaticamente su push 
 
 ---
 
-## STATO SESSIONE — aggiornato 2026-07-04 (sessione 24)
+## STATO SESSIONE — aggiornato 2026-07-04 (sessione 25)
+
+### Ultime modifiche (2026-07-04) — sessione 25 — `programTaskId` per-tipo-corso (commit `457ba15` + corsi-data `0c22ef0`)
+Richiesta utente (verbatim): "ho notato che l'id dei task è giusto solo per il tb1, poi hai usato numeri progressivi, se leggi i programmi i task id iniziano sempre da 1 perchè i programmi addestrativi sono diversi".
+1. **Root cause**: `PracticalTask.id` in `reference.json` è UNA sequenza globale progressiva su tutti i 6 tipi corso (b1: 1-112, b2_da_b1_3: 113-153, b1mil: 154-178, b2mil: 179-206, b2: 207-290, maml: 291-323) invece di ripartire da 1 per ciascun tipo come nei programmi addestrativi ufficiali (PDF). Solo b1 risultava "giusto" perché è il primo tipo della sequenza (min id = 1).
+2. **Approccio scartato**: rinumerare `id` per farlo ripartire da 1 per tipo → troppo invasivo, richiede refactor di `taskName()`/`taskPlanMap` (lookup flat-id) e migrazione dati produzione (`b1mil`/`maml` hanno lezioni pianificate/storiche con `task_id` reali — verificato via `schedules.json`: id usati 1-112, 154-178, 291-318).
+3. **Fix scelto (additivo, zero rischio)**: nuovo campo `PracticalTask.programTaskId` = numero task come da programma ufficiale (riparte da 1 per tipo), calcolato come `id - min(id del tipo) + 1` (verificato: ogni tipo ha id contigui, senza buchi né duplicati, quindi la formula è esatta). `id` resta invariato e univoco su tutto il file, usato SOLO internamente (schedule, `taskPlanMap`, `nextTaskId()`).
+4. **Codice**: `reference_models.dart` (nuovo campo, default a `id` se assente), `reference_service.dart` (`taskName()` refactored su nuovo `findTask()` che ritorna il `PracticalTask` intero), tutti i punti che mostravano l'id all'utente aggiornati a `programTaskId`: `schedule_tab.dart` (tooltip), `lessons_log_tab.dart` (riga log lezione), `today_screen.dart` (card task istruttore), `course_types_tab.dart` (colonna "ID" nel dialog admin ora edita `programTaskId`, l'`id` interno resta auto-generato e nascosto).
+5. **Dati**: `programTaskId` popolato in `reference.json` (repo `corsi-data`) per tutti i 6 tipi via script Node (`id - min + 1`), push diretto via GitHub API (nessuna build necessaria, dato puro).
+6. Build+push: `lib/models/reference_models.dart`, `lib/services/reference_service.dart`, `lib/screens/director/{schedule_tab,lessons_log_tab}.dart`, `lib/screens/instructor/today_screen.dart`, `lib/screens/master/course_types_tab.dart`. `flutter build web --release --base-href "/corsi/"` ok. Deploy Actions fallito 2 volte per errore infra transitorio GitHub Pages ("Deployment failed, try again later", non legato al codice), riuscito al 3° tentativo (`gh run rerun --failed`).
 
 ### Ultime modifiche (2026-07-04) — sessione 24 — fix `_selected` stale dopo salvataggio in schedule_tab (commit `647b640`)
 Richiesta utente (verbatim): "ora di latenza molto meno, ma comunque dopo il salvataggio devo andare in un'altra sezione dell'app e poi ritornare per vedere le modifiche" — seguito diretto del fix sessione 23 (la latenza di persistenza era sparita, ma restava un problema di refresh UI).
