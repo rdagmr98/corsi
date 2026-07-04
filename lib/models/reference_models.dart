@@ -1,18 +1,25 @@
 class PracticalTask {
   final int id;
+  // Numero del task come riportato nel programma addestrativo ufficiale (riparte da 1
+  // per ogni tipo corso). `id` invece resta univoco su tutto reference.json ed è usato
+  // internamente per i lookup (schedules, taskName) — non toccarlo per allineare al PDF.
+  final int programTaskId;
   final String name;
   final double plannedHours;
 
-  const PracticalTask({required this.id, this.name = '', required this.plannedHours});
+  const PracticalTask({required this.id, int? programTaskId, this.name = '', required this.plannedHours})
+      : programTaskId = programTaskId ?? id;
 
   factory PracticalTask.fromJson(Map<String, dynamic> j) => PracticalTask(
     id: (j['id'] as num).toInt(),
+    programTaskId: (j['programTaskId'] as num?)?.toInt(),
     name: j['name'] as String? ?? '',
     plannedHours: (j['plannedHours'] as num?)?.toDouble() ?? 0,
   );
 
   Map<String, dynamic> toJson() => {
     'id': id,
+    'programTaskId': programTaskId,
     if (name.isNotEmpty) 'name': name,
     'plannedHours': plannedHours,
   };

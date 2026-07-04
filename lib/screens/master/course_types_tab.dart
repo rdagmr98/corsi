@@ -729,7 +729,7 @@ class _CourseTypesTabState extends ConsumerState<CourseTypesTab> {
                         SizedBox(
                           width: 60,
                           child: TextField(
-                            controller: t.id,
+                            controller: t.programId,
                             keyboardType: TextInputType.number,
                             style: const TextStyle(color: kText, fontSize: 12),
                             decoration: const InputDecoration(isDense: true),
@@ -869,26 +869,40 @@ class _CourseTypesTabState extends ConsumerState<CourseTypesTab> {
 String _fmtNum(num n) => n == n.truncate() ? n.truncate().toString() : n.toString();
 
 class _TaskDraft {
+  // Id interno univoco su tutto reference.json (auto-generato, non editabile in UI).
   final TextEditingController id;
+  // Numero task del programma ufficiale (riparte da 1 per tipo corso): questo è il campo
+  // che l'admin legge dal PDF e modifica — vedi PracticalTask.programTaskId.
+  final TextEditingController programId;
   final TextEditingController name;
   final TextEditingController hours;
 
-  _TaskDraft({String id = '', String name = '', String hours = '0'})
+  _TaskDraft({String id = '', String programId = '', String name = '', String hours = '0'})
       : id = TextEditingController(text: id),
+        programId = TextEditingController(text: programId),
         name = TextEditingController(text: name),
         hours = TextEditingController(text: hours);
 
-  factory _TaskDraft.fromTask(PracticalTask t) =>
-      _TaskDraft(id: '${t.id}', name: t.name, hours: _fmtNum(t.plannedHours));
-
-  PracticalTask toTask() => PracticalTask(
-        id: int.tryParse(id.text.trim()) ?? 0,
-        name: name.text.trim(),
-        plannedHours: double.tryParse(hours.text.trim().replaceAll(',', '.')) ?? 0,
+  factory _TaskDraft.fromTask(PracticalTask t) => _TaskDraft(
+        id: '${t.id}',
+        programId: '${t.programTaskId}',
+        name: t.name,
+        hours: _fmtNum(t.plannedHours),
       );
+
+  PracticalTask toTask() {
+    final rawId = int.tryParse(id.text.trim()) ?? 0;
+    return PracticalTask(
+      id: rawId,
+      programTaskId: int.tryParse(programId.text.trim()) ?? rawId,
+      name: name.text.trim(),
+      plannedHours: double.tryParse(hours.text.trim().replaceAll(',', '.')) ?? 0,
+    );
+  }
 
   void dispose() {
     id.dispose();
+    programId.dispose();
     name.dispose();
     hours.dispose();
   }

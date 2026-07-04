@@ -1732,12 +1732,10 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
         ? (instrNames[lesson.instructorId!] ?? '?')
         : null;
 
-    final taskName = lesson.taskId != null
-        ? _refService.taskName(_typeInfo, lesson.taskId)
-        : null;
+    final task = lesson.taskId != null ? _refService.findTask(_typeInfo, lesson.taskId) : null;
     final tooltipMsg = [
       displayTopic,
-      if (taskName != null) '🔧 Task ${lesson.taskId}: $taskName',
+      if (task != null && task.name.isNotEmpty) '🔧 Task ${task.programTaskId}: ${task.name}',
       if (instrName != null) '👤 $instrName',
       hoursStr,
     ].join('\n');

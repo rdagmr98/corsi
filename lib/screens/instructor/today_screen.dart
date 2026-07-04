@@ -229,14 +229,17 @@ class _InstructorTodayScreenState extends ConsumerState<InstructorTodayScreen> {
                     final isTheory = lesson.isTheory;
                     final color = isTheory ? kPrimary : kAccent;
                     final course = _courseService.findById(lesson.courseId);
-                    final taskName = lesson.taskId == null
+                    final task = lesson.taskId == null
                         ? null
-                        : _refService.taskName(
+                        : _refService.findTask(
                             course == null
                                 ? null
                                 : _refService.getEffectiveCourseType(
                                     course.courseTypeId, course.extensionTypeId, course.mamlCombinationId),
                             lesson.taskId);
+                    final taskLabel = task != null
+                        ? (task.name.isNotEmpty ? task.name : '${task.programTaskId}')
+                        : lesson.taskId;
 
                     return Card(
                       color: kCard,
@@ -276,7 +279,7 @@ class _InstructorTodayScreenState extends ConsumerState<InstructorTodayScreen> {
                                         color: kAccent.withOpacity(0.15),
                                         borderRadius: BorderRadius.circular(4),
                                       ),
-                                      child: Text('Task ${taskName ?? lesson.taskId}',
+                                      child: Text('Task $taskLabel',
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           style: const TextStyle(color: kAccent, fontSize: 10, fontWeight: FontWeight.bold)),

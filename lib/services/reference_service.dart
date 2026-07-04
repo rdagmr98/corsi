@@ -105,19 +105,24 @@ class ReferenceService {
   bool isCourseTypeInUse(String id) => _db.courses
       .any((c) => c['course_type_id'] == id || c['extension_type_id'] == id);
 
-  // Nome del task pratica (se valorizzato) dato il tipo corso effettivo e il taskId
-  // della lezione (può essere int per i task base o String per i task MIL legacy:
-  // in quel caso non c'è corrispondenza in reference.json e si torna null).
-  String? taskName(CourseTypeInfo? effectiveType, dynamic taskId) {
+  // Task pratica dato il tipo corso effettivo e il taskId della lezione (può essere int
+  // per i task base o String per i task MIL legacy: in quel caso non c'è corrispondenza
+  // in reference.json e si torna null).
+  PracticalTask? findTask(CourseTypeInfo? effectiveType, dynamic taskId) {
     if (effectiveType == null || taskId == null) return null;
     for (final m in effectiveType.modules) {
       for (final s in m.submodules) {
         for (final t in s.practicalTasks) {
-          if (t.id == taskId && t.name.isNotEmpty) return t.name;
+          if (t.id == taskId) return t;
         }
       }
     }
     return null;
+  }
+
+  String? taskName(CourseTypeInfo? effectiveType, dynamic taskId) {
+    final t = findTask(effectiveType, taskId);
+    return (t != null && t.name.isNotEmpty) ? t.name : null;
   }
 
   // Etichetta di un modulo dato il numero interno (es. 11 → '11A', 18 → '11B').

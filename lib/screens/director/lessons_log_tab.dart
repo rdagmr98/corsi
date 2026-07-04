@@ -555,11 +555,11 @@ class _DirectorLessonsLogTabState extends ConsumerState<DirectorLessonsLogTab> {
 
   Widget _lessonRow(ScheduledLesson l, Map<String, int> doneT, Map<String, int> doneP, Map<String, int> doneTask) {
     final absentees = _absentees(l);
-    final taskName = _refService.taskName(_typeInfo, l.taskId);
     final isPratica = l.type == 'pratica';
     final subInfo = _subInfo(l.submoduleCode);
     final nc = _normSub(l.submoduleCode);
     final task = (isPratica && l.taskId != null) ? _findTask(l.taskId!) : null;
+    final taskName = task != null && task.name.isNotEmpty ? task.name : null;
     final num totalHours = task != null
         ? task.plannedHours
         : (subInfo == null ? 0 : (isPratica ? subInfo.practicalHours : subInfo.theoryHours));
@@ -637,7 +637,9 @@ class _DirectorLessonsLogTabState extends ConsumerState<DirectorLessonsLogTab> {
             Expanded(
               flex: 2,
               child: Text(
-                taskName != null ? 'T${l.taskId} – $taskName' : 'T${l.taskId}',
+                task != null
+                    ? (taskName != null ? 'T${task.programTaskId} – $taskName' : 'T${task.programTaskId}')
+                    : 'T${l.taskId}',
                 style: const TextStyle(color: kTextDim, fontSize: 11),
                 overflow: TextOverflow.ellipsis,
               ),
