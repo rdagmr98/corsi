@@ -69,7 +69,13 @@ GitHub Actions (`.github/workflows/deploy.yml`) deploya automaticamente su push 
 
 ---
 
-## STATO SESSIONE — aggiornato 2026-07-03 (sessione 23)
+## STATO SESSIONE — aggiornato 2026-07-04 (sessione 24)
+
+### Ultime modifiche (2026-07-04) — sessione 24 — fix `_selected` stale dopo salvataggio in schedule_tab (commit `647b640`)
+Richiesta utente (verbatim): "ora di latenza molto meno, ma comunque dopo il salvataggio devo andare in un'altra sezione dell'app e poi ritornare per vedere le modifiche" — seguito diretto del fix sessione 23 (la latenza di persistenza era sparita, ma restava un problema di refresh UI).
+1. **Root cause**: `_load()` in `schedule_tab.dart` ricarica `_courses` da `_courseService` ma riassegna `_selected` SOLO se `_selected == null`. Dopo un salvataggio (giorni esclusi, corso, utenti) `_selected` restava l'oggetto Course pre-modifica in memoria — i dati erano già persistiti (grazie al fix s23) ma la UI leggeva ancora il vecchio riferimento. Cambiare tab ricrea lo `State` (`initState` → `_selected = null`) e forza il repick da `_courses` fresco, da cui l'illusione "serve navigare via e tornare".
+2. **Fix**: `_load()` ora risincronizza `_selected` cercando per id dentro `_courses` appena ricaricato (`.firstOrNull ?? _selected`), non solo quando è null. Punto unico condiviso da tutte e 3 le chiamate post-salvataggio nel file (righe 145, 176, 686) più `initState`.
+3. Build+push: solo `lib/screens/director/schedule_tab.dart`, `flutter build web --release --base-href "/corsi/"` ok, deploy Actions verificato success (run `28714571315`).
 
 ### Ultime modifiche (2026-07-03) — sessione 23 — fix bug persistenza courses.json/users.json (commit `1a714ee`)
 Richiesta utente (verbatim): "niente, se cancello o inserisco un giorno tra quelli esclusi e premo salva non vedo modifiche nemmeno se ricarico la pagina, dopo tanto tempo vedo le modifiche" (giorni esclusi dalla pianificazione, `schedule_tab.dart` → `_showExcludedDates()`).
