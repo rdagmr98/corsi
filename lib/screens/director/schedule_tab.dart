@@ -54,7 +54,11 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
 
   void _load() {
     _courses = _courseService.getCoursesForDirector(widget.userId);
-    if (_selected == null && _courses.isNotEmpty) _selected = _courses.first;
+    if (_selected == null) {
+      if (_courses.isNotEmpty) _selected = _courses.first;
+    } else {
+      _selected = _courses.where((c) => c.id == _selected!.id).firstOrNull ?? _selected;
+    }
     _refreshWeek();
   }
 
