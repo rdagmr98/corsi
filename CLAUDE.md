@@ -69,7 +69,18 @@ GitHub Actions (`.github/workflows/deploy.yml`) deploya automaticamente su push 
 
 ---
 
-## STATO SESSIONE — aggiornato 2026-07-04 (sessione 25)
+## STATO SESSIONE — aggiornato 2026-07-06 (sessione 26)
+
+### Ultime modifiche (2026-07-06) — sessione 26 — OJT decade automaticamente (commit `08d9629`)
+Richiesta utente (verbatim): "Quando un istr è in ojt è current automaticamente sia per le ore di lezione che delle ore di aggiornamento nei 2 anni. Quando ha maturato le ore per tutti e due i requisiti l'ojt decade in automatico diventando go."
+1. **Stato precedente**: `AppUser.goOverride` (bool, "GO manuale"/OJT) bypassava `goTeach`/`goProf`/`goDaa` senza mai auto-rimuoversi: restava true finché un admin non lo toglieva a mano da `_toggleGoOverride()` in `currency_tab.dart`.
+2. **Fix**: nuovo metodo `_autoDecayOjt()` in `currency_tab.dart` — ad ogni `_load()`/`_reload()` controlla gli istruttori con `goOverride == true`; se hanno maturato **entrambi** i requisiti orari naturalmente (`getTeachingHoursRollingYear >= 6` E `getProfessionalUpdateHoursLast2Years >= 35`, SENZA l'override), chiama `_userService.setGoOverride(id, false)` e ricarica. Il DAA (`goDaa`/M10) non è toccato: la richiesta parla solo dei due requisiti orari, la scadenza DAA resta indipendente.
+3. Chiamato da `initState()` (dopo `_load()`) e da `_reload()` (dopo `_load()`, prima di terminare) — unico punto di caricamento istruttori, nessuna duplicazione.
+4. Caption UI aggiornata: "...OJT manuale bypassa entrambi e decade automaticamente al raggiungimento di entrambi i requisiti."
+5. Build+push: solo `lib/screens/master/currency_tab.dart`. `flutter build web --release --base-href "/corsi/"` ok (fix locale: su Git Bash Windows serve `MSYS_NO_PATHCONV=1` altrimenti "/corsi/" viene risolto come path).
+
+### TODO sessione 26 — M9/M10 staccati
+Utente: la MTO fa anche M9 e M10 come moduli standalone (non bundle). Dati corsi già fatti in `C:\Users\Gianmarco\Documents\m9 e m10\` (8 file xlsx: settimane 1-6 + varianti + `PS BTC 2° M9 3° M10 2024.xlsx`). Non ancora analizzato: struttura dati, come rappresentarlo in `reference.json` (probabile precedente: `b2_da_b1_3`, tipo corso standalone).
 
 ### Ultime modifiche (2026-07-04) — sessione 25 — `programTaskId` per-tipo-corso (commit `457ba15` + corsi-data `0c22ef0`)
 Richiesta utente (verbatim): "ho notato che l'id dei task è giusto solo per il tb1, poi hai usato numeri progressivi, se leggi i programmi i task id iniziano sempre da 1 perchè i programmi addestrativi sono diversi".
