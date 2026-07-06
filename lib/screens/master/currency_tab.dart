@@ -29,6 +29,7 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
   void initState() {
     super.initState();
     _load();
+    _autoDecayOjt();
   }
 
   void _load() {
@@ -39,6 +40,21 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
 
   Future<void> _reload() async {
     await ref.read(authProvider).reloadDb();
+    _load();
+    await _autoDecayOjt();
+  }
+
+  // OJT (GO manuale) decade da solo quando l'istruttore matura entrambi i
+  // requisiti orari (senza bisogno dell'override): torna a GO reale.
+  Future<void> _autoDecayOjt() async {
+    final decaying = _instructors.where((i) =>
+        i.goOverride &&
+        _gradeService.getTeachingHoursRollingYear(i.id) >= 6 &&
+        _gradeService.getProfessionalUpdateHoursLast2Years(i.id) >= 35).toList();
+    if (decaying.isEmpty) return;
+    for (final i in decaying) {
+      await _userService.setGoOverride(i.id, false);
+    }
     _load();
   }
 
@@ -866,7 +882,7 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
       Padding(
         padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
         child: const Text(
-          'GO se: ≥6h insegnamento (365gg) E ≥35h aggiorn. prof. (2 anni). OJT manuale bypassa entrambi.',
+          'GO se: ≥6h insegnamento (365gg) E ≥35h aggiorn. prof. (2 anni). OJT manuale bypassa entrambi e decade automaticamente al raggiungimento di entrambi i requisiti.',
           style: TextStyle(color: kTextDim, fontSize: 11),
         ),
       ),
