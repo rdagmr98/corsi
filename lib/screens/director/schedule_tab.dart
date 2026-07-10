@@ -78,28 +78,15 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
   // Evita lo ".0" superfluo per le ore intere, mantenendo i decimali (es. 1.5h) quando presenti.
   String _fmtNum(num n) => n == n.truncate() ? n.truncate().toString() : n.toString();
 
-  /// GO/NO GO per istruttore (stessa formula di currency_tab):
-  /// override, oppure ≥6h insegnamento/anno + ≥35h agg. professionale/2 anni
-  /// + DAA non scaduta.
-  Map<String, bool> _computeGoMap(List<AppUser> instructors) {
-    final now = DateTime.now();
-    return {
-      for (final u in instructors)
-        u.id: u.goOverride ||
-            (_gradeService.getTeachingHoursRollingYear(u.id) >= 6 &&
-                _gradeService.getProfessionalUpdateHoursLast2Years(u.id) >= 35 &&
-                (u.daaExpiry == null || u.daaExpiry!.isAfter(now))),
-    };
-  }
-
   /// Voci del menu istruttore: solo gli abilitati AMC per quel sottomodulo e
   /// tipo (teoria/pratica), GO prima dei NO GO, poi per cognome. Se la griglia
   /// AMC non ha nessuno per quel codice, mostra tutti gli istruttori del corso.
+  /// GO/NO GO è per modulo: il DAA (scadenza NAM) conta solo su modulo 10.
   List<DropdownMenuItem<String?>> _instructorItems({
     required List<AppUser> instructors,
     required String submoduleCode,
     required String type,
-    required Map<String, bool> goMap,
+    required int? moduleNumber,
     String? current,
   }) {
     final qualified = _scheduleService.qualifiedInstructorIds(submoduleCode, type);
@@ -109,15 +96,15 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
       list.addAll(instructors.where((i) => i.id == current));
     }
     list.sort((a, b) {
-      final ga = (goMap[a.id] ?? false) ? 0 : 1;
-      final gb = (goMap[b.id] ?? false) ? 0 : 1;
+      final ga = _gradeService.isGo(a, moduleNumber: moduleNumber) ? 0 : 1;
+      final gb = _gradeService.isGo(b, moduleNumber: moduleNumber) ? 0 : 1;
       if (ga != gb) return ga - gb;
       return a.cognome.toLowerCase().compareTo(b.cognome.toLowerCase());
     });
     return [
       const DropdownMenuItem(value: null, child: Text('— Da assegnare —')),
       ...list.map((i) {
-        final go = goMap[i.id] ?? false;
+        final go = _gradeService.isGo(i, moduleNumber: moduleNumber);
         return DropdownMenuItem<String?>(
           value: i.id,
           child: Row(
@@ -254,7 +241,6 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
     String? selectedInstructor =
         instructors.any((i) => i.id == presetInstructor) ? presetInstructor : null;
     dynamic selectedTaskId;
-    final goMap = _computeGoMap(instructors);
 
     await showDialog(
       context: context,
@@ -442,7 +428,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                       instructors: instructors,
                       submoduleCode: selSub?.code ?? '',
                       type: type,
-                      goMap: goMap,
+                      moduleNumber: selectedModule,
                       current: selectedInstructor,
                     ),
                     onChanged: (v) => setDlg(() => selectedInstructor = v),
@@ -1025,7 +1011,6 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
     String? selectedInstructor = lesson.instructorId;
     String selectedSubmodule = lesson.submoduleCode;
     bool recompile = true;
-    final goMap = _computeGoMap(instructors);
     final lessonType = isTheory ? 'teoria' : 'pratica';
 
     // Assenze frequentatori per quest'ora: pre-compilate dai record esistenti.
@@ -1112,7 +1097,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                     instructors: instructors,
                     submoduleCode: selectedSubmodule,
                     type: lessonType,
-                    goMap: goMap,
+                    moduleNumber: refSubInfo[selectedSubmodule]?.$1,
                     current: selectedInstructor,
                   ),
                   onChanged: (v) => setDlg(() => selectedInstructor = v),

@@ -75,16 +75,6 @@ class _AmcTabState extends ConsumerState<AmcTab>
   Map<String, AppUser> _uidToUser() =>
       {for (final u in _userService.getAllUsers()) u.id: u};
 
-  // Idoneità GO (stessa regola di currency_tab): override manuale, oppure
-  // ≥6h insegnamento (365gg) E ≥35h aggiorn. prof. (2 anni) E DAA non scaduta.
-  bool _isGo(AppUser u, DateTime now) {
-    if (u.goOverride) return true;
-    final teachH = _gradeService.getTeachingHoursRollingYear(u.id);
-    final profH  = _gradeService.getProfessionalUpdateHoursLast2Years(u.id);
-    final daaOk  = u.daaExpiry == null || u.daaExpiry!.isAfter(now);
-    return teachH >= 6 && profH >= 35 && daaOk;
-  }
-
   Set<String> _courseInstructors() {
     if (_selectedCourseId == null) return {};
     final c = _courseService.getAllCourses()
@@ -125,7 +115,11 @@ class _AmcTabState extends ConsumerState<AmcTab>
     final courseUids = _courseInstructors();
     final now        = DateTime.now();
     final goUids     = <String>{
-      for (final u in uidToUser.values) if (_isGo(u, now)) u.id
+      for (final u in uidToUser.values) if (_gradeService.isGo(u, now: now)) u.id
+    };
+    final goUidsM10  = <String>{
+      for (final u in uidToUser.values)
+        if (_gradeService.isGo(u, now: now, moduleNumber: 10)) u.id
     };
 
     return Column(children: [
@@ -216,9 +210,11 @@ class _AmcTabState extends ConsumerState<AmcTab>
           controller: _tabs,
           children: [
             _buildGrid(theory: true,  uidToUser: uidToUser,
-                subNames: subNames, courseUids: courseUids, goUids: goUids),
+                subNames: subNames, courseUids: courseUids,
+                goUids: goUids, goUidsM10: goUidsM10),
             _buildGrid(theory: false, uidToUser: uidToUser,
-                subNames: subNames, courseUids: courseUids, goUids: goUids),
+                subNames: subNames, courseUids: courseUids,
+                goUids: goUids, goUidsM10: goUidsM10),
           ],
         ),
       ),
@@ -231,6 +227,7 @@ class _AmcTabState extends ConsumerState<AmcTab>
     required Map<String, String> subNames,
     required Set<String> courseUids,
     required Set<String> goUids,
+    required Set<String> goUidsM10,
   }) {
     final grid = _grid(theory);
     var codes = _sortedCodes(grid);
@@ -277,8 +274,9 @@ class _AmcTabState extends ConsumerState<AmcTab>
         final item    = items[i];
         final code    = item.code;
         final allUids = grid[code] ?? [];
+        final rowGoUids = code.startsWith('10.') ? goUidsM10 : goUids;
         final uids    = _onlyGo
-            ? allUids.where((uid) => goUids.contains(uid)).toList()
+            ? allUids.where((uid) => rowGoUids.contains(uid)).toList()
             : allUids;
         final subName = subNames[code] ?? '';
 

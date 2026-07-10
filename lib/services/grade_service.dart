@@ -1,5 +1,6 @@
 import '../models/course_models.dart';
 import '../models/grade_models.dart';
+import '../models/user_models.dart';
 import 'gh_db_service.dart';
 import 'reference_service.dart';
 
@@ -157,6 +158,19 @@ class GradeService {
     return getUpdatesForInstructor(instructorId)
         .where((u) => u.isProfessional && u.isApproved && u.date.isAfter(cutoff))
         .fold(0.0, (s, u) => s + u.hours);
+  }
+
+  /// GO/NOGO complessivo. Il DAA (aggiornamento normativa aeronautica)
+  /// incide solo sul modulo 10: la scadenza NAM non deve rendere NOGO
+  /// un istruttore per gli altri moduli.
+  bool isGo(AppUser u, {DateTime? now, int? moduleNumber}) {
+    if (u.goOverride) return true;
+    final teachOk = getTeachingHoursRollingYear(u.id) >= 6;
+    final profOk = getProfessionalUpdateHoursLast2Years(u.id) >= 35;
+    if (moduleNumber != 10) return teachOk && profOk;
+    final n = now ?? DateTime.now();
+    final daaOk = u.daaExpiry == null || u.daaExpiry!.isAfter(n);
+    return teachOk && profOk && daaOk;
   }
 
   Future<InstructorUpdate> addUpdate({

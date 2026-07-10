@@ -201,13 +201,15 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceAround,
                             children: [
-                              _stat('$totalConfirmed', 'Lezioni', kTextDim),
-                              _stat('$totalAbsent', 'Assenze', totalAbsent > 0 ? kError : kAccent),
-                              _stat('$totalRecovered', 'Recuperate', kPrimary),
-                              _stat(
-                                '${(completionPct * 100).toStringAsFixed(0)}%',
-                                'Completamento',
-                                completionPct >= 0.75 ? kAccent : kWarning,
+                              Expanded(child: _stat('$totalConfirmed', 'Lezioni', kTextDim)),
+                              Expanded(child: _stat('$totalAbsent', 'Assenze', totalAbsent > 0 ? kError : kAccent)),
+                              Expanded(child: _stat('$totalRecovered', 'Recuperate', kPrimary)),
+                              Expanded(
+                                child: _stat(
+                                  '${(completionPct * 100).toStringAsFixed(0)}%',
+                                  'Completamento',
+                                  completionPct >= 0.75 ? kAccent : kWarning,
+                                ),
                               ),
                             ],
                           ),
@@ -580,10 +582,18 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
   }
 
   Widget _stat(String value, String label, Color color) => Column(
+    mainAxisSize: MainAxisSize.min,
     children: [
       Text(value,
+          textAlign: TextAlign.center,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: TextStyle(color: color, fontSize: 22, fontWeight: FontWeight.bold)),
-      Text(label, style: const TextStyle(color: kTextDim, fontSize: 11)),
+      Text(label,
+          textAlign: TextAlign.center,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(color: kTextDim, fontSize: 11)),
     ],
   );
 }

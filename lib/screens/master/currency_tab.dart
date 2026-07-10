@@ -462,7 +462,7 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
     final goProf   = instr.goOverride || profH >= 35;
     final goDaa    = instr.daaExpiry == null || instr.goOverride ||
         instr.daaExpiry!.isAfter(DateTime.now());
-    final go       = goTeach && goProf && goDaa;
+    final go       = _gradeService.isGo(instr);
 
     showDialog(
       context: context,
@@ -809,7 +809,7 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
       final goT  = instr.goOverride || teachH >= 6;
       final goP  = instr.goOverride || profH >= 35;
       final goDaa = instr.daaExpiry == null || instr.goOverride || instr.daaExpiry!.isAfter(now);
-      final go  = goT && goP && goDaa;
+      final go  = _gradeService.isGo(instr, now: now);
       return (instr: instr, teachH: teachH, profH: profH, goT: goT, goP: goP, goDaa: goDaa, go: go);
     }).toList();
 
