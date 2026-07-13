@@ -104,7 +104,8 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
     final byYear = <int, double>{};
     for (final u in _db.updates
         .where((u) => u['instructor_id'] == uid && u['type'] == 'teaching'
-            && (u['status'] as String? ?? 'approved') == 'approved')) {
+            && (u['status'] as String? ?? 'approved') == 'approved'
+            && !GradeService.isBulkImportArtifact(u))) {
       final yr = DateTime.tryParse(u['date'] as String? ?? '')?.year ?? 0;
       byYear[yr] = (byYear[yr] ?? 0) + ((u['hours'] as num?)?.toDouble() ?? 0);
     }

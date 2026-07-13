@@ -103,9 +103,21 @@ class GradeService {
     await _db.saveGrades(grades);
   }
 
+  // Bulk import del 2026-06-06: ore di insegnamento 1/2/3BTC duplicano le ore
+  // già contate dalle lezioni confermate a calendario (getConfirmedLessonHoursByCourse).
+  // Escluse ovunque: non vanno né mostrate né sommate alla currency.
+  static const _bulkImportDescriptions = {
+    'Ore insegnamento 1BTC',
+    'Ore insegnamento 2BTC',
+    'Ore insegnamento 3BTC',
+  };
+  static bool isBulkImportArtifact(Map<String, dynamic> raw) =>
+      raw['type'] == 'teaching' && _bulkImportDescriptions.contains(raw['description']);
+
   // Instructor updates
   List<InstructorUpdate> getUpdatesForInstructor(String instructorId) =>
       _db.updates
+          .where((raw) => !isBulkImportArtifact(raw))
           .map(InstructorUpdate.fromJson)
           .where((u) => u.instructorId == instructorId)
           .toList()
