@@ -136,6 +136,19 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
     final recoveryPairing =
         _attendanceService.pairAbsenceRecoveries(course.id, widget.userId, lessons);
 
+    // Assenze che richiedono ancora un recupero ora (pratica 100%, teoria solo
+    // oltre la soglia 10% del modulo) — stessa logica per-riga del riepilogo
+    // per modulo, così il filtro "Da recuperare" non mostra assenze già
+    // tollerate entro soglia.
+    final needsRecoveryNow = <String>{};
+    for (final modNum in {for (final l in lessons) l.moduleNumber}) {
+      final details = _attendanceService.absenceDetailsForModule(
+          course.id, widget.userId, lessons, modNum, modules: typeInfo?.modules);
+      for (final d in details) {
+        if (d.needsRecovery) needsRecoveryNow.add(d.lesson.id);
+      }
+    }
+
     // Filtered lesson list for tabs (exclude timeSlot==0 and recovery schedule IDs)
     bool isPresent(l) {
       final r = recordMap[l.id];
@@ -151,7 +164,7 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
       if (l.timeSlot == 0) return false;
       if (_filterMode == 'present')    return isPresent(l);
       if (_filterMode == 'absent')     return isAbsent(l);
-      if (_filterMode == 'to_recover') return isAbsent(l) && recoveryPairing[l.id] == null;
+      if (_filterMode == 'to_recover') return needsRecoveryNow.contains(l.id);
       return true;
     }).toList();
 
@@ -379,6 +392,10 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
                     if (RegExp(r'^\d').hasMatch(l.topic) && l.topic.contains('.')) {
                       displayTopic = subNames[normCode(l.topic)] ?? subNames[nc] ?? l.topic;
                     }
+                    final task = !isTheory && l.taskId != null
+                        ? _refService.findTask(typeInfo, l.taskId)
+                        : null;
+                    final taskLabel = task != null ? ' · Task ${task.programTaskId}' : '';
 
                     final recoveredOn = recoveryPairing[l.id];
                     Color statusColor;
@@ -421,7 +438,7 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
                       child: ListTile(
                         dense: true,
                         leading: Icon(statusIcon, color: statusColor, size: 20),
-                        title: Text('M${_refService.moduleLabel(l.moduleNumber)} $displayTopic',
+                        title: Text('M${_refService.moduleLabel(l.moduleNumber)} $displayTopic$taskLabel',
                             style: const TextStyle(color: kText, fontSize: 12),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis),

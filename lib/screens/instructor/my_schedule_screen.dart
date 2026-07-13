@@ -48,8 +48,19 @@ class _InstructorScheduleScreenState extends ConsumerState<InstructorScheduleScr
   Widget build(BuildContext context) {
     String normCode(String code) => ScheduleService.normalizeSubCode(code);
 
+    final allCourses = _courseService.getAllCourses();
     final courseTypeMap = <String, String>{
-      for (final c in _courseService.getAllCourses()) c.id: c.courseTypeId,
+      for (final c in allCourses) c.id: c.courseTypeId,
+    };
+    final courseNameMap = <String, String>{
+      for (final c in allCourses) c.id: c.title,
+    };
+    final distinctCourseIds = _lessons.map((l) => l.courseId).toSet().toList()..sort();
+    final showCourseBadge = distinctCourseIds.length > 1;
+    const courseBadgeColors = [kPrimary, kAccent, kWarning, Colors.purple, Colors.teal];
+    final courseColorMap = <String, Color>{
+      for (var i = 0; i < distinctCourseIds.length; i++)
+        distinctCourseIds[i]: courseBadgeColors[i % courseBadgeColors.length],
     };
     final subNamesPerType = <String, Map<String, String>>{};
     final taskNamesPerType = <String, Map<int, String>>{};
@@ -198,13 +209,19 @@ class _InstructorScheduleScreenState extends ConsumerState<InstructorScheduleScr
                       if (RegExp(r'^\d').hasMatch(l.topic) && l.topic.contains('.')) {
                         displayTopic = subNames[normCode(l.topic)] ?? subNames[nc] ?? l.topic;
                       }
+                      final courseColor = courseColorMap[l.courseId];
 
                       return Card(
                         color: kCard,
                         margin: const EdgeInsets.only(bottom: 6),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(8),
-                          side: BorderSide(color: color.withOpacity(0.2)),
+                          side: BorderSide(
+                            color: showCourseBadge && courseColor != null
+                                ? courseColor.withOpacity(0.6)
+                                : color.withOpacity(0.2),
+                            width: showCourseBadge ? 1.5 : 1,
+                          ),
                         ),
                         child: ListTile(
                           leading: Container(
@@ -220,10 +237,30 @@ class _InstructorScheduleScreenState extends ConsumerState<InstructorScheduleScr
                               style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12),
                             ),
                           ),
-                          title: Text(displayTopic,
-                              style: const TextStyle(color: kText, fontSize: 13),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis),
+                          title: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (showCourseBadge)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 2),
+                                  child: Text(
+                                    courseNameMap[l.courseId] ?? '',
+                                    style: TextStyle(
+                                      color: courseColor,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 10,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              Text(displayTopic,
+                                  style: const TextStyle(color: kText, fontSize: 13),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis),
+                            ],
+                          ),
                           subtitle: Text(
                               'M${_refService.moduleLabel(l.moduleNumber)} · ${isTheory ? "Teoria" : "Pratica"} · $hoursStr${l.taskId != null ? ' · Task ${taskNames[l.taskId] ?? l.taskId}' : ''}',
                               style: const TextStyle(color: kTextDim, fontSize: 11),

@@ -87,11 +87,41 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
     required String submoduleCode,
     required String type,
     required int? moduleNumber,
+    required DateTime date,
+    required int timeSlot,
     String? current,
+    String? excludeLessonId,
+    dynamic taskId,
   }) {
     final qualified = _scheduleService.qualifiedInstructorIds(submoduleCode, type);
     var list = instructors.where((i) => qualified.contains(i.id)).toList();
     if (list.isEmpty) list = List.of(instructors);
+
+    // Doppia prenotazione: un istruttore già assegnato altrove nella stessa
+    // ora non è selezionabile, a meno che sia la stessa lezione/task pratico
+    // e la somma frequentatori resti entro il limite aula (28 teoria/15 pratica).
+    final nc = ScheduleService.normalizeSubCode(submoduleCode);
+    final isTheory = type == 'teoria';
+    final cap = isTheory ? 28 : 15;
+    final myAttendees = _selected?.attendeeIds.length ?? 0;
+    bool allowed(String instructorId) {
+      if (instructorId == current) return true;
+      final conflicts = _scheduleService.lessonsForInstructorAt(
+          instructorId, date, timeSlot, excludeLessonId: excludeLessonId);
+      for (final other in conflicts) {
+        final sameLesson =
+            ScheduleService.normalizeSubCode(other.submoduleCode) == nc &&
+                other.isTheory == isTheory &&
+                (isTheory || other.taskId == taskId);
+        if (!sameLesson) return false;
+        final otherAttendees =
+            _courseService.findById(other.courseId)?.attendeeIds.length ?? 0;
+        if (myAttendees + otherAttendees > cap) return false;
+      }
+      return true;
+    }
+    list = list.where((i) => allowed(i.id)).toList();
+
     if (current != null && !list.any((i) => i.id == current)) {
       list.addAll(instructors.where((i) => i.id == current));
     }
@@ -430,6 +460,9 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                       type: type,
                       moduleNumber: selectedModule,
                       current: selectedInstructor,
+                      date: date,
+                      timeSlot: slot,
+                      taskId: type == 'pratica' ? selectedTaskId : null,
                     ),
                     onChanged: (v) => setDlg(() => selectedInstructor = v),
                   ),
@@ -1099,6 +1132,10 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                     type: lessonType,
                     moduleNumber: refSubInfo[selectedSubmodule]?.$1,
                     current: selectedInstructor,
+                    date: lesson.date,
+                    timeSlot: lesson.timeSlot,
+                    excludeLessonId: lesson.id,
+                    taskId: lesson.taskId,
                   ),
                   onChanged: (v) => setDlg(() => selectedInstructor = v),
                 ),

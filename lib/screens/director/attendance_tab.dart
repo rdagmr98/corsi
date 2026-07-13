@@ -118,7 +118,7 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
             controller: _tabController,
             children: [
               _buildPerStudentView(course, attendees, allLessons, typeInfo),
-              _buildPerLessonView(course, attendees, allLessons),
+              _buildPerLessonView(course, attendees, allLessons, typeInfo),
             ],
           ),
         ),
@@ -203,7 +203,7 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
             ? []
             : typeInfo.modules
                 .where((mod) => modStats.containsKey(mod.number) && (modStats[mod.number]!['total'] ?? 0) > 0)
-                .map((mod) => _buildModuleRow(course, a, allLessons, mod, modStats[mod.number]!))
+                .map((mod) => _buildModuleRow(course, a, allLessons, mod, modStats[mod.number]!, typeInfo))
                 .toList(),
       ),
     );
@@ -246,6 +246,7 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
     List<ScheduledLesson> allLessons,
     ModuleInfo mod,
     Map<String, int> stats,
+    CourseTypeInfo? typeInfo,
   ) {
     final absent      = stats['absent'] ?? 0;
     final recovered   = stats['recovered'] ?? 0;
@@ -348,6 +349,10 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
                     : d.isTolerated
                         ? 'Tollerata (entro 10%)'
                         : 'Da recuperare';
+                final task = d.type == 'pratica' && d.lesson.taskId != null
+                    ? _refService.findTask(typeInfo, d.lesson.taskId)
+                    : null;
+                final taskLabel = task != null ? ' · Task ${task.programTaskId}' : '';
                 return Padding(
                   padding: const EdgeInsets.symmetric(vertical: 2),
                   child: Row(
@@ -372,7 +377,7 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
-                          '${d.lesson.submoduleCode} · $statusText',
+                          '${d.lesson.submoduleCode}$taskLabel · $statusText',
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                               color: color,
@@ -582,6 +587,7 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
     Course course,
     List<AppUser> attendees,
     List<ScheduledLesson> allLessons,
+    CourseTypeInfo? typeInfo,
   ) {
     final confirmedLessons = allLessons
         .where((l) => l.confirmed && l.timeSlot > 0)
@@ -616,7 +622,7 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
         final absentRecords = allRecords
             .where((r) => r.scheduleId == l.id && !r.present)
             .toList();
-        return _buildLessonCard(l, absentRecords, attendeeMap, pairingByAttendee);
+        return _buildLessonCard(l, absentRecords, attendeeMap, pairingByAttendee, typeInfo);
       }),
       if (recoveryByDate.isNotEmpty)
         _buildRecoverySection(recoveryByDate, attendeeMap),
@@ -638,7 +644,12 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
     List<AttendanceRecord> absentRecords,
     Map<String, AppUser> attendeeMap,
     Map<String, Map<String, DateTime>> pairingByAttendee,
+    CourseTypeInfo? typeInfo,
   ) {
+    final task = !l.isTheory && l.taskId != null
+        ? _refService.findTask(typeInfo, l.taskId)
+        : null;
+    final taskLabel = task != null ? ' · Task ${task.programTaskId}' : '';
     return Card(
       color: kCard,
       margin: const EdgeInsets.only(bottom: 6),
@@ -660,7 +671,7 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
-                    'M${_refService.moduleLabel(l.moduleNumber)} · ${l.submoduleCode} · S${l.timeSlot}',
+                    'M${_refService.moduleLabel(l.moduleNumber)} · ${l.submoduleCode}$taskLabel · S${l.timeSlot}',
                     style: const TextStyle(color: kPrimary, fontSize: 10),
                   ),
                 ),

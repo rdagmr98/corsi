@@ -1,4 +1,3 @@
-import 'dart:math';
 import '../models/reference_models.dart';
 import '../models/schedule_models.dart';
 import 'gh_db_service.dart';
@@ -41,6 +40,25 @@ class ScheduleService {
   List<ScheduledLesson> getLessonsForInstructor(String instructorId) =>
       getAllLessons().where((l) => l.instructorId == instructorId).toList()
         ..sort((a, b) => a.date.compareTo(b.date));
+
+  /// Lezioni (di QUALSIASI corso) già assegnate a [instructorId] nello stesso
+  /// giorno+ora, escludendo eventualmente [excludeLessonId] (la lezione che si
+  /// sta editando). Base per il controllo di doppia prenotazione (Task #78).
+  List<ScheduledLesson> lessonsForInstructorAt(
+    String instructorId,
+    DateTime date,
+    int timeSlot, {
+    String? excludeLessonId,
+  }) {
+    final d = DateTime(date.year, date.month, date.day);
+    return getAllLessons().where((l) {
+      if (l.instructorId != instructorId) return false;
+      if (l.id == excludeLessonId) return false;
+      if (l.timeSlot != timeSlot) return false;
+      final ld = DateTime(l.date.year, l.date.month, l.date.day);
+      return ld == d;
+    }).toList();
+  }
 
   /// All lessons relevant for an instructor: assigned lessons + unconfirmed
   /// lessons where they are AMC-authorized and no instructor is assigned yet.
