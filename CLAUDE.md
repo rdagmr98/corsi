@@ -69,7 +69,13 @@ GitHub Actions (`.github/workflows/deploy.yml`) deploya automaticamente su push 
 
 ---
 
-## STATO SESSIONE — aggiornato 2026-07-13 (sessione 28)
+## STATO SESSIONE — aggiornato 2026-07-22 (sessione 29)
+
+### Ultime modifiche (2026-07-22) — sessione 29 — discrepanza admin/direttore su ore da recuperare (commit `a1f5ac2`)
+Richiesta utente (verbatim, troncata): "in corsi smam ho trovato una discrepanza tra le assenze viste dall'admin e dal dir 3 in particolare di greco, admin vede che deve recuperare" (il messaggio non specifica cosa mostra invece il direttore).
+1. **Root cause**: `course_detail_screen.dart` (vista admin) calcolava warning e "da recuperare" con una formula hand-rolled indipendente, **solo teoria** (`unrecoveredT / mod.theoryHours > 0.10`), invece di leggere i campi canonici `toRecoverT`/`toRecoverP`/`toRecover` già calcolati da `AttendanceService.computePerModuleStats` (sessione 11) — gli stessi che `attendance_tab.dart` (vista direttore) legge correttamente (`warn = toRecover > 0`). Stessa classe di bug della deduplicazione GO/NOGO di sessione 27: formula duplicata che diverge silenziosamente dalla fonte canonica condivisa.
+2. **Fix**: rimossa la mappa `modPlanT`+`anyWarn` hand-rolled (aggregato per attendee) e le variabili `unrecoveredT`/`unrecoveredP`/`pct` (per modulo) in `course_detail_screen.dart`; sostituite con letture dirette di `toRecoverT`/`toRecoverP`/`toRecover` dalla stessa mappa `modStats` già in scope. Testo del subtitle allineato alla wording del direttore (`'P: ${toRecoverP}h (100%)'`, `'T: ${toRecoverT}h (oltre 10%)'`).
+3. Build+push: solo `lib/screens/master/course_detail_screen.dart`. `flutter analyze` sul file: 0 errori (i 3 warning `unused_local_variable` su `total`/`recovered`/`confirmedT` e gli info `withOpacity` deprecated sono pre-esistenti, non introdotti da questa modifica — verificato via `git diff`). `flutter build web --release --base-href "/corsi/"` ok, push `a1f5ac2`.
 
 ### Ultime modifiche (2026-07-13) — sessione 28 — filtro assenze da recuperare, evidenza corsi multipli, vincolo doppia prenotazione, id task pratico, fix currency gonfiata (commit `ac4210b` + `4fad288`)
 Richiesta utente (verbatim): "per i frequentatori il filtro da recuperare nelle assenze deve mostrare solo quelle da recuperare ora invece le mostra tutte. gli istruttori se ci sono pianificate lezioni per più corsi non riescono a distinguere i corsi, evidenziali. se un istruttore è stato selezionato dal dir per una lezione in quella ora non puo essere scelto per un altra lezione in un altro corso a meno che la somma dei frequentatori non sia minore uguale a 28 per la teoria e 15 per la pratica e sia la stessa lezione o lo stesso task pratico. nelle assenze dei frequentatori (sia per i frequentatori che per i dir) mostra id task quando è pratica." + audit ore currency ("6 ore anno mi sembrano troppe, forse registrate 2 volte") + xlsx `F-2-4 Programma settimanale Cat C.xlsx` (M9/M10 Niespolo/Signore).
