@@ -127,7 +127,7 @@ class AttendanceService {
   /// otherwise falls back to confirmed lesson count.
   /// Returns map keyed by module number: {total, absent, recovered, unrecovered,
   /// absentT/absentP, recoveredT/recoveredP, unrecoveredT/unrecoveredP,
-  /// threshold (= floor(ore_modulo/10)), toRecoverT/toRecoverP/toRecover}.
+  /// threshold (= floor(ore_teoria_modulo/10)), toRecoverT/toRecoverP/toRecover}.
   /// toRecover = ore da recuperare: pratica 100% + teoria oltre soglia 10%.
   Map<int, Map<String, int>> computePerModuleStats(
     String courseId,
@@ -189,6 +189,9 @@ class AttendanceService {
     final plannedHours = modules != null
         ? {for (final m in modules) m.number: m.totalHours}
         : <int, int>{};
+    final plannedTheoryHours = modules != null
+        ? {for (final m in modules) m.number: m.theoryHours}
+        : <int, int>{};
 
     final result = <int, Map<String, int>>{};
     final moduleKeys = {
@@ -201,6 +204,7 @@ class AttendanceService {
       final confirmedT = confirmedTByModule[moduleNum] ?? 0;
       final confirmedP = confirmedPByModule[moduleNum] ?? 0;
       final total = max(plannedHours[moduleNum] ?? 0, confirmedH);
+      final theoryTotal = max(plannedTheoryHours[moduleNum] ?? 0, confirmedT);
       final absent = absentByModule[moduleNum] ?? 0;
       final absentT = absentTByModule[moduleNum] ?? 0;
       final absentP = absentPByModule[moduleNum] ?? 0;
@@ -218,9 +222,10 @@ class AttendanceService {
       final unrecoveredP = (absentP - recoveredP).clamp(0, absentP);
       // Ore che il frequentatore deve ancora recuperare (regola corso):
       //  - Pratica: 100% delle assenze residue.
-      //  - Teoria: solo le ore eccedenti la soglia 10% del modulo
-      //    (floor(ore_modulo/10), come Excel), al netto della teoria già recuperata.
-      final threshold = total ~/ 10;
+      //  - Teoria: solo le ore eccedenti la soglia 10% delle ore di TEORIA
+      //    del modulo (floor(ore_teoria_modulo/10), come Excel), al netto
+      //    della teoria già recuperata.
+      final threshold = theoryTotal ~/ 10;
       final toRecoverP = unrecoveredP;
       final toRecoverT = max(0, absentT - threshold - recoveredT);
       final toRecover = toRecoverT + toRecoverP;
@@ -366,13 +371,13 @@ class AttendanceService {
     recP.sort((a, b) => (a['date'] as DateTime).compareTo(b['date'] as DateTime));
     recT.sort((a, b) => (a['date'] as DateTime).compareTo(b['date'] as DateTime));
 
-    var total = 0;
+    var theoryTotal = 0;
     if (modules != null) {
       for (final m in modules) {
-        if (m.number == moduleNumber) { total = m.totalHours; break; }
+        if (m.number == moduleNumber) { theoryTotal = m.theoryHours; break; }
       }
     }
-    final threshold = total ~/ 10;
+    final threshold = theoryTotal ~/ 10;
 
     List<AbsenceDetail> buildDetails(
       List<ScheduledLesson> abs,
