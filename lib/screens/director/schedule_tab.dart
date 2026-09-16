@@ -1316,10 +1316,6 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
     final instructors = {
       for (final u in _userService.getInstructors()) u.id: u,
     };
-    final attendees = course.attendeeIds
-        .map(_userService.findById)
-        .whereType<AppUser>()
-        .toList();
     final directors = course.directorIds
         .map(_userService.findById)
         .whereType<AppUser>()
@@ -1332,7 +1328,6 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
         weekLessons: _weekLessons,
         weekNotes: _weekNotes,
         instructors: instructors,
-        attendees: attendees,
         directors: directors,
         subNames: subNameMap,
       );

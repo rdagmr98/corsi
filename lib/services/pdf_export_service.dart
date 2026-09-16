@@ -48,6 +48,7 @@ class PdfExportService {
   }
 
   /// Programma settimanale: DATA (celle giorno unite) / ORARIO / Sottomodulo / Istruttore.
+  /// Una pagina A4 verticale; niente tabella frequentatori.
   static Future<void> downloadWeeklySchedule({
     required Course course,
     required CourseTypeInfo? typeInfo,
@@ -55,7 +56,6 @@ class PdfExportService {
     required List<ScheduledLesson> weekLessons,
     required List<SlotNote> weekNotes,
     required Map<String, AppUser> instructors,
-    required List<AppUser> attendees,
     required List<AppUser> directors,
     required Map<String, String> subNames,
   }) async {
@@ -68,8 +68,10 @@ class PdfExportService {
     String lessonTopic(ScheduledLesson l) {
       final nc = l.submoduleCode;
       final name = subNames[nc];
-      if (name != null && name.isNotEmpty) return '$nc – $name';
-      return l.topic.isNotEmpty ? l.topic : nc;
+      if (name != null && name.isNotEmpty) {
+        return _pdfSafe('$nc - $name');
+      }
+      return _pdfSafe(l.topic.isNotEmpty ? l.topic : nc);
     }
 
     String instructorLabel(ScheduledLesson l) {
@@ -77,8 +79,10 @@ class PdfExportService {
       final u = instructors[l.instructorId!];
       if (u == null) return '';
       final t = u.titolo?.trim();
-      if (t != null && t.isNotEmpty) return '$t ${u.cognome}'.trim();
-      return u.fullName;
+      if (t != null && t.isNotEmpty) {
+        return _pdfSafe('$t ${u.cognome}'.trim());
+      }
+      return _pdfSafe(u.fullName);
     }
 
     // Giorni: lista di slot [orario, sottomodulo, istruttore] per merge colonna DATA.
@@ -105,7 +109,9 @@ class PdfExportService {
             .firstOrNull;
         rows.add([
           '${slot.start} - ${slot.end}',
-          lesson != null ? lessonTopic(lesson) : (note?.text ?? ''),
+          lesson != null
+              ? lessonTopic(lesson)
+              : _pdfSafe(note?.text ?? ''),
           lesson != null ? instructorLabel(lesson) : '',
         ]);
       }
@@ -116,7 +122,10 @@ class PdfExportService {
         rows.add(['Recupero', lessonTopic(rec), instructorLabel(rec)]);
       }
       if (rows.isEmpty) continue;
-      dayGroups.add((dateLabel: dayFmt.format(day), rows: rows));
+      dayGroups.add((
+        dateLabel: _pdfSafe(dayFmt.format(day)),
+        rows: rows,
+      ));
     }
 
     final directorNames = directors
@@ -134,19 +143,26 @@ class PdfExportService {
     const borderColor = PdfColors.grey700;
     const headerBg = PdfColors.grey300;
     const dayBg = PdfColors.grey100;
-    const rowH = 18.0;
-    const dayW = 108.0;
-    const orarioW = 88.0;
+    // Portrait: altezza riga proporzionale per riempire la pagina (1 sola).
+    final totalRows =
+        dayGroups.fold<int>(0, (n, g) => n + g.rows.length);
+    const usableForRows = 841.89 - 52 - 175; // page - margins - header/firma
+    final rowH = totalRows == 0
+        ? 22.0
+        : (usableForRows / totalRows).clamp(15.0, 24.0);
+    const bodyFs = 10.5;
+    const dayW = 96.0;
+    const orarioW = 80.0;
 
     pw.Widget slotCell(String text, {bool bold = false, PdfColor? fill}) =>
         pw.Container(
           alignment: pw.Alignment.centerLeft,
-          padding: const pw.EdgeInsets.symmetric(horizontal: 5, vertical: 3),
+          padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 2),
           color: fill,
           child: pw.Text(
-            text,
+            _pdfSafe(text),
             style: pw.TextStyle(
-              fontSize: 8,
+              fontSize: bodyFs,
               fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
             ),
           ),
@@ -161,7 +177,7 @@ class PdfExportService {
             width: dayW,
             height: h,
             alignment: pw.Alignment.center,
-            padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+            padding: const pw.EdgeInsets.symmetric(horizontal: 3, vertical: 3),
             decoration: const pw.BoxDecoration(
               color: dayBg,
               border: pw.Border(
@@ -174,7 +190,8 @@ class PdfExportService {
             child: pw.Text(
               g.dateLabel,
               textAlign: pw.TextAlign.center,
-              style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold),
+              style: pw.TextStyle(
+                  fontSize: bodyFs, fontWeight: pw.FontWeight.bold),
             ),
           ),
           pw.Expanded(
@@ -230,158 +247,147 @@ class PdfExportService {
       );
     }
 
+    final typeLine = typeInfo != null && typeInfo.name.isNotEmpty
+        ? _pdfSafe(typeInfo.code.isNotEmpty
+            ? '${typeInfo.code} - ${typeInfo.name}'
+            : typeInfo.name)
+        : null;
+    final directorLine = _pdfSafe(
+      'Direttore del corso: ${directorNames.isEmpty ? '-' : directorNames}',
+    );
+
     final doc = pw.Document();
     doc.addPage(
-      pw.MultiPage(
-        pageFormat: PdfPageFormat.a4.landscape,
-        margin: const pw.EdgeInsets.fromLTRB(28, 24, 28, 24),
-        build: (ctx) => [
-          // ── Header: stemma + Centro Addestrativo, corso, frequentatori, direttore
-          pw.Row(
-            crossAxisAlignment: pw.CrossAxisAlignment.center,
+      pw.Page(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.fromLTRB(28, 26, 28, 26),
+        build: (ctx) => pw.Center(
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+            mainAxisAlignment: pw.MainAxisAlignment.start,
             children: [
-              pw.Image(logo, width: 42, height: 42),
-              pw.SizedBox(width: 12),
-              pw.Expanded(
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+              // Header centrato: stemma + titoli
+              pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.center,
+                crossAxisAlignment: pw.CrossAxisAlignment.center,
+                children: [
+                  pw.Image(logo, width: 48, height: 48),
+                  pw.SizedBox(width: 14),
+                  pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text(
+                        'CENTRO ADDESTRATIVO AVIAZIONE ESERCITO',
+                        style: pw.TextStyle(
+                            fontSize: 13, fontWeight: pw.FontWeight.bold),
+                      ),
+                      pw.SizedBox(height: 3),
+                      pw.Text(
+                        'PROGRAMMA SETTIMANALE',
+                        style: pw.TextStyle(
+                            fontSize: 11,
+                            fontWeight: pw.FontWeight.bold,
+                            color: PdfColors.grey700),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              pw.SizedBox(height: 14),
+              pw.Text(
+                _pdfSafe(course.title),
+                textAlign: pw.TextAlign.center,
+                style: pw.TextStyle(
+                    fontSize: 14, fontWeight: pw.FontWeight.bold),
+              ),
+              if (typeLine != null) ...[
+                pw.SizedBox(height: 3),
+                pw.Text(
+                  typeLine,
+                  textAlign: pw.TextAlign.center,
+                  style: const pw.TextStyle(
+                      fontSize: 10, color: PdfColors.grey700),
+                ),
+              ],
+              pw.SizedBox(height: 6),
+              pw.Text(
+                directorLine,
+                textAlign: pw.TextAlign.center,
+                style: pw.TextStyle(
+                    fontSize: 10, fontWeight: pw.FontWeight.bold),
+              ),
+              pw.SizedBox(height: 14),
+              // Tabella orario con DATA unita per giorno
+              pw.Container(
+                decoration: pw.BoxDecoration(
+                  color: headerBg,
+                  border: pw.Border.all(color: borderColor, width: 0.5),
+                ),
+                child: pw.Row(
                   children: [
-                    pw.Text(
-                      'CENTRO ADDESTRATIVO AVIAZIONE ESERCITO',
-                      style: pw.TextStyle(
-                          fontSize: 12, fontWeight: pw.FontWeight.bold),
+                    pw.Container(
+                      width: dayW,
+                      decoration: const pw.BoxDecoration(
+                        border: pw.Border(
+                          right:
+                              pw.BorderSide(color: borderColor, width: 0.5),
+                        ),
+                      ),
+                      child: slotCell('DATA', bold: true, fill: headerBg),
                     ),
-                    pw.SizedBox(height: 2),
-                    pw.Text(
-                      'PROGRAMMA SETTIMANALE',
-                      style: pw.TextStyle(
-                          fontSize: 10,
-                          fontWeight: pw.FontWeight.bold,
-                          color: PdfColors.grey700),
+                    pw.Container(
+                      width: orarioW,
+                      decoration: const pw.BoxDecoration(
+                        border: pw.Border(
+                          right:
+                              pw.BorderSide(color: borderColor, width: 0.5),
+                        ),
+                      ),
+                      child: slotCell('ORARIO', bold: true, fill: headerBg),
                     ),
+                    pw.Expanded(
+                      flex: 3,
+                      child: pw.Container(
+                        decoration: const pw.BoxDecoration(
+                          border: pw.Border(
+                            right: pw.BorderSide(
+                                color: borderColor, width: 0.5),
+                          ),
+                        ),
+                        child: slotCell('Sottomodulo',
+                            bold: true, fill: headerBg),
+                      ),
+                    ),
+                    pw.Expanded(
+                      flex: 2,
+                      child: slotCell('Istruttore',
+                          bold: true, fill: headerBg),
+                    ),
+                  ],
+                ),
+              ),
+              ...dayGroups.map(dayBlock),
+              pw.Spacer(),
+              pw.Align(
+                alignment: pw.Alignment.centerRight,
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.center,
+                  children: [
+                    pw.Text('IL COMANDANTE',
+                        style: pw.TextStyle(
+                            fontSize: 10, fontWeight: pw.FontWeight.bold)),
+                    pw.Text('(Accountable Manager)',
+                        style: const pw.TextStyle(
+                            fontSize: 9, color: PdfColors.grey600)),
+                    pw.SizedBox(height: 28),
+                    pw.Text('____________________________',
+                        style: const pw.TextStyle(fontSize: 11)),
                   ],
                 ),
               ),
             ],
           ),
-          pw.SizedBox(height: 10),
-          pw.Text(
-            course.title,
-            style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold),
-          ),
-          if (typeInfo != null && typeInfo.name.isNotEmpty)
-            pw.Padding(
-              padding: const pw.EdgeInsets.only(top: 2),
-              child: pw.Text(
-                typeInfo.code.isNotEmpty
-                    ? '${typeInfo.code} — ${typeInfo.name}'
-                    : typeInfo.name,
-                style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700),
-              ),
-            ),
-          pw.SizedBox(height: 8),
-          pw.Text(
-            'Direttore del corso: ${directorNames.isEmpty ? '—' : directorNames}',
-            style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold),
-          ),
-          pw.SizedBox(height: 6),
-          pw.Text('Frequentatori',
-              style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
-          pw.SizedBox(height: 3),
-          pw.Table(
-            border: pw.TableBorder.all(color: PdfColors.grey500, width: 0.4),
-            columnWidths: {
-              0: const pw.FixedColumnWidth(26),
-              1: const pw.FlexColumnWidth(1.1),
-              2: const pw.FlexColumnWidth(2),
-              3: const pw.FlexColumnWidth(2),
-            },
-            children: [
-              pw.TableRow(
-                decoration: const pw.BoxDecoration(color: PdfColors.grey200),
-                children: [
-                  _cell('N°', bold: true, size: 8),
-                  _cell('Grado', bold: true, size: 8),
-                  _cell('Nome', bold: true, size: 8),
-                  _cell('Cognome', bold: true, size: 8),
-                ],
-              ),
-              ...attendees.asMap().entries.map((e) {
-                final u = e.value;
-                return pw.TableRow(children: [
-                  _cell('${e.key + 1}', size: 8),
-                  _cell(u.titolo ?? '', size: 8),
-                  _cell(u.nome, size: 8),
-                  _cell(u.cognome, size: 8),
-                ]);
-              }),
-            ],
-          ),
-          pw.SizedBox(height: 12),
-          // ── Tabella orario con DATA unita per giorno
-          pw.Container(
-            decoration: pw.BoxDecoration(
-              color: headerBg,
-              border: pw.Border.all(color: borderColor, width: 0.5),
-            ),
-            child: pw.Row(
-              children: [
-                pw.Container(
-                  width: dayW,
-                  decoration: const pw.BoxDecoration(
-                    border: pw.Border(
-                      right: pw.BorderSide(color: borderColor, width: 0.5),
-                    ),
-                  ),
-                  child: slotCell('DATA', bold: true, fill: headerBg),
-                ),
-                pw.Container(
-                  width: orarioW,
-                  decoration: const pw.BoxDecoration(
-                    border: pw.Border(
-                      right: pw.BorderSide(color: borderColor, width: 0.5),
-                    ),
-                  ),
-                  child: slotCell('ORARIO', bold: true, fill: headerBg),
-                ),
-                pw.Expanded(
-                  flex: 3,
-                  child: pw.Container(
-                    decoration: const pw.BoxDecoration(
-                      border: pw.Border(
-                        right: pw.BorderSide(color: borderColor, width: 0.5),
-                      ),
-                    ),
-                    child:
-                        slotCell('Sottomodulo', bold: true, fill: headerBg),
-                  ),
-                ),
-                pw.Expanded(
-                    flex: 2,
-                    child: slotCell('Istruttore', bold: true, fill: headerBg)),
-              ],
-            ),
-          ),
-          ...dayGroups.map(dayBlock),
-          pw.SizedBox(height: 20),
-          pw.Align(
-            alignment: pw.Alignment.centerRight,
-            child: pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.center,
-              children: [
-                pw.Text('IL COMANDANTE',
-                    style: pw.TextStyle(
-                        fontSize: 9, fontWeight: pw.FontWeight.bold)),
-                pw.Text('(Accountable Manager)',
-                    style: const pw.TextStyle(
-                        fontSize: 8, color: PdfColors.grey600)),
-                pw.SizedBox(height: 26),
-                pw.Text('____________________________',
-                    style: const pw.TextStyle(fontSize: 10)),
-              ],
-            ),
-          ),
-        ],
+        ),
       ),
     );
 
@@ -604,6 +610,31 @@ class PdfExportService {
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────
+
+  /// Helvetica/WinAnsi: en/em dash e simili → ☒. Accenti IT (Latin-1) OK.
+  static String _pdfSafe(String s) {
+    final mapped = s
+        .replaceAll('\u2012', '-') // figure dash
+        .replaceAll('\u2013', '-') // en dash
+        .replaceAll('\u2014', '-') // em dash
+        .replaceAll('\u2015', '-') // horizontal bar
+        .replaceAll('\u2212', '-') // minus
+        .replaceAll('\u2018', "'")
+        .replaceAll('\u2019', "'")
+        .replaceAll('\u201C', '"')
+        .replaceAll('\u201D', '"')
+        .replaceAll('\u2022', '-')
+        .replaceAll('\u2023', '-')
+        .replaceAll('\u00B7', '-')
+        .replaceAll('\u2026', '...')
+        .replaceAll('\u00A0', ' ')
+        .replaceAll(RegExp(r'[\u2000-\u200B\uFEFF]'), ' ');
+    // Drop anything outside WinAnsi-safe Latin-1 printable range.
+    return mapped.replaceAllMapped(
+      RegExp(r'[^\x09\x0A\x0D\x20-\x7E\xA0-\xFF]'),
+      (_) => '',
+    );
+  }
 
   static pw.Widget _sectionHeader(String title) => pw.Column(children: [
         pw.Text(title,
