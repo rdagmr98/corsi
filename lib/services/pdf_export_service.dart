@@ -47,8 +47,8 @@ class PdfExportService {
     await downloadPdf(bytes, filename);
   }
 
-  /// Programma settimanale: DATA (celle giorno unite) / ORARIO / Sottomodulo / Istruttore.
-  /// Una pagina A4 verticale; niente tabella frequentatori.
+  /// Programma settimanale: header (stemma + corso + frequentatori + direttore),
+  /// tabella DATA (celle giorno unite) / ORARIO / Sottomodulo / Istruttore.
   static Future<void> downloadWeeklySchedule({
     required Course course,
     required CourseTypeInfo? typeInfo,
@@ -56,6 +56,7 @@ class PdfExportService {
     required List<ScheduledLesson> weekLessons,
     required List<SlotNote> weekNotes,
     required Map<String, AppUser> instructors,
+    required List<AppUser> attendees,
     required List<AppUser> directors,
     required Map<String, String> subNames,
   }) async {
@@ -85,7 +86,6 @@ class PdfExportService {
       return _pdfSafe(u.fullName);
     }
 
-    // Giorni: lista di slot [orario, sottomodulo, istruttore] per merge colonna DATA.
     final dayGroups = <({String dateLabel, List<List<String>> rows})>[];
     for (var i = 0; i < 5; i++) {
       final day = weekStart.add(Duration(days: i));
@@ -109,9 +109,7 @@ class PdfExportService {
             .firstOrNull;
         rows.add([
           '${slot.start} - ${slot.end}',
-          lesson != null
-              ? lessonTopic(lesson)
-              : _pdfSafe(note?.text ?? ''),
+          lesson != null ? lessonTopic(lesson) : _pdfSafe(note?.text ?? ''),
           lesson != null ? instructorLabel(lesson) : '',
         ]);
       }
@@ -143,26 +141,19 @@ class PdfExportService {
     const borderColor = PdfColors.grey700;
     const headerBg = PdfColors.grey300;
     const dayBg = PdfColors.grey100;
-    // Portrait: altezza riga proporzionale per riempire la pagina (1 sola).
-    final totalRows =
-        dayGroups.fold<int>(0, (n, g) => n + g.rows.length);
-    const usableForRows = 841.89 - 52 - 175; // page - margins - header/firma
-    final rowH = totalRows == 0
-        ? 22.0
-        : (usableForRows / totalRows).clamp(15.0, 24.0);
-    const bodyFs = 10.5;
-    const dayW = 96.0;
-    const orarioW = 80.0;
+    const rowH = 18.0;
+    const dayW = 108.0;
+    const orarioW = 88.0;
 
     pw.Widget slotCell(String text, {bool bold = false, PdfColor? fill}) =>
         pw.Container(
           alignment: pw.Alignment.centerLeft,
-          padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+          padding: const pw.EdgeInsets.symmetric(horizontal: 5, vertical: 3),
           color: fill,
           child: pw.Text(
             _pdfSafe(text),
             style: pw.TextStyle(
-              fontSize: bodyFs,
+              fontSize: 8,
               fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
             ),
           ),
@@ -177,21 +168,15 @@ class PdfExportService {
             width: dayW,
             height: h,
             alignment: pw.Alignment.center,
-            padding: const pw.EdgeInsets.symmetric(horizontal: 3, vertical: 3),
-            decoration: const pw.BoxDecoration(
+            padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+            decoration: pw.BoxDecoration(
               color: dayBg,
-              border: pw.Border(
-                left: pw.BorderSide(color: borderColor, width: 0.5),
-                right: pw.BorderSide(color: borderColor, width: 0.5),
-                bottom: pw.BorderSide(color: borderColor, width: 0.5),
-                top: pw.BorderSide(color: borderColor, width: 0.5),
-              ),
+              border: pw.Border.all(color: borderColor, width: 0.5),
             ),
             child: pw.Text(
               g.dateLabel,
               textAlign: pw.TextAlign.center,
-              style: pw.TextStyle(
-                  fontSize: bodyFs, fontWeight: pw.FontWeight.bold),
+              style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold),
             ),
           ),
           pw.Expanded(
@@ -252,142 +237,165 @@ class PdfExportService {
             ? '${typeInfo.code} - ${typeInfo.name}'
             : typeInfo.name)
         : null;
-    final directorLine = _pdfSafe(
-      'Direttore del corso: ${directorNames.isEmpty ? '-' : directorNames}',
-    );
 
     final doc = pw.Document();
     doc.addPage(
-      pw.Page(
-        pageFormat: PdfPageFormat.a4,
-        margin: const pw.EdgeInsets.fromLTRB(28, 26, 28, 26),
-        build: (ctx) => pw.Center(
-          child: pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-            mainAxisAlignment: pw.MainAxisAlignment.start,
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4.landscape,
+        margin: const pw.EdgeInsets.fromLTRB(28, 24, 28, 24),
+        build: (ctx) => [
+          pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.center,
             children: [
-              // Header centrato: stemma + titoli
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.center,
-                crossAxisAlignment: pw.CrossAxisAlignment.center,
-                children: [
-                  pw.Image(logo, width: 48, height: 48),
-                  pw.SizedBox(width: 14),
-                  pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
-                    children: [
-                      pw.Text(
-                        'CENTRO ADDESTRATIVO AVIAZIONE ESERCITO',
-                        style: pw.TextStyle(
-                            fontSize: 13, fontWeight: pw.FontWeight.bold),
-                      ),
-                      pw.SizedBox(height: 3),
-                      pw.Text(
-                        'PROGRAMMA SETTIMANALE',
-                        style: pw.TextStyle(
-                            fontSize: 11,
-                            fontWeight: pw.FontWeight.bold,
-                            color: PdfColors.grey700),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              pw.SizedBox(height: 14),
-              pw.Text(
-                _pdfSafe(course.title),
-                textAlign: pw.TextAlign.center,
-                style: pw.TextStyle(
-                    fontSize: 14, fontWeight: pw.FontWeight.bold),
-              ),
-              if (typeLine != null) ...[
-                pw.SizedBox(height: 3),
-                pw.Text(
-                  typeLine,
-                  textAlign: pw.TextAlign.center,
-                  style: const pw.TextStyle(
-                      fontSize: 10, color: PdfColors.grey700),
-                ),
-              ],
-              pw.SizedBox(height: 6),
-              pw.Text(
-                directorLine,
-                textAlign: pw.TextAlign.center,
-                style: pw.TextStyle(
-                    fontSize: 10, fontWeight: pw.FontWeight.bold),
-              ),
-              pw.SizedBox(height: 14),
-              // Tabella orario con DATA unita per giorno
-              pw.Container(
-                decoration: pw.BoxDecoration(
-                  color: headerBg,
-                  border: pw.Border.all(color: borderColor, width: 0.5),
-                ),
-                child: pw.Row(
-                  children: [
-                    pw.Container(
-                      width: dayW,
-                      decoration: const pw.BoxDecoration(
-                        border: pw.Border(
-                          right:
-                              pw.BorderSide(color: borderColor, width: 0.5),
-                        ),
-                      ),
-                      child: slotCell('DATA', bold: true, fill: headerBg),
-                    ),
-                    pw.Container(
-                      width: orarioW,
-                      decoration: const pw.BoxDecoration(
-                        border: pw.Border(
-                          right:
-                              pw.BorderSide(color: borderColor, width: 0.5),
-                        ),
-                      ),
-                      child: slotCell('ORARIO', bold: true, fill: headerBg),
-                    ),
-                    pw.Expanded(
-                      flex: 3,
-                      child: pw.Container(
-                        decoration: const pw.BoxDecoration(
-                          border: pw.Border(
-                            right: pw.BorderSide(
-                                color: borderColor, width: 0.5),
-                          ),
-                        ),
-                        child: slotCell('Sottomodulo',
-                            bold: true, fill: headerBg),
-                      ),
-                    ),
-                    pw.Expanded(
-                      flex: 2,
-                      child: slotCell('Istruttore',
-                          bold: true, fill: headerBg),
-                    ),
-                  ],
-                ),
-              ),
-              ...dayGroups.map(dayBlock),
-              pw.Spacer(),
-              pw.Align(
-                alignment: pw.Alignment.centerRight,
+              pw.Image(logo, width: 42, height: 42),
+              pw.SizedBox(width: 12),
+              pw.Expanded(
                 child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.center,
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
-                    pw.Text('IL COMANDANTE',
-                        style: pw.TextStyle(
-                            fontSize: 10, fontWeight: pw.FontWeight.bold)),
-                    pw.Text('(Accountable Manager)',
-                        style: const pw.TextStyle(
-                            fontSize: 9, color: PdfColors.grey600)),
-                    pw.SizedBox(height: 28),
-                    pw.Text('____________________________',
-                        style: const pw.TextStyle(fontSize: 11)),
+                    pw.Text(
+                      'CENTRO ADDESTRATIVO AVIAZIONE ESERCITO',
+                      style: pw.TextStyle(
+                          fontSize: 12, fontWeight: pw.FontWeight.bold),
+                    ),
+                    pw.SizedBox(height: 2),
+                    pw.Text(
+                      'PROGRAMMA SETTIMANALE',
+                      style: pw.TextStyle(
+                          fontSize: 10,
+                          fontWeight: pw.FontWeight.bold,
+                          color: PdfColors.grey700),
+                    ),
                   ],
                 ),
               ),
             ],
           ),
-        ),
+          pw.SizedBox(height: 10),
+          pw.Text(
+            _pdfSafe(course.title),
+            style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold),
+          ),
+          if (typeLine != null)
+            pw.Padding(
+              padding: const pw.EdgeInsets.only(top: 2),
+              child: pw.Text(typeLine,
+                  style: const pw.TextStyle(
+                      fontSize: 9, color: PdfColors.grey700)),
+            ),
+          pw.SizedBox(height: 8),
+          pw.Text(
+            _pdfSafe(
+              'Direttore del corso: ${directorNames.isEmpty ? '-' : directorNames}',
+            ),
+            style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold),
+          ),
+          pw.SizedBox(height: 6),
+          pw.Text('Frequentatori',
+              style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
+          pw.SizedBox(height: 3),
+          pw.Table(
+            border: pw.TableBorder.all(color: PdfColors.grey500, width: 0.4),
+            columnWidths: {
+              0: const pw.FixedColumnWidth(26),
+              1: const pw.FlexColumnWidth(1.1),
+              2: const pw.FlexColumnWidth(2),
+              3: const pw.FlexColumnWidth(2),
+            },
+            children: [
+              pw.TableRow(
+                decoration: const pw.BoxDecoration(color: PdfColors.grey200),
+                children: [
+                  _cell('N°', bold: true, size: 8),
+                  _cell('Grado', bold: true, size: 8),
+                  _cell('Nome', bold: true, size: 8),
+                  _cell('Cognome', bold: true, size: 8),
+                ],
+              ),
+              if (attendees.isEmpty)
+                pw.TableRow(children: [
+                  _cell('-', size: 8),
+                  _cell('', size: 8),
+                  _cell('', size: 8),
+                  _cell('', size: 8),
+                ])
+              else
+                ...attendees.asMap().entries.map((e) {
+                  final u = e.value;
+                  return pw.TableRow(children: [
+                    _cell('${e.key + 1}', size: 8),
+                    _cell(_pdfSafe(u.titolo ?? ''), size: 8),
+                    _cell(_pdfSafe(u.nome), size: 8),
+                    _cell(_pdfSafe(u.cognome), size: 8),
+                  ]);
+                }),
+            ],
+          ),
+          pw.SizedBox(height: 12),
+          pw.Container(
+            decoration: pw.BoxDecoration(
+              color: headerBg,
+              border: pw.Border.all(color: borderColor, width: 0.5),
+            ),
+            child: pw.Row(
+              children: [
+                pw.Container(
+                  width: dayW,
+                  decoration: const pw.BoxDecoration(
+                    border: pw.Border(
+                      right: pw.BorderSide(color: borderColor, width: 0.5),
+                    ),
+                  ),
+                  child: slotCell('DATA', bold: true, fill: headerBg),
+                ),
+                pw.Container(
+                  width: orarioW,
+                  decoration: const pw.BoxDecoration(
+                    border: pw.Border(
+                      right: pw.BorderSide(color: borderColor, width: 0.5),
+                    ),
+                  ),
+                  child: slotCell('ORARIO', bold: true, fill: headerBg),
+                ),
+                pw.Expanded(
+                  flex: 3,
+                  child: pw.Container(
+                    decoration: const pw.BoxDecoration(
+                      border: pw.Border(
+                        right: pw.BorderSide(color: borderColor, width: 0.5),
+                      ),
+                    ),
+                    child:
+                        slotCell('Sottomodulo', bold: true, fill: headerBg),
+                  ),
+                ),
+                pw.Expanded(
+                  flex: 2,
+                  child: slotCell('Istruttore', bold: true, fill: headerBg),
+                ),
+              ],
+            ),
+          ),
+          ...dayGroups.map(dayBlock),
+          pw.SizedBox(height: 20),
+          pw.Align(
+            alignment: pw.Alignment.centerRight,
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.center,
+              children: [
+                pw.Text('IL COMANDANTE',
+                    style: pw.TextStyle(
+                        fontSize: 9, fontWeight: pw.FontWeight.bold)),
+                pw.Text('(Accountable Manager)',
+                    style: const pw.TextStyle(
+                        fontSize: 8, color: PdfColors.grey600)),
+                pw.SizedBox(height: 26),
+                pw.Text('____________________________',
+                    style: const pw.TextStyle(fontSize: 10)),
+              ],
+            ),
+          ),
+        ],
       ),
     );
 

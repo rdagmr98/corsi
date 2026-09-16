@@ -1320,6 +1320,10 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
         .map(_userService.findById)
         .whereType<AppUser>()
         .toList();
+    final attendees = course.attendeeIds
+        .map(_userService.findById)
+        .whereType<AppUser>()
+        .toList();
     try {
       await PdfExportService.downloadWeeklySchedule(
         course: course,
@@ -1328,6 +1332,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
         weekLessons: _weekLessons,
         weekNotes: _weekNotes,
         instructors: instructors,
+        attendees: attendees,
         directors: directors,
         subNames: subNameMap,
       );
