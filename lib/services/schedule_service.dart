@@ -38,7 +38,10 @@ class ScheduleService {
   }
 
   List<ScheduledLesson> getLessonsForInstructor(String instructorId) =>
-      getAllLessons().where((l) => l.instructorId == instructorId).toList()
+      getAllLessons()
+          .where((l) =>
+              l.instructorId == instructorId || l.instructorId2 == instructorId)
+          .toList()
         ..sort((a, b) => a.date.compareTo(b.date));
 
   /// Lezioni (di QUALSIASI corso) già assegnate a [instructorId] nello stesso
@@ -52,7 +55,9 @@ class ScheduleService {
   }) {
     final d = DateTime(date.year, date.month, date.day);
     return getAllLessons().where((l) {
-      if (l.instructorId != instructorId) return false;
+      final assigned =
+          l.instructorId == instructorId || l.instructorId2 == instructorId;
+      if (!assigned) return false;
       if (l.id == excludeLessonId) return false;
       if (l.timeSlot != timeSlot) return false;
       final ld = DateTime(l.date.year, l.date.month, l.date.day);
@@ -75,7 +80,9 @@ class ScheduleService {
     }
 
     return getAllLessons().where((l) {
-      if (l.instructorId == instructorId) return true;
+      if (l.instructorId == instructorId || l.instructorId2 == instructorId) {
+        return true;
+      }
       if (l.instructorId == null && !l.confirmed && isAmcAuthorized(l)) return true;
       return false;
     }).toList()
@@ -127,7 +134,9 @@ class ScheduleService {
     return getAllLessons().where((l) {
       final ld = DateTime(l.date.year, l.date.month, l.date.day);
       if (ld != d) return false;
-      if (l.instructorId == instructorId) return true;
+      if (l.instructorId == instructorId || l.instructorId2 == instructorId) {
+        return true;
+      }
       if (l.instructorId == null && !l.confirmed && isAmcAuthorized(l)) return true;
       return false;
     }).toList()
@@ -151,6 +160,7 @@ class ScheduleService {
     required DateTime date,
     required int timeSlot,
     String? instructorId,
+    String? instructorId2,
     dynamic taskId,
   }) async {
     final schedules = _db.schedules.toList();
@@ -166,6 +176,7 @@ class ScheduleService {
       'date': date.toIso8601String().split('T').first,
       'time_slot': timeSlot,
       'instructor_id': instructorId,
+      'instructor_id_2': instructorId2,
       'confirmed': false,
       if (taskId != null) 'task_id': taskId,
       'created_at': now.toIso8601String(),
