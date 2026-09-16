@@ -12,6 +12,7 @@ import '../../services/gh_db_service.dart';
 import '../../services/grade_service.dart';
 import '../../services/notification_service.dart';
 import '../../services/reference_service.dart';
+import '../../services/pdf_export_service.dart';
 import '../../services/schedule_service.dart';
 import '../../services/user_service.dart';
 import '../../theme.dart';
@@ -1305,6 +1306,44 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
     }
   }
 
+  Future<void> _exportWeeklyPdf() async {
+    if (_selected == null) return;
+    final course = _selected!;
+    final subNameMap = <String, String>{
+      for (final m in _typeInfo?.modules ?? [])
+        for (final s in m.submodules) s.code: s.name,
+    };
+    final instructors = {
+      for (final u in _userService.getInstructors()) u.id: u,
+    };
+    final attendees = course.attendeeIds
+        .map(_userService.findById)
+        .whereType<AppUser>()
+        .toList();
+    final directors = course.directorIds
+        .map(_userService.findById)
+        .whereType<AppUser>()
+        .toList();
+    try {
+      await PdfExportService.downloadWeeklySchedule(
+        course: course,
+        typeInfo: _typeInfo,
+        weekStart: _weekStart,
+        weekLessons: _weekLessons,
+        weekNotes: _weekNotes,
+        instructors: instructors,
+        attendees: attendees,
+        directors: directors,
+        subNames: subNameMap,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Errore generazione PDF: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_courses.isEmpty) {
@@ -1427,6 +1466,12 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                   ),
                   icon: const Icon(Icons.delete_sweep, size: 16),
                   label: const Text('Cancella non svolte', style: TextStyle(fontSize: 12)),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  onPressed: _exportWeeklyPdf,
+                  icon: const Icon(Icons.picture_as_pdf, size: 16),
+                  label: const Text('PDF settimana', style: TextStyle(fontSize: 12)),
                 ),
               ],
               IconButton(icon: const Icon(Icons.refresh, color: kTextDim), onPressed: _reload),
@@ -1788,13 +1833,15 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                   borderRadius: BorderRadius.circular(2),
                 ),
                 child: Text(typeLabel,
-                    style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.bold)),
+                    style: const TextStyle(
+                        color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
               ),
               const SizedBox(width: 4),
               Text('M${_refService.moduleLabel(lesson.moduleNumber)}',
-                  style: const TextStyle(color: kTextDim, fontSize: 9)),
+                  style: const TextStyle(color: Colors.white70, fontSize: 9)),
               const Spacer(),
-              if (lesson.confirmed) Icon(Icons.check_circle, color: color, size: 10),
+              if (lesson.confirmed)
+                const Icon(Icons.check_circle, color: Colors.white, size: 10),
               GestureDetector(
                 onTap: () => _deleteLesson(lesson),
                 child: Padding(
@@ -1806,7 +1853,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
             const SizedBox(height: 2),
             Expanded(
               child: Text(displayTopic,
-                  style: TextStyle(color: color, fontSize: 10),
+                  style: const TextStyle(color: Colors.white, fontSize: 10),
                   maxLines: 4,
                   overflow: TextOverflow.ellipsis),
             ),
@@ -1815,8 +1862,8 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                 child: Text(hoursStr,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        color: color.withOpacity(0.7),
+                    style: const TextStyle(
+                        color: Colors.white70,
                         fontSize: 9,
                         fontWeight: FontWeight.w500)),
               ),
@@ -1842,10 +1889,11 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       textAlign: TextAlign.end,
-                      style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.bold)),
+                      style: const TextStyle(
+                          color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
                 )
               else
-                Icon(Icons.person_outline, size: 9, color: kBorder),
+                const Icon(Icons.person_outline, size: 9, color: Colors.white54),
             ]),
           ],
         ),

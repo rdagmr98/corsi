@@ -46,6 +46,256 @@ class PdfExportService {
     await downloadPdf(bytes, filename);
   }
 
+  /// Programma settimanale stile F-2-4 (DATA / ORARIO / ADDESTRAMENTO / …).
+  static Future<void> downloadWeeklySchedule({
+    required Course course,
+    required CourseTypeInfo? typeInfo,
+    required DateTime weekStart,
+    required List<ScheduledLesson> weekLessons,
+    required List<SlotNote> weekNotes,
+    required Map<String, AppUser> instructors,
+    required List<AppUser> attendees,
+    required List<AppUser> directors,
+    required Map<String, String> subNames,
+  }) async {
+    final weekEnd = weekStart.add(const Duration(days: 6));
+    final dateFmt = DateFormat('dd/MM/yyyy');
+    final dayFmt = DateFormat('dd/MM/yyyy');
+    final slots = typeInfo?.schedule.mondayThursday ?? const <TimeSlot>[];
+    final regular = weekLessons.where((l) => l.timeSlot > 0).toList();
+    final recovery = weekLessons.where((l) => l.timeSlot == 0).toList();
+
+    String lessonTopic(ScheduledLesson l) {
+      final nc = l.submoduleCode;
+      final name = subNames[nc];
+      if (name != null && name.isNotEmpty) return '$nc – $name';
+      return l.topic.isNotEmpty ? l.topic : nc;
+    }
+
+    String instructorLabel(ScheduledLesson l) {
+      if (l.instructorId == null) return '';
+      final u = instructors[l.instructorId!];
+      if (u == null) return '';
+      final t = u.titolo?.trim();
+      if (t != null && t.isNotEmpty) return '$t ${u.cognome}'.trim();
+      return u.fullName;
+    }
+
+    final tableRows = <List<String>>[];
+    for (var i = 0; i < 5; i++) {
+      final day = weekStart.add(Duration(days: i));
+      final daySlots = typeInfo?.schedule.slotsForWeekday(day.weekday) ?? slots;
+      final dateStr = dayFmt.format(day);
+      var first = true;
+      for (final slot in daySlots) {
+        if (day.weekday == DateTime.friday && slot.slot > 3) continue;
+        final lesson = regular
+            .where((l) =>
+                l.date.year == day.year &&
+                l.date.month == day.month &&
+                l.date.day == day.day &&
+                l.timeSlot == slot.slot)
+            .firstOrNull;
+        final note = weekNotes
+            .where((n) =>
+                n.date.year == day.year &&
+                n.date.month == day.month &&
+                n.date.day == day.day &&
+                n.timeSlot == slot.slot)
+            .firstOrNull;
+        final orario = '${slot.start} - ${slot.end}';
+        final training = lesson != null
+            ? lessonTopic(lesson)
+            : (note?.text ?? '');
+        final teacher = lesson != null ? instructorLabel(lesson) : '';
+        tableRows.add([
+          first ? dateStr : '',
+          orario,
+          training,
+          teacher,
+          lesson != null ? 'Aula 1' : '', // ponytail: no aula field in app
+        ]);
+        first = false;
+      }
+      for (final rec in recovery.where((l) =>
+          l.date.year == day.year &&
+          l.date.month == day.month &&
+          l.date.day == day.day)) {
+        tableRows.add([
+          first ? dateStr : '',
+          'Recupero',
+          lessonTopic(rec),
+          instructorLabel(rec),
+          'Aula 1',
+        ]);
+        first = false;
+      }
+    }
+
+    final directorNames = directors
+        .map((d) {
+          final t = d.titolo?.trim();
+          return (t != null && t.isNotEmpty) ? '$t ${d.cognome} ${d.nome}'.trim() : d.fullName;
+        })
+        .join(' / ');
+
+    final durationWeeks = typeInfo?.estimatedWeeks;
+    final doc = pw.Document();
+    doc.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4.landscape,
+        margin: const pw.EdgeInsets.all(28),
+        build: (ctx) => [
+          pw.Center(
+            child: pw.Text('CENTRO ADDESTRATIVO AVIAZIONE ESERCITO',
+                style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold)),
+          ),
+          pw.SizedBox(height: 2),
+          pw.Center(
+            child: pw.Text(typeInfo?.code ?? course.title,
+                style: const pw.TextStyle(fontSize: 11)),
+          ),
+          pw.SizedBox(height: 6),
+          pw.Center(
+            child: pw.Text('PROGRAMMA SETTIMANALE',
+                style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold)),
+          ),
+          pw.Center(
+            child: pw.Text('CENTRO ADDESTRATIVO AVIAZIONE ESERCITO',
+                style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold)),
+          ),
+          if (typeInfo != null)
+            pw.Center(
+              child: pw.Container(
+                margin: const pw.EdgeInsets.only(top: 4),
+                padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                color: PdfColor.fromInt(0xFFE4D079),
+                child: pw.Text(
+                  typeInfo.category.isNotEmpty ? typeInfo.category : typeInfo.name,
+                  style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold),
+                ),
+              ),
+            ),
+          pw.SizedBox(height: 8),
+          pw.Table(
+            border: pw.TableBorder.all(color: PdfColors.grey600, width: 0.4),
+            columnWidths: {
+              0: const pw.FlexColumnWidth(2.2),
+              1: const pw.FlexColumnWidth(1.2),
+              2: const pw.FlexColumnWidth(2.2),
+              3: const pw.FlexColumnWidth(1.2),
+            },
+            children: [
+              pw.TableRow(children: [
+                _cell('DATA INIZIO CORSO', bold: true, size: 9),
+                _cell(course.startDate != null ? dateFmt.format(course.startDate!) : '—',
+                    bold: true, size: 9, fill: PdfColor.fromInt(0xFFE4D079)),
+                _cell('DATA FINE CORSO (PIANIFICATA)', bold: true, size: 9),
+                _cell(course.endDate != null ? dateFmt.format(course.endDate!) : '—',
+                    bold: true, size: 9, fill: PdfColor.fromInt(0xFFE4D079)),
+              ]),
+              pw.TableRow(children: [
+                _cell('DURATA (STIMATA)', bold: true, size: 9),
+                _cell(durationWeeks != null ? '$durationWeeks w' : '—',
+                    bold: true, size: 9, fill: PdfColor.fromInt(0xFFE4D079)),
+                _cell('SETTIMANA VISUALIZZATA', bold: true, size: 9),
+                _cell('${dateFmt.format(weekStart)} – ${dateFmt.format(weekEnd)}',
+                    bold: true, size: 9, fill: PdfColor.fromInt(0xFFE4D079)),
+              ]),
+            ],
+          ),
+          pw.SizedBox(height: 10),
+          pw.Table(
+            border: pw.TableBorder.all(color: PdfColors.grey700, width: 0.5),
+            columnWidths: {
+              0: const pw.FlexColumnWidth(1.3),
+              1: const pw.FlexColumnWidth(1.5),
+              2: const pw.FlexColumnWidth(3.2),
+              3: const pw.FlexColumnWidth(2.8),
+              4: const pw.FlexColumnWidth(1.4),
+            },
+            children: [
+              pw.TableRow(
+                decoration: const pw.BoxDecoration(color: PdfColors.grey300),
+                children: [
+                  _cell('DATA', bold: true, size: 9),
+                  _cell('ORARIO', bold: true, size: 9),
+                  _cell('ADDESTRAMENTO', bold: true, size: 9),
+                  _cell('INSEGNANTE/RESPONSABILE', bold: true, size: 9),
+                  _cell('LOCALITÀ/AULA', bold: true, size: 9),
+                ],
+              ),
+              ...tableRows.map((r) => pw.TableRow(
+                    children: r.map((v) => _cell(v, size: 8)).toList(),
+                  )),
+            ],
+          ),
+          pw.SizedBox(height: 14),
+          pw.Text(
+            'Direttore del corso: ${directorNames.isEmpty ? '—' : directorNames}',
+            style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
+          ),
+          pw.SizedBox(height: 8),
+          pw.Text('FREQUENTATORI:',
+              style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)),
+          pw.SizedBox(height: 4),
+          pw.Table(
+            border: pw.TableBorder.all(color: PdfColors.grey500, width: 0.4),
+            columnWidths: {
+              0: const pw.FixedColumnWidth(28),
+              1: const pw.FlexColumnWidth(1.2),
+              2: const pw.FlexColumnWidth(2),
+              3: const pw.FlexColumnWidth(2),
+            },
+            children: [
+              pw.TableRow(
+                decoration: const pw.BoxDecoration(color: PdfColors.grey200),
+                children: [
+                  _cell('N°', bold: true, size: 8),
+                  _cell('GRADO', bold: true, size: 8),
+                  _cell('NOME', bold: true, size: 8),
+                  _cell('COGNOME', bold: true, size: 8),
+                ],
+              ),
+              ...attendees.asMap().entries.map((e) {
+                final i = e.key + 1;
+                final u = e.value;
+                return pw.TableRow(children: [
+                  _cell('$i', size: 8),
+                  _cell(u.titolo ?? '', size: 8),
+                  _cell(u.nome, size: 8),
+                  _cell(u.cognome, size: 8),
+                ]);
+              }),
+            ],
+          ),
+          pw.SizedBox(height: 24),
+          pw.Align(
+            alignment: pw.Alignment.centerRight,
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.center,
+              children: [
+                pw.Text('IL COMANDANTE',
+                    style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)),
+                pw.Text('(Accountable Manager)',
+                    style: const pw.TextStyle(fontSize: 9)),
+                pw.SizedBox(height: 28),
+                pw.Text('____________________________',
+                    style: const pw.TextStyle(fontSize: 10)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+
+    final bytes = await doc.save();
+    final weekLabel =
+        '${DateFormat('ddMM').format(weekStart)}-${DateFormat('ddMM').format(weekEnd)}';
+    final safeTitle = course.title.replaceAll(RegExp(r'[^\w\-]+'), '_');
+    await downloadPdf(bytes, '${safeTitle}_programma_$weekLabel.pdf');
+  }
+
   // ── Cover page ─────────────────────────────────────────────────────────────
 
   static pw.Page _coverPage(
@@ -316,8 +566,10 @@ class PdfExportService {
     );
   }
 
-  static pw.Widget _cell(String text, {bool bold = false, double size = 9}) =>
-      pw.Padding(
+  static pw.Widget _cell(String text,
+          {bool bold = false, double size = 9, PdfColor? fill}) =>
+      pw.Container(
+        color: fill,
         padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
         child: pw.Text(
           text,
