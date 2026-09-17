@@ -194,12 +194,12 @@ class _DirectorGradesTabState extends ConsumerState<DirectorGradesTab> {
                   const SizedBox(height: 12),
                   InkWell(
                     onTap: () async {
+                      // ponytail: no locale — Locale('it') needs flutter_localizations (white screen)
                       final picked = await showDatePicker(
                         context: ctx,
                         initialDate: gradeDate,
                         firstDate: DateTime(2020),
                         lastDate: DateTime.now().add(const Duration(days: 365)),
-                        locale: const Locale('it'),
                       );
                       if (picked != null) setDlg(() => gradeDate = picked);
                     },
