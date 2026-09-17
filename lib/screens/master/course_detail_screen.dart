@@ -12,6 +12,7 @@ import '../../services/reference_service.dart';
 import '../../services/schedule_service.dart';
 import '../../services/user_service.dart';
 import '../../theme.dart';
+import '../director/lessons_log_tab.dart';
 
 class MasterCourseDetailScreen extends ConsumerStatefulWidget {
   final Course course;
@@ -105,7 +106,7 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
             unselectedLabelColor: kTextDim,
             tabs: const [
               Tab(text: 'Riepilogo'),
-              Tab(text: 'Lezioni'),
+              Tab(text: 'Storico'),
               Tab(text: 'Presenze'),
               Tab(text: 'Voti'),
             ],
@@ -115,7 +116,11 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
               controller: _tabController,
               children: [
                 _buildOverview(typeInfo, confirmedLessons),
-                _buildLessons(confirmedLessons),
+                DirectorLessonsLogTab(
+                  userId: ref.read(authProvider).currentUser?.id ?? '',
+                  coursesOverride: [_course],
+                  fixedCourseId: _course.id,
+                ),
                 _buildAttendance(typeInfo),
                 _buildGrades(typeInfo),
               ],
@@ -240,54 +245,6 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
     ]);
   }
 
-  // ── Lessons tab ───────────────────────────────────────────────────────────
-  Widget _buildLessons(List<ScheduledLesson> confirmed) {
-    final sorted = confirmed.toList()
-      ..sort((a, b) {
-        final dc = a.date.compareTo(b.date);
-        return dc != 0 ? dc : a.timeSlot.compareTo(b.timeSlot);
-      });
-    final instrMap = {for (final i in _instructors) i.id: i};
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-      itemCount: sorted.length,
-      itemBuilder: (_, i) {
-        final l = sorted[i];
-        final col = moduleColor(l.moduleNumber);
-        final instr = instrMap[l.instructorId];
-        return Container(
-          margin: const EdgeInsets.only(bottom: 4),
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          decoration: BoxDecoration(
-            color: kCard,
-            borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: col.withOpacity(0.2)),
-          ),
-          child: Row(children: [
-            Container(
-              width: 44,
-              padding: const EdgeInsets.symmetric(vertical: 3),
-              alignment: Alignment.center,
-              decoration: BoxDecoration(color: col.withOpacity(0.15), borderRadius: BorderRadius.circular(4)),
-              child: Text('M${_refService.moduleLabel(l.moduleNumber)}', style: TextStyle(color: col, fontSize: 10, fontWeight: FontWeight.bold)),
-            ),
-            const SizedBox(width: 8),
-            SizedBox(width: 80, child: Text(DateFormat('dd/MM/yy').format(l.date), style: const TextStyle(color: kTextDim, fontSize: 11))),
-            Container(
-              width: 20,
-              alignment: Alignment.center,
-              child: Text(l.isTheory ? 'T' : 'P', style: TextStyle(color: col, fontSize: 10, fontWeight: FontWeight.bold)),
-            ),
-            const SizedBox(width: 8),
-            Expanded(child: Text(l.topic, style: const TextStyle(color: kText, fontSize: 11), overflow: TextOverflow.ellipsis)),
-            const SizedBox(width: 8),
-            Text(instr?.cognome ?? '—', style: const TextStyle(color: kTextDim, fontSize: 10)),
-          ]),
-        );
-      },
-    );
-  }
-
   // ── Attendance tab ────────────────────────────────────────────────────────
   Widget _buildAttendance(dynamic typeInfo) {
     if (_attendees.isEmpty) {
@@ -405,6 +362,9 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
                               : d.isTolerated
                                   ? 'Tollerata (entro 10%)'
                                   : 'Da recuperare';
+                          final taskLabel = d.type == 'pratica'
+                              ? _refService.taskLabelFor(typeInfo, d.lesson.taskId)
+                              : null;
                           return Padding(
                             padding: const EdgeInsets.symmetric(vertical: 2),
                             child: Row(
@@ -429,7 +389,9 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
                                 const SizedBox(width: 6),
                                 Expanded(
                                   child: Text(
-                                    '${d.lesson.submoduleCode} · $statusText',
+                                    '${d.lesson.submoduleCode}'
+                                    '${taskLabel != null ? ' · $taskLabel' : ''}'
+                                    ' · $statusText',
                                     overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
                                         color: color,

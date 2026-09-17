@@ -125,6 +125,17 @@ class ReferenceService {
     return (t != null && t.name.isNotEmpty) ? t.name : null;
   }
 
+  /// Etichetta UI: `Task <programTaskId>: <nome>` (o solo id se nome vuoto).
+  String formatTaskLabel(PracticalTask t) =>
+      t.name.isNotEmpty ? 'Task ${t.programTaskId}: ${t.name}' : 'Task ${t.programTaskId}';
+
+  String? taskLabelFor(CourseTypeInfo? effectiveType, dynamic taskId) {
+    final t = findTask(effectiveType, taskId);
+    if (t != null) return formatTaskLabel(t);
+    if (taskId != null) return 'Task $taskId';
+    return null;
+  }
+
   // Etichetta di un modulo dato il numero interno (es. 11 → '11A', 18 → '11B').
   // Cache statica: la mappa numero→label è identica per tutti i tipi corso.
   static Map<int, String>? _labelCache;

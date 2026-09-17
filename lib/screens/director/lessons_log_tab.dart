@@ -20,6 +20,7 @@ class _RecoveryEntry {
   final String? type; // 'teoria' | 'pratica' | null
   final String? submoduleCode;
   final List<AppUser> attendees;
+  final List<AttendanceRecord> records;
 
   const _RecoveryEntry({
     required this.date,
@@ -27,6 +28,7 @@ class _RecoveryEntry {
     required this.type,
     required this.submoduleCode,
     required this.attendees,
+    required this.records,
   });
 }
 
@@ -47,7 +49,17 @@ class _LogEntry {
 
 class DirectorLessonsLogTab extends ConsumerStatefulWidget {
   final String userId;
-  const DirectorLessonsLogTab({super.key, required this.userId});
+  /// Se valorizzato (es. admin), usa questi corsi al posto di quelli del direttore.
+  final List<Course>? coursesOverride;
+  /// Blocca il selettore su un corso (es. dettaglio corso admin).
+  final String? fixedCourseId;
+
+  const DirectorLessonsLogTab({
+    super.key,
+    required this.userId,
+    this.coursesOverride,
+    this.fixedCourseId,
+  });
 
   @override
   ConsumerState<DirectorLessonsLogTab> createState() => _DirectorLessonsLogTabState();
@@ -84,8 +96,19 @@ class _DirectorLessonsLogTabState extends ConsumerState<DirectorLessonsLogTab> {
   }
 
   void _load() {
-    _courses = _courseService.getCoursesForDirector(widget.userId);
-    if (_selected == null && _courses.isNotEmpty) _selected = _courses.first;
+    _courses = widget.coursesOverride ?? _courseService.getCoursesForDirector(widget.userId);
+    if (widget.fixedCourseId != null) {
+      Course? fixed;
+      for (final c in _courses) {
+        if (c.id == widget.fixedCourseId) {
+          fixed = c;
+          break;
+        }
+      }
+      _selected = fixed ?? (_courses.isNotEmpty ? _courses.first : null);
+    } else if (_selected == null && _courses.isNotEmpty) {
+      _selected = _courses.first;
+    }
     _refresh();
   }
 
@@ -280,6 +303,7 @@ class _DirectorLessonsLogTabState extends ConsumerState<DirectorLessonsLogTab> {
         type: first.recoveredType,
         submoduleCode: first.recoveredSubmodule,
         attendees: attendees,
+        records: g,
       );
     }).toList();
   }
@@ -334,7 +358,7 @@ class _DirectorLessonsLogTabState extends ConsumerState<DirectorLessonsLogTab> {
           padding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
           child: Row(
             children: [
-              if (_courses.length > 1)
+              if (widget.fixedCourseId == null && _courses.length > 1)
                 DropdownButton<String>(
                   value: _selected?.id,
                   dropdownColor: kSurface,
@@ -487,7 +511,12 @@ class _DirectorLessonsLogTabState extends ConsumerState<DirectorLessonsLogTab> {
               const DropdownMenuItem(value: null, child: Text('— Tutti —')),
               ..._tasksForFilter.map((t) => DropdownMenuItem(
                     value: t.id.toString(),
-                    child: Text('T${t.id} – ${t.name}', overflow: TextOverflow.ellipsis),
+                    child: Text(
+                      t.name.isNotEmpty
+                          ? 'Task ${t.programTaskId}: ${t.name}'
+                          : 'Task ${t.programTaskId}',
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   )),
             ],
             onChanged: (v) => setState(() => _fTaskId = v),
@@ -559,7 +588,7 @@ class _DirectorLessonsLogTabState extends ConsumerState<DirectorLessonsLogTab> {
     final subInfo = _subInfo(l.submoduleCode);
     final nc = _normSub(l.submoduleCode);
     final task = (isPratica && l.taskId != null) ? _findTask(l.taskId!) : null;
-    final taskName = task != null && task.name.isNotEmpty ? task.name : null;
+    final taskLabel = isPratica ? _refService.taskLabelFor(_typeInfo, l.taskId) : null;
     final num totalHours = task != null
         ? task.plannedHours
         : (subInfo == null ? 0 : (isPratica ? subInfo.practicalHours : subInfo.theoryHours));
@@ -632,14 +661,12 @@ class _DirectorLessonsLogTabState extends ConsumerState<DirectorLessonsLogTab> {
               ],
             ),
           ),
-          if (l.taskId != null) ...[
+          if (taskLabel != null) ...[
             const SizedBox(width: 8),
             Expanded(
               flex: 2,
               child: Text(
-                task != null
-                    ? (taskName != null ? 'T${task.programTaskId} – $taskName' : 'T${task.programTaskId}')
-                    : 'T${l.taskId}',
+                taskLabel,
                 style: const TextStyle(color: kTextDim, fontSize: 11),
                 overflow: TextOverflow.ellipsis,
               ),
@@ -677,6 +704,22 @@ class _DirectorLessonsLogTabState extends ConsumerState<DirectorLessonsLogTab> {
 
   Widget _recoveryRow(_RecoveryEntry r) {
     final isPratica = r.type == 'pratica';
+    // Task dalla lezione pratica originale abbinata FIFO al recovery record.
+    String? taskLabel;
+    if (isPratica && _selected != null) {
+      final labels = <String>{};
+      final cache = <String, Map<String, ScheduledLesson>>{};
+      for (final rec in r.records) {
+        final byRec = cache.putIfAbsent(
+          rec.attendeeId,
+          () => _attendanceService.pairRecoveriesToAbsenceLessons(
+              _selected!.id, rec.attendeeId, _allLessons),
+        );
+        final label = _refService.taskLabelFor(_typeInfo, byRec[rec.id]?.taskId);
+        if (label != null) labels.add(label);
+      }
+      if (labels.isNotEmpty) taskLabel = labels.join(' · ');
+    }
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
@@ -739,6 +782,13 @@ class _DirectorLessonsLogTabState extends ConsumerState<DirectorLessonsLogTab> {
                   Text(
                     _subName(r.submoduleCode!),
                     style: const TextStyle(color: kTextDim, fontSize: 11),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                  ),
+                if (taskLabel != null)
+                  Text(
+                    taskLabel,
+                    style: const TextStyle(color: kAccent, fontSize: 11),
                     overflow: TextOverflow.ellipsis,
                     maxLines: 1,
                   ),

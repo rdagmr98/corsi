@@ -10,6 +10,8 @@ import 'users_tab.dart';
 import 'currency_tab.dart';
 import 'amc_tab.dart';
 import 'course_types_tab.dart';
+import '../director/lessons_log_tab.dart';
+import '../../services/course_service.dart';
 
 class MasterShell extends ConsumerStatefulWidget {
   const MasterShell({super.key});
@@ -20,9 +22,11 @@ class MasterShell extends ConsumerStatefulWidget {
 
 class _MasterShellState extends ConsumerState<MasterShell> {
   int _tab = 0;
+  final _courseService = CourseService();
 
   static const _tabs = [
     (Icons.school, 'Corsi'),
+    (Icons.history, 'Storico'),
     (Icons.people, 'Utenti'),
     (Icons.verified_user, 'Idoneità Istruttori'),
     (Icons.table_chart, 'Tabella AMC'),
@@ -137,10 +141,14 @@ class _MasterShellState extends ConsumerState<MasterShell> {
           Expanded(
             child: switch (_tab) {
               0 => const CoursesTab(),
-              1 => const UsersTab(),
-              2 => const CurrencyTab(),
-              3 => const AmcTab(),
-              4 => const CourseTypesTab(),
+              1 => DirectorLessonsLogTab(
+                  userId: user?.id ?? '',
+                  coursesOverride: _courseService.getAllCourses(),
+                ),
+              2 => const UsersTab(),
+              3 => const CurrencyTab(),
+              4 => const AmcTab(),
+              5 => const CourseTypesTab(),
               _ => const SizedBox(),
             },
           ),

@@ -131,6 +131,8 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
         if (da == null || db == null) return 0;
         return db.compareTo(da);
       });
+    final recoveryLessonByRec = _attendanceService.pairRecoveriesToAbsenceLessons(
+        course.id, widget.userId, lessons);
 
     // Per ogni assenza, la data del recupero che la "copre" (pool FIFO per modulo+tipo).
     final recoveryPairing =
@@ -336,6 +338,11 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
                           final typLabel = r.recoveredType == 'pratica'
                               ? 'Pratica'
                               : (r.recoveredType == 'teoria' ? 'Teoria' : '');
+                          final isPratica = (r.recoveredType ?? 'pratica') == 'pratica';
+                          final taskLabel = isPratica
+                              ? _refService.taskLabelFor(
+                                  typeInfo, recoveryLessonByRec[r.id]?.taskId)
+                              : null;
                           return Card(
                             color: kCard,
                             margin: const EdgeInsets.only(bottom: 6),
@@ -348,6 +355,7 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
                                     ? 'Recupero M${_refService.moduleLabel(modNum)}'
                                         '${sub != null ? ' $sub' : ''}'
                                         '${typLabel.isNotEmpty ? ' ($typLabel)' : ''}'
+                                        '${taskLabel != null ? ' · $taskLabel' : ''}'
                                         ' – ${modNames[modNum] ?? ''}'
                                     : 'Recupero',
                                 style: const TextStyle(color: kText, fontSize: 12),
@@ -392,10 +400,9 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
                     if (RegExp(r'^\d').hasMatch(l.topic) && l.topic.contains('.')) {
                       displayTopic = subNames[normCode(l.topic)] ?? subNames[nc] ?? l.topic;
                     }
-                    final task = !isTheory && l.taskId != null
-                        ? _refService.findTask(typeInfo, l.taskId)
+                    final taskLabel = !isTheory
+                        ? _refService.taskLabelFor(typeInfo, l.taskId)
                         : null;
-                    final taskLabel = task != null ? ' · Task ${task.programTaskId}' : '';
 
                     final recoveredOn = recoveryPairing[l.id];
                     Color statusColor;
@@ -438,7 +445,9 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
                       child: ListTile(
                         dense: true,
                         leading: Icon(statusIcon, color: statusColor, size: 20),
-                        title: Text('M${_refService.moduleLabel(l.moduleNumber)} $displayTopic$taskLabel',
+                        title: Text(
+                            'M${_refService.moduleLabel(l.moduleNumber)} $displayTopic'
+                            '${taskLabel != null ? ' · $taskLabel' : ''}',
                             style: const TextStyle(color: kText, fontSize: 12),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis),

@@ -349,10 +349,9 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
                     : d.isTolerated
                         ? 'Tollerata (entro 10%)'
                         : 'Da recuperare';
-                final task = d.type == 'pratica' && d.lesson.taskId != null
-                    ? _refService.findTask(typeInfo, d.lesson.taskId)
+                final taskLabel = d.type == 'pratica'
+                    ? _refService.taskLabelFor(typeInfo, d.lesson.taskId)
                     : null;
-                final taskLabel = task != null ? ' · Task ${task.programTaskId}' : '';
                 return Padding(
                   padding: const EdgeInsets.symmetric(vertical: 2),
                   child: Row(
@@ -377,7 +376,9 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
-                          '${d.lesson.submoduleCode}$taskLabel · $statusText',
+                          '${d.lesson.submoduleCode}'
+                          '${taskLabel != null ? ' · $taskLabel' : ''}'
+                          ' · $statusText',
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                               color: color,
@@ -517,6 +518,11 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
         .getRecordsForAttendee(course.id, attendeeId)
         .where((r) => r.justification == 'recupero' && r.recoveredModule == mod.number)
         .toList();
+    final typeInfo = _refService.getEffectiveCourseType(
+        course.courseTypeId, course.extensionTypeId, course.mamlCombinationId);
+    final lessons = _scheduleService.getLessonsForCourse(course.id);
+    final byRec =
+        _attendanceService.pairRecoveriesToAbsenceLessons(course.id, attendeeId, lessons);
 
     String submoduleName(String? code) {
       if (code == null) return '';
@@ -541,6 +547,10 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
               : ListView(
                   shrinkWrap: true,
                   children: records.map((r) {
+                    final isPratica = (r.recoveredType ?? 'pratica') == 'pratica';
+                    final taskLabel = isPratica
+                        ? _refService.taskLabelFor(typeInfo, byRec[r.id]?.taskId)
+                        : null;
                     final parts = <String>[
                       r.recoveryDate != null
                           ? DateFormat('dd/MM/yyyy').format(r.recoveryDate!)
@@ -549,6 +559,7 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
                         r.recoveredType == 'pratica' ? 'Pratica' : 'Teoria',
                       if (r.recoveredSubmodule != null)
                         '${r.recoveredSubmodule} – ${submoduleName(r.recoveredSubmodule)}',
+                      if (taskLabel != null) taskLabel,
                     ];
                     return ListTile(
                       dense: true,
@@ -624,8 +635,8 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
             .toList();
         return _buildLessonCard(l, absentRecords, attendeeMap, pairingByAttendee, typeInfo);
       }),
-      if (recoveryByDate.isNotEmpty)
-        _buildRecoverySection(recoveryByDate, attendeeMap),
+        if (recoveryByDate.isNotEmpty)
+        _buildRecoverySection(course, recoveryByDate, attendeeMap, allLessons, typeInfo),
     ];
 
     if (items.isEmpty) {
@@ -646,10 +657,9 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
     Map<String, Map<String, DateTime>> pairingByAttendee,
     CourseTypeInfo? typeInfo,
   ) {
-    final task = !l.isTheory && l.taskId != null
-        ? _refService.findTask(typeInfo, l.taskId)
+    final taskLabel = !l.isTheory
+        ? _refService.taskLabelFor(typeInfo, l.taskId)
         : null;
-    final taskLabel = task != null ? ' · Task ${task.programTaskId}' : '';
     return Card(
       color: kCard,
       margin: const EdgeInsets.only(bottom: 6),
@@ -671,8 +681,11 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
-                    'M${_refService.moduleLabel(l.moduleNumber)} · ${l.submoduleCode}$taskLabel · S${l.timeSlot}',
+                    'M${_refService.moduleLabel(l.moduleNumber)} · ${l.submoduleCode}'
+                    '${taskLabel != null ? ' · $taskLabel' : ''}'
+                    ' · S${l.timeSlot}',
                     style: const TextStyle(color: kPrimary, fontSize: 10),
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -732,8 +745,11 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
   }
 
   Widget _buildRecoverySection(
+    Course course,
     Map<String, List<AttendanceRecord>> recoveryByDate,
     Map<String, AppUser> attendeeMap,
+    List<ScheduledLesson> allLessons,
+    CourseTypeInfo? typeInfo,
   ) {
     final sortedDates = recoveryByDate.keys.toList()..sort();
 
@@ -786,6 +802,17 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
                   const SizedBox(height: 6),
                   ...recs.map((r) {
                     final att = attendeeMap[r.attendeeId];
+                    final typ = r.recoveredType == 'pratica'
+                        ? 'P'
+                        : (r.recoveredType == 'teoria' ? 'T' : null);
+                    final isPratica = (r.recoveredType ?? 'pratica') == 'pratica';
+                    final byRec = isPratica
+                        ? _attendanceService.pairRecoveriesToAbsenceLessons(
+                            course.id, r.attendeeId, allLessons)
+                        : const <String, ScheduledLesson>{};
+                    final taskLabel = isPratica
+                        ? _refService.taskLabelFor(typeInfo, byRec[r.id]?.taskId)
+                        : null;
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 3),
                       child: Row(
@@ -799,30 +826,36 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
                           const Text('→',
                               style: TextStyle(color: kTextDim, fontSize: 12)),
                           const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: kAccent.withOpacity(0.15),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              'M${r.recoveredModule}',
-                              style: const TextStyle(
-                                  color: kAccent,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold),
+                          Flexible(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: kAccent.withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                'M${r.recoveredModule}'
+                                '${typ != null ? ' · $typ' : ''}'
+                                '${r.recoveredSubmodule != null ? ' · ${r.recoveredSubmodule}' : ''}'
+                                '${taskLabel != null ? ' · $taskLabel' : ''}',
+                                style: const TextStyle(
+                                    color: kAccent,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold),
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
                           ),
                         ],
                       ),
                     );
-                  }).toList(),
+                  }),
                 ],
               ),
             ),
           );
-        }).toList(),
+        }),
       ],
     );
   }

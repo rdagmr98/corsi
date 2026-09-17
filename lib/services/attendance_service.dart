@@ -264,6 +264,31 @@ class AttendanceService {
     String attendeeId,
     List<ScheduledLesson> allLessons,
   ) {
+    final paired = _pairAbsenceRecoveryLinks(courseId, attendeeId, allLessons);
+    return {
+      for (final e in paired.entries) e.key: e.value.date,
+    };
+  }
+
+  /// Stesso FIFO di [pairAbsenceRecoveries], ma keyed sul recovery record id
+  /// → lezione assente coperta (serve per mostrare il task pratica recuperato).
+  Map<String, ScheduledLesson> pairRecoveriesToAbsenceLessons(
+    String courseId,
+    String attendeeId,
+    List<ScheduledLesson> allLessons,
+  ) {
+    final paired = _pairAbsenceRecoveryLinks(courseId, attendeeId, allLessons);
+    return {
+      for (final e in paired.entries) e.value.recoveryId: e.value.lesson,
+    };
+  }
+
+  Map<String, ({DateTime date, String recoveryId, ScheduledLesson lesson})>
+      _pairAbsenceRecoveryLinks(
+    String courseId,
+    String attendeeId,
+    List<ScheduledLesson> allLessons,
+  ) {
     final lessonsById = {
       for (final l in allLessons)
         if (l.courseId == courseId) l.id: l,
@@ -276,6 +301,7 @@ class AttendanceService {
       final l = lessonsById[r.scheduleId];
       if (l == null || !l.confirmed || l.timeSlot == 0) continue;
       absences.add({
+        'lesson': l,
         'scheduleId': r.scheduleId,
         'date': l.date,
         'module': l.moduleNumber,
@@ -289,6 +315,7 @@ class AttendanceService {
       final date = r.recoveryDate;
       if (date == null || r.recoveredModule == null) continue;
       recoveries.add({
+        'id': r.id,
         'date': date,
         'module': r.recoveredModule,
         'type': r.recoveredType ?? 'pratica',
@@ -296,14 +323,21 @@ class AttendanceService {
     }
     recoveries.sort((a, b) => (a['date'] as DateTime).compareTo(b['date'] as DateTime));
 
-    final result = <String, DateTime>{};
+    final result = <String, ({DateTime date, String recoveryId, ScheduledLesson lesson})>{};
     final usedRecoveryIdx = <int>{};
     for (final absence in absences) {
       for (var i = 0; i < recoveries.length; i++) {
         if (usedRecoveryIdx.contains(i)) continue;
         if (recoveries[i]['module'] != absence['module']) continue;
         if (recoveries[i]['type'] != absence['type']) continue;
-        result[absence['scheduleId'] as String] = recoveries[i]['date'] as DateTime;
+        final lesson = absence['lesson'] as ScheduledLesson;
+        final date = recoveries[i]['date'] as DateTime;
+        final recoveryId = recoveries[i]['id'] as String;
+        result[absence['scheduleId'] as String] = (
+          date: date,
+          recoveryId: recoveryId,
+          lesson: lesson,
+        );
         usedRecoveryIdx.add(i);
         break;
       }
