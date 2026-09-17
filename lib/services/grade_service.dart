@@ -247,23 +247,19 @@ class GradeService {
     await _db.saveUpdates(updates);
   }
 
-  /// Overall graduation score: sum(score × weight) / sum(weights) for passing grades only.
-  /// Usa solo l'ultimo tentativo di ciascun accertamento/esame distinto
-  /// (via AttendeeGradeSummary), non lo storico completo: altrimenti un
-  /// accertamento recuperato dopo un primo tentativo insufficiente, o più
-  /// accertamenti distinti dello stesso modulo, falserebbero la media.
+  /// Voto di graduatoria: media aritmetica delle medie pesate dei singoli
+  /// moduli (non una media piatta su tutti gli accertamenti/esami del corso).
+  /// Ogni modulo usa già accertamento×1 / esame×2 su ultimi tentativi passing
+  /// ([AttendeeGradeSummary.weightedAverage]); moduli senza voti passing
+  /// non entrano nella media.
   double getGraduationScore(String courseId, String attendeeId) {
-    final summaries = getAttendeeSummary(courseId, attendeeId).values;
-    double total = 0;
-    int totalWeight = 0;
-    for (final s in summaries) {
-      for (final g in s.latestAttempts.where((g) => g.isPassing)) {
-        final w = g.assessmentType.weight;
-        total += s.effectiveScore(g) * w;
-        totalWeight += w;
-      }
-    }
-    return totalWeight == 0 ? 0 : total / totalWeight;
+    final moduleAvgs = getAttendeeSummary(courseId, attendeeId)
+        .values
+        .map((s) => s.weightedAverage)
+        .where((avg) => avg > 0)
+        .toList();
+    if (moduleAvgs.isEmpty) return 0;
+    return moduleAvgs.reduce((a, b) => a + b) / moduleAvgs.length;
   }
 
   List<({String attendeeId, double score, int rank})> getCourseRanking(
