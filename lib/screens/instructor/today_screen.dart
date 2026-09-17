@@ -161,14 +161,16 @@ class _InstructorTodayScreenState extends ConsumerState<InstructorTodayScreen> {
                         confirmedBy: widget.userId,
                       );
                       await _scheduleService.confirmLesson(lesson.id, widget.userId);
-                      await _notifService.notifyLessonValidated(
+                      // Cache già aggiornata: evita reloadDb (flush+re-fetch di tutti i JSON).
+                      _load();
+                      // Notifica in background — non blocca l'UI.
+                      _notifService.notifyLessonValidated(
                         directorIds: course.directorIds,
                         instructorName: _userService.findById(widget.userId)?.fullName ?? widget.userId,
                         courseTitle: course.title,
                         dateLabel: DateFormat('dd/MM/yyyy').format(lesson.date),
                         moduleLabel: lesson.topic.isNotEmpty ? lesson.topic : 'M${lesson.moduleNumber}',
                       );
-                      _reload();
                     },
                     child: const Text('Conferma presenze'),
                   ),

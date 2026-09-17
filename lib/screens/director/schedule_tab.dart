@@ -1766,15 +1766,14 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
         )),
   );
 
-  /// Intestazione giorno con pulsante "Valida N" quando ci sono ore non
-  /// confermate con istruttore assegnato: il direttore le conferma in blocco.
+  /// Intestazione giorno con "Assenti" (giornata intera) e "Valida N"
+  /// quando ci sono ore non confermate con istruttore assegnato.
   Widget _dayHeaderCell(DateTime d) {
-    final pending = _weekLessons
-        .where((l) =>
-            _sameDay(l.date, d) &&
-            l.timeSlot > 0 &&
-            !l.confirmed &&
-            l.instructorId != null)
+    final dayLessons = _weekLessons
+        .where((l) => _sameDay(l.date, d) && l.timeSlot > 0)
+        .toList();
+    final pending = dayLessons
+        .where((l) => !l.confirmed && l.instructorId != null)
         .toList();
     final highlight = _isToday(d);
     return Container(
@@ -1793,6 +1792,29 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                 fontSize: 11,
                 fontWeight: FontWeight.bold,
               )),
+          if (dayLessons.isNotEmpty && _selected != null)
+            Tooltip(
+              message:
+                  'Segna assenti per tutte le ore del giorno\n(le assenze orarie restano modificabili)',
+              child: InkWell(
+                onTap: () => _markDayAbsences(d, dayLessons),
+                child: const Padding(
+                  padding: EdgeInsets.only(top: 2),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.person_off, size: 11, color: kError),
+                      SizedBox(width: 3),
+                      Text('Assenti',
+                          style: TextStyle(
+                              color: kError,
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           if (pending.isNotEmpty)
             Tooltip(
               message:
@@ -1821,6 +1843,132 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
     );
   }
 
+  /// Assenti su tutte le ore del giorno. Le assenze orarie già registrate
+  /// restano; chi viene tolto dalla selezione giornata torna presente solo
+  /// se era assente su tutte le ore (non tocca le assenze di una sola ora).
+  Future<void> _markDayAbsences(
+      DateTime day, List<ScheduledLesson> dayLessons) async {
+    if (_selected == null || dayLessons.isEmpty) return;
+    final attendees = _userService
+        .getAllUsers()
+        .where((u) => _selected!.attendeeIds.contains(u.id))
+        .toList();
+    if (attendees.isEmpty) return;
+
+    final initialAbsent = <String>{
+      for (final a in attendees)
+        if (dayLessons.every((l) {
+          final r = _attendanceService.getRecord(l.id, a.id);
+          return r != null && !r.present;
+        }))
+          a.id,
+    };
+    final absent = <String>{...initialAbsent};
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlg) => AlertDialog(
+          backgroundColor: kCard,
+          title: Text(
+            'Assenti · ${DateFormat('EEE dd/MM', 'it').format(day)}',
+            style: const TextStyle(color: kText, fontSize: 14),
+          ),
+          content: SizedBox(
+            width: 400,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Assenti per tutte le ${dayLessons.length} ore. '
+                    'Per un\'assenza su una sola ora usa la modifica della cella.',
+                    style: const TextStyle(color: kTextDim, fontSize: 12),
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    children: attendees.map((a) {
+                      final sel = absent.contains(a.id);
+                      return FilterChip(
+                        label: Text(a.fullName,
+                            style: TextStyle(
+                                color: sel ? Colors.white : kTextDim,
+                                fontSize: 11)),
+                        selected: sel,
+                        selectedColor: kError.withOpacity(0.8),
+                        checkmarkColor: Colors.white,
+                        backgroundColor: kSurface,
+                        onSelected: (v) => setDlg(() {
+                          if (v) {
+                            absent.add(a.id);
+                          } else {
+                            absent.remove(a.id);
+                          }
+                        }),
+                      );
+                    }).toList(),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Annulla', style: TextStyle(color: kTextDim)),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Salva'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (ok != true) return;
+    if (absent.length == initialAbsent.length &&
+        absent.containsAll(initialAbsent)) {
+      return;
+    }
+
+    final add = absent.difference(initialAbsent);
+    final remove = initialAbsent.difference(absent);
+    final user = ref.read(authProvider).currentUser;
+    final batch = <
+        ({
+          String scheduleId,
+          String courseId,
+          List<String> attendeeIds,
+          Map<String, bool> presence,
+        })>[];
+
+    for (final lesson in dayLessons) {
+      final hourAbsent = <String>{
+        for (final r in _attendanceService.getRecordsForLesson(lesson.id))
+          if (!r.present) r.attendeeId,
+      };
+      hourAbsent.addAll(add);
+      hourAbsent.removeAll(remove);
+      batch.add((
+        scheduleId: lesson.id,
+        courseId: _selected!.id,
+        attendeeIds: _selected!.attendeeIds,
+        presence: {
+          for (final id in _selected!.attendeeIds) id: !hourAbsent.contains(id),
+        },
+      ));
+    }
+
+    await _attendanceService.saveAttendanceBatch(
+      batch,
+      confirmedBy: user?.id ?? '',
+    );
+    _refreshWeek();
+  }
+
   Future<void> _validateDay(DateTime day, List<ScheduledLesson> pending) async {
     final user = ref.read(authProvider).currentUser;
     final ok = await showDialog<bool>(
@@ -1831,7 +1979,9 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
             style: TextStyle(color: kText, fontSize: 14)),
         content: Text(
           'Confermare ${pending.length} ore di lezione di '
-          '${DateFormat('EEEE dd/MM/yyyy', 'it').format(day)} per conto degli istruttori assegnati?',
+          '${DateFormat('EEEE dd/MM/yyyy', 'it').format(day)} per conto degli istruttori assegnati?\n\n'
+          'L\'appello userà le assenze già segnate (giornata o ora singola); '
+          'gli altri frequentatori risultano presenti.',
           style: const TextStyle(color: kText, fontSize: 13),
         ),
         actions: [
@@ -1847,7 +1997,24 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
         ],
       ),
     );
-    if (ok != true) return;
+    if (ok != true || _selected == null) return;
+
+    // Un solo write records + un solo write schedules (niente N+1).
+    await _attendanceService.saveAttendanceBatch(
+      [
+        for (final lesson in pending)
+          (
+            scheduleId: lesson.id,
+            courseId: _selected!.id,
+            attendeeIds: _selected!.attendeeIds,
+            presence: {
+              for (final id in _selected!.attendeeIds)
+                id: _attendanceService.getRecord(lesson.id, id)?.present ?? true,
+            },
+          ),
+      ],
+      confirmedBy: user?.id ?? '',
+    );
     await _scheduleService.confirmLessons(
         pending.map((l) => l.id).toList(), user?.id ?? '');
     _refreshWeek();

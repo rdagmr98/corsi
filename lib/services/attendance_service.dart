@@ -61,35 +61,68 @@ class AttendanceService {
     required List<String> attendeeIds,
     required Map<String, bool> presence,
     required String confirmedBy,
+  }) =>
+      saveAttendanceBatch([
+        (
+          scheduleId: scheduleId,
+          courseId: courseId,
+          attendeeIds: attendeeIds,
+          presence: presence,
+        )
+      ], confirmedBy: confirmedBy);
+
+  /// Scrive l'appello di più lezioni in un solo salvataggio records.json.
+  Future<void> saveAttendanceBatch(
+    List<
+            ({
+              String scheduleId,
+              String courseId,
+              List<String> attendeeIds,
+              Map<String, bool> presence,
+            })>
+        lessons, {
+    required String confirmedBy,
   }) async {
+    if (lessons.isEmpty) return;
     final records = _db.records.toList();
     final now = DateTime.now();
+    final nowIso = now.toIso8601String();
+    var seq = 0;
 
-    for (final attendeeId in attendeeIds) {
-      final existing = records.indexWhere(
-        (r) => r['schedule_id'] == scheduleId && r['attendee_id'] == attendeeId,
-      );
-      final prev = existing >= 0 ? records[existing] : null;
-      final newPresent = presence[attendeeId] ?? false;
-      final record = {
-        'id': prev != null
-            ? prev['id']
-            : now.microsecondsSinceEpoch.toRadixString(16) + attendeeId.substring(0, 4),
-        'schedule_id': scheduleId,
-        'course_id': courseId,
-        'attendee_id': attendeeId,
-        'present': newPresent,
-        // Una giustificazione registrata resta valida finché lo stato
-        // presente/assente non cambia.
-        'justification':
-            prev != null && prev['present'] == newPresent ? prev['justification'] : null,
-        'confirmed_by': confirmedBy,
-        'confirmed_at': now.toIso8601String(),
-      };
-      if (existing >= 0) {
-        records[existing] = record;
-      } else {
-        records.add(record);
+    for (final lesson in lessons) {
+      for (final attendeeId in lesson.attendeeIds) {
+        final existing = records.indexWhere(
+          (r) =>
+              r['schedule_id'] == lesson.scheduleId &&
+              r['attendee_id'] == attendeeId,
+        );
+        final prev = existing >= 0 ? records[existing] : null;
+        final newPresent = lesson.presence[attendeeId] ?? false;
+        final suffix = attendeeId.length >= 4
+            ? attendeeId.substring(0, 4)
+            : attendeeId;
+        final record = {
+          'id': prev != null
+              ? prev['id']
+              : '${(now.microsecondsSinceEpoch + seq++).toRadixString(16)}$suffix',
+          'schedule_id': lesson.scheduleId,
+          'course_id': lesson.courseId,
+          'attendee_id': attendeeId,
+          'present': newPresent,
+          // Una giustificazione registrata resta valida finché lo stato
+          // presente/assente non cambia.
+          'justification':
+              prev != null && prev['present'] == newPresent
+                  ? prev['justification']
+                  : null,
+          'confirmed_by': confirmedBy,
+          'confirmed_at': nowIso,
+        };
+        if (existing >= 0) {
+          records[existing] = record;
+        } else {
+          records.add(record);
+        }
       }
     }
 
