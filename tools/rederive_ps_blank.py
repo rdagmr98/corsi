@@ -128,10 +128,11 @@ def clear_week_data(sheet: str) -> str:
             s_attr = f' s="{s_id}"' if s_id else ""
             return f'<c r="{addr}"{s_attr}/>'
 
-        # Lesson data columns — empty (N/località always blank)
+        # Lesson data columns — empty (N/località always blank).
+        # ALWAYS reset to empty chrome styles — never keep source-week fills
+        # (orange leftovers from 66_PS look like garbage on unfilled slots).
         if row in lessons and col in EMPTY_BY_COL:
-            sid = s_id or str(EMPTY_BY_COL[col])
-            return f'<c r="{addr}" s="{sid}"/>'
+            return f'<c r="{addr}" s="{EMPTY_BY_COL[col]}"/>'
 
         # Header placeholders
         if addr == "B5":
@@ -153,6 +154,13 @@ def clear_week_data(sheet: str) -> str:
         if row >= 50 and col in ("B", "C", "I", "J"):
             s_attr = f' s="{s_id}"' if s_id else ""
             return f'<c r="{addr}"{s_attr}/>'
+        # Clean bloated LOCALITA'/AULA header from official shared string
+        if addr == "N8":
+            sid = s_id or "1265"
+            return (
+                f'<c r="{addr}" s="{sid}" t="inlineStr">'
+                f"<is><t>LOCALITA'</t></is></c>"
+            )
         return full
 
     sheet = re.sub(
@@ -185,84 +193,114 @@ def clear_week_data(sheet: str) -> str:
     return sheet
 
 
-def inject_module_styles(styles_xml: str) -> tuple[str, dict[int, int]]:
-    def count_attr(tag: str) -> int:
-        m = re.search(rf'<{tag}[^>]*count="(\d+)"', styles_xml)
-        return int(m.group(1)) if m else 0
+def _count_attr(styles_xml: str, tag: str) -> int:
+    m = re.search(rf'<{tag}[^>]*count="(\d+)"', styles_xml)
+    return int(m.group(1)) if m else 0
 
-    keys = MODULE_ORDER + [-1]
-    # finalize_ps_blank strips HTML comments; detect via palette fill or font markers
-    already = (
+
+def _set_count(styles_xml: str, tag: str, count: int) -> str:
+    return re.sub(
+        rf'(<{tag}[^>]*count=")(\d+)(")',
+        rf"\g<1>{count}\g<3>",
+        styles_xml,
+        count=1,
+    )
+
+
+def strip_previous_module_styles(styles_xml: str) -> str:
+    """Remove prior corsi module fills/fonts/xfs so we can re-inject cleanly."""
+    styles_xml = re.sub(
+        r"<font><!-- corsi-(?:white|dark) -->.*?</font>",
+        "",
+        styles_xml,
+        flags=re.DOTALL,
+    )
+    palette = {argb(c) for c in MODULE_PALETTE} | {argb(FALLBACK)}
+
+    def drop_fill(m: re.Match) -> str:
+        block = m.group(0)
+        rgb = re.search(r'rgb="([0-9A-Fa-f]{8})"', block)
+        if rgb and rgb.group(1).upper() in palette:
+            return ""
+        return block
+
+    styles_xml = re.sub(r"<fill>.*?</fill>", drop_fill, styles_xml, flags=re.DOTALL)
+
+    m = re.search(
+        r'(<cellXfs[^>]*count="\d+">)(.*)(</cellXfs>)',
+        styles_xml,
+        flags=re.DOTALL,
+    )
+    if m:
+        body = m.group(2)
+        if "<!-- corsi-module-xfs -->" in body:
+            keep = body.split("<!-- corsi-module-xfs -->", 1)[0]
+            xfs_before = re.findall(
+                r"<xf\b[^/]*?(?:/>|>.*?</xf>)", keep, flags=re.DOTALL
+            )
+            styles_xml = styles_xml[: m.start(2)] + "".join(xfs_before) + styles_xml[m.end(2) :]
+        else:
+            keys_n = len(MODULE_ORDER) + 1
+            xfs = re.findall(r"<xf\b[^/]*?(?:/>|>.*?</xf>)", body, flags=re.DOTALL)
+            drop_n = 0
+            if len(xfs) >= keys_n * 2 and 'applyFill="1"' in xfs[-1]:
+                drop_n = keys_n * 2
+            elif len(xfs) >= keys_n and 'applyFill="1"' in xfs[-1]:
+                drop_n = keys_n
+            if drop_n:
+                styles_xml = (
+                    styles_xml[: m.start(2)]
+                    + "".join(xfs[:-drop_n])
+                    + styles_xml[m.end(2) :]
+                )
+
+    for tag, pat in (
+        ("fills", r"<fill>.*?</fill>"),
+        ("fonts", r"<font>.*?</font>"),
+        ("cellXfs", r"<xf\b[^/]*?(?:/>|>.*?</xf>)"),
+    ):
+        sec = re.search(rf"<{tag}[^>]*>(.*?)</{tag}>", styles_xml, flags=re.DOTALL)
+        if not sec:
+            continue
+        n = len(re.findall(pat, sec.group(1), flags=re.DOTALL))
+        styles_xml = _set_count(styles_xml, tag, n)
+    return styles_xml
+
+
+def inject_module_styles(styles_xml: str) -> tuple[str, dict[str, dict[int, int]]]:
+    """Inject per-module fills with LEFT + CENTER cellXfs (official col alignments).
+
+    Returns xf maps: {'left': {mod: xfId}, 'center': {mod: xfId}}.
+    """
+    keys = list(MODULE_ORDER) + [-1]
+    if (
         "<!-- corsi-module-xfs -->" in styles_xml
         or "corsi-white" in styles_xml
         or "corsi-dark" in styles_xml
         or argb(MODULE_PALETTE[0]) in styles_xml
-    )
-    if already:
-        if "<!-- corsi-module-xfs -->" not in styles_xml:
-            m = re.search(
-                r'(<cellXfs[^>]*count="(\d+)">)(.*)(</cellXfs>)',
-                styles_xml,
-                flags=re.DOTALL,
-            )
-            if not m:
-                raise SystemExit("cellXfs missing while module fills present")
-            count = int(m.group(2))
-            body = m.group(3)
-            xfs = re.findall(r"<xf\b[^/]*?(?:/>|>.*?</xf>)", body, flags=re.DOTALL)
-            if len(xfs) != count:
-                raise SystemExit(f"cellXfs count mismatch {len(xfs)}!={count}")
-            if len(xfs) < len(keys):
-                raise SystemExit("not enough cellXfs for module map")
-            keep, mod_xfs = xfs[: -len(keys)], xfs[-len(keys) :]
-            new_body = "".join(keep) + "<!-- corsi-module-xfs -->" + "".join(mod_xfs)
-            styles_xml = styles_xml[: m.start(3)] + new_body + styles_xml[m.end(3) :]
-        total = count_attr("cellXfs")
-        start = total - len(keys)
-        xf_map = {k: start + i for i, k in enumerate(keys)}
-        return styles_xml, xf_map
+    ):
+        styles_xml = strip_previous_module_styles(styles_xml)
 
-    fill_count = count_attr("fills")
-    font_count = count_attr("fonts")
-    border_count = count_attr("borders")
-    xf_count = count_attr("cellXfs")
-
-    thin_border = (
-        '<border><left style="thin"><color auto="1"/></left>'
-        '<right style="thin"><color auto="1"/></right>'
-        '<top style="thin"><color auto="1"/></top>'
-        '<bottom style="thin"><color auto="1"/></bottom>'
-        "<diagonal/></border>"
-    )
-    styles_xml = styles_xml.replace("</borders>", thin_border + "</borders>", 1)
-    styles_xml = re.sub(
-        r'(<borders[^>]*count=")(\d+)(")',
-        rf"\g<1>{border_count + 1}\g<3>",
-        styles_xml,
-        count=1,
-    )
-    border_id = border_count
+    fill_count = _count_attr(styles_xml, "fills")
+    font_count = _count_attr(styles_xml, "fonts")
+    xf_count = _count_attr(styles_xml, "cellXfs")
+    # Reuse official lesson-row border (style 1159 uses borderId 20).
+    border_id = 20
 
     white_font = (
-        '<font><!-- corsi-white --><b/><sz val="8"/>'
+        '<font><!-- corsi-white --><b/><sz val="9"/>'
         '<color rgb="FFFFFFFF"/><name val="Arial"/><family val="2"/></font>'
     )
     dark_font = (
-        '<font><!-- corsi-dark --><b/><sz val="8"/>'
+        '<font><!-- corsi-dark --><b/><sz val="9"/>'
         '<color rgb="FF111827"/><name val="Arial"/><family val="2"/></font>'
     )
     styles_xml = styles_xml.replace("</fonts>", white_font + dark_font + "</fonts>", 1)
-    styles_xml = re.sub(
-        r'(<fonts[^>]*count=")(\d+)(")',
-        rf"\g<1>{font_count + 2}\g<3>",
-        styles_xml,
-        count=1,
-    )
+    styles_xml = _set_count(styles_xml, "fonts", font_count + 2)
     white_font_id = font_count
     dark_font_id = font_count + 1
 
     colors = list(MODULE_PALETTE) + [FALLBACK]
-    keys = list(MODULE_ORDER) + [-1]
     new_fills = []
     fill_ids = {}
     for i, col in enumerate(colors):
@@ -273,48 +311,70 @@ def inject_module_styles(styles_xml: str) -> tuple[str, dict[int, int]]:
             f"</patternFill></fill>"
         )
     styles_xml = styles_xml.replace("</fills>", "".join(new_fills) + "</fills>", 1)
-    styles_xml = re.sub(
-        r'(<fills[^>]*count=")(\d+)(")',
-        rf"\g<1>{fill_count + len(colors)}\g<3>",
-        styles_xml,
-        count=1,
-    )
+    styles_xml = _set_count(styles_xml, "fills", fill_count + len(colors))
 
-    xf_map: dict[int, int] = {}
+    left_align = (
+        '<alignment horizontal="left" vertical="center" shrinkToFit="1"/>'
+    )
+    center_align = (
+        '<alignment horizontal="center" vertical="center" shrinkToFit="1"/>'
+    )
+    xf_left: dict[int, int] = {}
+    xf_center: dict[int, int] = {}
     new_xfs = ["<!-- corsi-module-xfs -->"]
-    align = '<alignment horizontal="left" vertical="center" shrinkToFit="1"/>'
+    cursor = xf_count
     for i, key in enumerate(keys):
-        xf_map[key] = xf_count + i
         fid = fill_ids[key]
         font_id = text_font_for_fill(argb(colors[i]), white_font_id, dark_font_id)
+        xf_left[key] = cursor
         new_xfs.append(
             f'<xf numFmtId="0" fontId="{font_id}" fillId="{fid}" '
             f'borderId="{border_id}" xfId="0" applyFont="1" applyFill="1" '
-            f'applyBorder="1" applyAlignment="1">{align}</xf>'
+            f'applyBorder="1" applyAlignment="1">{left_align}</xf>'
         )
+        cursor += 1
+        xf_center[key] = cursor
+        new_xfs.append(
+            f'<xf numFmtId="0" fontId="{font_id}" fillId="{fid}" '
+            f'borderId="{border_id}" xfId="0" applyFont="1" applyFill="1" '
+            f'applyBorder="1" applyAlignment="1">{center_align}</xf>'
+        )
+        cursor += 1
     styles_xml = styles_xml.replace("</cellXfs>", "".join(new_xfs) + "</cellXfs>", 1)
-    styles_xml = re.sub(
-        r'(<cellXfs[^>]*count=")(\d+)(")',
-        rf"\g<1>{xf_count + len(keys)}\g<3>",
-        styles_xml,
-        count=1,
-    )
-    return styles_xml, xf_map
+    styles_xml = _set_count(styles_xml, "cellXfs", cursor)
+    return styles_xml, {"left": xf_left, "center": xf_center}
 
 
-def write_dart_map(xf_map: dict[int, int]) -> None:
+def write_dart_map(xf_maps: dict[str, dict[int, int]]) -> None:
+    xf_left = xf_maps["left"]
+    xf_center = xf_maps["center"]
     lines = [
         "// GENERATED by tools/rederive_ps_blank.py — do not edit by hand.",
-        "// Maps moduleNumber -> cellXf index in ps_weekly_blank.xlsx styles.",
-        "const psModuleXfByNumber = <int, int>{",
+        "// Maps moduleNumber -> cellXf (left / center) in ps_weekly_blank.xlsx.",
+        "const psModuleXfLeftByNumber = <int, int>{",
     ]
     for k in MODULE_ORDER:
-        lines.append(f"  {k}: {xf_map[k]},")
-    lines.append(f"  -1: {xf_map[-1]}, // fallback")
+        lines.append(f"  {k}: {xf_left[k]},")
+    lines.append(f"  -1: {xf_left[-1]}, // fallback")
     lines.append("};")
     lines.append("")
-    lines.append("int psModuleXf(int moduleNumber) =>")
-    lines.append("    psModuleXfByNumber[moduleNumber] ?? psModuleXfByNumber[-1]!;")
+    lines.append("const psModuleXfCenterByNumber = <int, int>{")
+    for k in MODULE_ORDER:
+        lines.append(f"  {k}: {xf_center[k]},")
+    lines.append(f"  -1: {xf_center[-1]}, // fallback")
+    lines.append("};")
+    lines.append("")
+    lines.append("int psModuleXf(int moduleNumber) => psModuleXfLeft(moduleNumber);")
+    lines.append("")
+    lines.append("int psModuleXfLeft(int moduleNumber) =>")
+    lines.append(
+        "    psModuleXfLeftByNumber[moduleNumber] ?? psModuleXfLeftByNumber[-1]!;"
+    )
+    lines.append("")
+    lines.append("int psModuleXfCenter(int moduleNumber) =>")
+    lines.append(
+        "    psModuleXfCenterByNumber[moduleNumber] ?? psModuleXfCenterByNumber[-1]!;"
+    )
     lines.append("")
     MAP_OUT.write_text("\n".join(lines), encoding="utf-8")
 

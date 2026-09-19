@@ -36,14 +36,21 @@ class ExcelExportService {
   /// Offset pausa pranzo (giallo) nei blocchi da 8 righe Lun–Gio.
   static const _lunchOffset = 5;
 
-  /// Truncate for print; keeps prefix, ellipsis if over limit.
+  /// Truncate for print; ASCII `...`, prefer break at last space.
   /// Submodule is already in col K — full module title is less critical.
   static String fitAddestramento(String text,
       {int max = addestramentoMaxChars}) {
-    final t = text.trim().replaceAll(RegExp(r'\s+'), ' ');
+    final t = text
+        .trim()
+        .replaceAll('…', '...')
+        .replaceAll('⋯', '...')
+        .replaceAll(RegExp(r'\s+'), ' ');
     if (t.length <= max) return t;
-    if (max <= 1) return '…';
-    return '${t.substring(0, max - 1)}…';
+    if (max <= 3) return '...';
+    var cut = t.substring(0, max - 3);
+    final sp = cut.lastIndexOf(' ');
+    if (sp >= max ~/ 2) cut = cut.substring(0, sp);
+    return '$cut...';
   }
 
   static Future<void> downloadWeeklySchedule({

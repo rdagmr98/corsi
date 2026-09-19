@@ -150,20 +150,25 @@ class PsOoxmlFiller {
     String? taskId,
     required int oreSub,
   }) {
-    final xf = psModuleXf(moduleNumber);
-    setText('D$row1Based', addestramento, styleId: xf);
-    // D:F / I:J are merged — only top-left needs value+style
-    setInt('G$row1Based', oreMod, styleId: xf);
-    setText('H$row1Based', oreTot, styleId: xf);
-    setText('I$row1Based', instructor, styleId: xf);
-    setText('K$row1Based', sott, styleId: xf);
+    final xfL = psModuleXfLeft(moduleNumber);
+    final xfC = psModuleXfCenter(moduleNumber);
+    // D:F is merged — paint E/F too so the fill spans the whole ADDESTRAMENTO block.
+    setText('D$row1Based', addestramento, styleId: xfL);
+    _upsertCell('E$row1Based', '/>', styleId: xfL);
+    _upsertCell('F$row1Based', '/>', styleId: xfL);
+    setInt('G$row1Based', oreMod, styleId: xfC);
+    setText('H$row1Based', oreTot, styleId: xfC);
+    // I:J is merged — paint J fill to match instructor block.
+    setText('I$row1Based', instructor, styleId: xfL);
+    _upsertCell('J$row1Based', '/>', styleId: xfL);
+    setText('K$row1Based', sott, styleId: xfC);
     if (taskId != null && taskId.isNotEmpty) {
-      setText('L$row1Based', taskId, styleId: xf);
+      setText('L$row1Based', taskId, styleId: xfC);
     } else {
       // Leave ID TASK empty (unknown) — style only, no value.
-      _upsertCell('L$row1Based', '/>', styleId: xf);
+      _upsertCell('L$row1Based', '/>', styleId: xfC);
     }
-    setInt('M$row1Based', oreSub, styleId: xf);
+    setInt('M$row1Based', oreSub, styleId: xfC);
     // LOCALITA' / aula: never invent — leave N empty (template style).
   }
 

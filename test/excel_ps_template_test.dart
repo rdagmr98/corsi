@@ -45,8 +45,12 @@ void main() {
         'Modulo 11A Turbine Aeroplane Aerodynamics, Structures and Systems';
     expect(long.length, greaterThan(ExcelExportService.addestramentoMaxChars));
     final fitted = ExcelExportService.fitAddestramento(long);
-    expect(fitted.length, ExcelExportService.addestramentoMaxChars);
-    expect(fitted.endsWith('…'), isTrue);
+    expect(
+      fitted.length,
+      lessThanOrEqualTo(ExcelExportService.addestramentoMaxChars),
+    );
+    expect(fitted.endsWith('...'), isTrue);
+    expect(fitted.contains('Structures'), isFalse);
     filler.paintLessonRow(
       row1Based: 13,
       moduleNumber: 11,
@@ -76,6 +80,14 @@ void main() {
     expect(out.sheet, isNot(contains(long)));
     expect(out.sheet, contains('s="${psModuleXf(15)}"'));
     expect(out.sheet, contains('s="${psModuleXf(6)}"'));
+    // Merge slaves E/F/J must carry the same module fill (not blank 1159/1160).
+    final xf15L = psModuleXfLeft(15);
+    final xf15C = psModuleXfCenter(15);
+    expect(RegExp('<c r="E11"[^>]*s="$xf15L"').hasMatch(out.sheet), isTrue);
+    expect(RegExp('<c r="F11"[^>]*s="$xf15L"').hasMatch(out.sheet), isTrue);
+    expect(RegExp('<c r="J11"[^>]*s="$xf15L"').hasMatch(out.sheet), isTrue);
+    expect(RegExp('<c r="G11"[^>]*s="$xf15C"').hasMatch(out.sheet), isTrue);
+    expect(RegExp('<c r="M11"[^>]*s="$xf15C"').hasMatch(out.sheet), isTrue);
     // Empty taskId → self-closing L cell (no empty <t></t>)
     expect(
       RegExp(r'<c r="L11"[^>]*/>').hasMatch(out.sheet) ||
