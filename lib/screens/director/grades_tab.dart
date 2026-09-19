@@ -10,6 +10,7 @@ import '../../services/grade_service.dart';
 import '../../services/reference_service.dart';
 import '../../services/user_service.dart';
 import '../../theme.dart';
+import '../../widgets/grade_filters_bar.dart';
 
 class DirectorGradesTab extends ConsumerStatefulWidget {
   final String userId;
@@ -24,6 +25,7 @@ class _DirectorGradesTabState extends ConsumerState<DirectorGradesTab> {
   final _gradeService = GradeService();
   final _refService = ReferenceService();
   final _userService = UserService();
+  final _filters = GradeFilters();
 
   List<Course> _courses = [];
   Course? _selected;
@@ -507,6 +509,12 @@ class _DirectorGradesTabState extends ConsumerState<DirectorGradesTab> {
             ],
           ),
         ),
+        if (typeInfo != null)
+          GradeFiltersBar(
+            filters: _filters,
+            modules: typeInfo.modules,
+            onChanged: () => setState(() {}),
+          ),
         Expanded(
           child: typeInfo == null || attendees.isEmpty
               ? const Center(child: Text('Nessun dato disponibile', style: TextStyle(color: kTextDim)))
@@ -515,6 +523,27 @@ class _DirectorGradesTabState extends ConsumerState<DirectorGradesTab> {
                     final ranking = _gradeService.getCourseRanking(
                         course.id, course.attendeeIds);
                     final rankMap = {for (final r in ranking) r.attendeeId: r.rank};
+                    final mods = _filters.modules.isEmpty
+                        ? typeInfo.modules
+                        : typeInfo.modules
+                            .where((m) => _filters.modules.contains(m.number))
+                            .toList();
+
+                    AttendeeGradeSummary? filteredSummary(
+                        String attendeeId, int moduleNumber, int assessmentCount) {
+                      final grades = _filters.apply(
+                        _gradeService
+                            .getGradesForAttendee(course.id, attendeeId)
+                            .where((g) => g.moduleNumber == moduleNumber),
+                      );
+                      if (grades.isEmpty) return null;
+                      return AttendeeGradeSummary(
+                        attendeeId: attendeeId,
+                        moduleNumber: moduleNumber,
+                        grades: grades,
+                        assessmentCount: assessmentCount,
+                      );
+                    }
 
                     return SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
@@ -533,23 +562,35 @@ class _DirectorGradesTabState extends ConsumerState<DirectorGradesTab> {
                               children: [
                                 _cell('#', header: true),
                                 _cell('Frequentatore', header: true),
-                                ...typeInfo.modules.map((m) => Tooltip(
+                                ...mods.map((m) => Tooltip(
                                   message: 'M${m.displayCode} - ${m.name}',
                                   child: _cell('M${m.displayCode}', header: true),
                                 )),
                                 _cell('Media', header: true),
                               ],
                             ),
-                            ...attendees.map((a) {
+                            ...attendees.where((a) {
+                              if (!_filters.isActive) return true;
+                              return mods.any((m) {
+                                final s = filteredSummary(
+                                    a.id, m.number, m.assessmentCount);
+                                return s != null && s.hasGrades;
+                              });
+                            }).map((a) {
                               final summary =
                                   _gradeService.getAttendeeSummary(course.id, a.id);
                               final gradScore = _gradeService.getGraduationScore(course.id, a.id);
-                              final hasAny = summary.values.any((s) => s.hasGrades);
+                              final hasAny = mods.any((m) {
+                                final s = _filters.isActive
+                                    ? filteredSummary(
+                                        a.id, m.number, m.assessmentCount)
+                                    : summary[m.number];
+                                return s != null && s.hasGrades;
+                              });
                               final pos = rankMap[a.id];
 
                               return TableRow(
                                 children: [
-                                  // Pos
                                   Padding(
                                     padding: const EdgeInsets.all(4),
                                     child: Text(
@@ -559,7 +600,6 @@ class _DirectorGradesTabState extends ConsumerState<DirectorGradesTab> {
                                           color: kTextDim, fontSize: 10),
                                     ),
                                   ),
-                                  // Nome
                                   Padding(
                                     padding: const EdgeInsets.symmetric(
                                         horizontal: 6, vertical: 4),
@@ -568,9 +608,11 @@ class _DirectorGradesTabState extends ConsumerState<DirectorGradesTab> {
                                         style: const TextStyle(
                                             color: kText, fontSize: 11)),
                                   ),
-                                  // Per-module cells
-                                  ...typeInfo.modules.map((m) {
-                                    final s = summary[m.number];
+                                  ...mods.map((m) {
+                                    final s = _filters.isActive
+                                        ? filteredSummary(
+                                            a.id, m.number, m.assessmentCount)
+                                        : summary[m.number];
                                     return TableCell(
                                       child: InkWell(
                                         onTap: () => s == null || !s.hasGrades
@@ -607,7 +649,6 @@ class _DirectorGradesTabState extends ConsumerState<DirectorGradesTab> {
                                       ),
                                     );
                                   }),
-                                  // Media globale (graduation score)
                                   Padding(
                                     padding: const EdgeInsets.all(4),
                                     child: !hasAny

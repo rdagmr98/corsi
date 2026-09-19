@@ -13,6 +13,7 @@ import '../../services/grade_service.dart';
 import '../../services/notification_service.dart';
 import '../../services/reference_service.dart';
 import '../../services/pdf_export_service.dart';
+import '../../services/excel_export_service.dart';
 import '../../services/schedule_service.dart';
 import '../../services/user_service.dart';
 import '../../theme.dart';
@@ -1440,6 +1441,45 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
     }
   }
 
+  Future<void> _exportWeeklyExcel() async {
+    if (_selected == null) return;
+    final course = _selected!;
+    final subNameMap = <String, String>{
+      for (final m in _typeInfo?.modules ?? [])
+        for (final s in m.submodules) s.code: s.name,
+    };
+    final instructors = {
+      for (final u in _userService.getInstructors()) u.id: u,
+    };
+    final directors = course.directorIds
+        .map(_userService.findById)
+        .whereType<AppUser>()
+        .toList();
+    final attendees = course.attendeeIds
+        .map(_userService.findById)
+        .whereType<AppUser>()
+        .toList();
+    try {
+      await ExcelExportService.downloadWeeklySchedule(
+        course: course,
+        typeInfo: _typeInfo,
+        weekStart: _weekStart,
+        weekLessons: _weekLessons,
+        weekNotes: _weekNotes,
+        instructors: instructors,
+        attendees: attendees,
+        directors: directors,
+        subNames: subNameMap,
+        allCourseLessons: _allCourseLessons,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Errore generazione Excel: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_courses.isEmpty) {
@@ -1568,6 +1608,12 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                   onPressed: _exportWeeklyPdf,
                   icon: const Icon(Icons.picture_as_pdf, size: 16),
                   label: const Text('PDF settimana', style: TextStyle(fontSize: 12)),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  onPressed: _exportWeeklyExcel,
+                  icon: const Icon(Icons.table_view, size: 16),
+                  label: const Text('Excel PS', style: TextStyle(fontSize: 12)),
                 ),
               ],
               IconButton(icon: const Icon(Icons.refresh, color: kTextDim), onPressed: _reload),

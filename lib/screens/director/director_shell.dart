@@ -10,6 +10,7 @@ import 'grades_tab.dart';
 import 'attendance_tab.dart';
 import 'overview_tab.dart';
 import 'lessons_log_tab.dart';
+import '../shared/kpi_course_tab.dart';
 
 class DirectorShell extends ConsumerStatefulWidget {
   const DirectorShell({super.key});
@@ -27,6 +28,7 @@ class _DirectorShellState extends ConsumerState<DirectorShell> {
     (Icons.people_outline, 'Presenze'),
     (Icons.grade, 'Voti'),
     (Icons.history, 'Storico'),
+    (Icons.insights, 'KPI'),
   ];
 
   void _openNotifications(BuildContext context, String userId) {
@@ -138,6 +140,7 @@ class _DirectorShellState extends ConsumerState<DirectorShell> {
               2 => DirectorAttendanceTab(userId: user?.id ?? ''),
               3 => DirectorGradesTab(userId: user?.id ?? ''),
               4 => DirectorLessonsLogTab(userId: user?.id ?? ''),
+              5 => KpiCourseTab(directorUserId: user?.id ?? ''),
               _ => const SizedBox(),
             },
           ),

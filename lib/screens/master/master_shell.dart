@@ -11,6 +11,7 @@ import 'currency_tab.dart';
 import 'amc_tab.dart';
 import 'course_types_tab.dart';
 import '../director/lessons_log_tab.dart';
+import '../shared/kpi_course_tab.dart';
 import '../../services/course_service.dart';
 
 class MasterShell extends ConsumerStatefulWidget {
@@ -28,7 +29,8 @@ class _MasterShellState extends ConsumerState<MasterShell> {
     (Icons.school, 'Corsi'),
     (Icons.history, 'Storico'),
     (Icons.people, 'Utenti'),
-    (Icons.verified_user, 'Idoneità Istruttori'),
+    (Icons.verified_user, 'Stati servizio'),
+    (Icons.insights, 'KPI'),
     (Icons.table_chart, 'Tabella AMC'),
     (Icons.tune, 'Tipi Corso'),
   ];
@@ -147,8 +149,9 @@ class _MasterShellState extends ConsumerState<MasterShell> {
                 ),
               2 => const UsersTab(),
               3 => const CurrencyTab(),
-              4 => const AmcTab(),
-              5 => const CourseTypesTab(),
+              4 => const KpiCourseTab(showAllCourses: true),
+              5 => const AmcTab(),
+              6 => const CourseTypesTab(),
               _ => const SizedBox(),
             },
           ),

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../models/course_models.dart';
 import '../../models/grade_models.dart';
+import '../../models/reference_models.dart';
 import '../../models/schedule_models.dart';
 import '../../models/user_models.dart';
 import '../../providers/auth_provider.dart';
@@ -12,6 +13,7 @@ import '../../services/reference_service.dart';
 import '../../services/schedule_service.dart';
 import '../../services/user_service.dart';
 import '../../theme.dart';
+import '../../widgets/grade_filters_bar.dart';
 import '../director/lessons_log_tab.dart';
 
 class MasterCourseDetailScreen extends ConsumerStatefulWidget {
@@ -30,6 +32,7 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
   final _gradeService = GradeService();
   final _refService = ReferenceService();
   final _userService = UserService();
+  final _gradeFilters = GradeFilters();
 
   late Course _course;
   late List<ScheduledLesson> _lessons;
@@ -419,62 +422,108 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
     if (_attendees.isEmpty || typeInfo == null) {
       return const Center(child: Text('Nessun dato', style: TextStyle(color: kTextDim)));
     }
-    final modules = (typeInfo.modules as List).where((m) {
-      return _attendees.any((a) =>
-          _gradeService.getGradesForAttendee(_course.id, a.id)
-              .any((g) => g.moduleNumber == m.number));
+    final allMods = typeInfo.modules as List;
+    final mods = _gradeFilters.modules.isEmpty
+        ? allMods
+        : allMods.where((m) => _gradeFilters.modules.contains(m.number)).toList();
+
+    AttendeeGradeSummary? filteredSummary(AppUser a, dynamic m) {
+      final grades = _gradeFilters.apply(
+        _gradeService
+            .getGradesForAttendee(_course.id, a.id)
+            .where((g) => g.moduleNumber == m.number),
+      );
+      if (grades.isEmpty) return null;
+      return AttendeeGradeSummary(
+        attendeeId: a.id,
+        moduleNumber: m.number as int,
+        grades: grades,
+        assessmentCount: m.assessmentCount as int,
+      );
+    }
+
+    final visibleAttendees = _attendees.where((a) {
+      if (!_gradeFilters.isActive) {
+        return mods.any((m) {
+          final s = _gradeService.getAttendeeSummary(_course.id, a.id)[m.number];
+          return s != null && s.hasGrades;
+        });
+      }
+      return mods.any((m) {
+        final s = filteredSummary(a, m);
+        return s != null && s.hasGrades;
+      });
     }).toList();
 
-    if (modules.isEmpty) {
+    if (mods.isEmpty || (visibleAttendees.isEmpty && !_gradeFilters.isActive)) {
       return const Center(child: Text('Nessun voto inserito', style: TextStyle(color: kTextDim)));
     }
 
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Table(
-          border: TableBorder.all(color: kBorder, width: 0.5),
-          defaultColumnWidth: const FixedColumnWidth(70),
-          columnWidths: const {0: FixedColumnWidth(160)},
-          children: [
-            TableRow(
-              decoration: const BoxDecoration(color: kSurface),
-              children: [
-                _tCell('Frequentatore', bold: true),
-                ...modules.map((m) => Tooltip(
-                      message: 'M${m.displayCode} - ${m.name}',
-                      child: _tCell('M${m.displayCode}', bold: true),
-                    )),
-                _tCell('Media', bold: true),
-              ],
-            ),
-            ..._attendees.map((a) {
-              final summary = _gradeService.getAttendeeSummary(_course.id, a.id);
-              final grad = _gradeService.getGraduationScore(_course.id, a.id);
-              return TableRow(children: [
-                _tCell(a.fullName),
-                ...modules.map((m) {
-                  final ms = summary[m.number];
-                  if (ms == null || !ms.hasGrades) return _tCell('—');
-                  final avg = ms.weightedAverage;
-                  return InkWell(
-                    onTap: () => _moduleGradesDialog(a, m),
-                    child: _tCell(avg.toStringAsFixed(1),
-                        color: avg >= 22.5 ? kAccent : kError),
-                  );
-                }),
-                _tCell(
-                  grad > 0 ? grad.toStringAsFixed(1) : '—',
-                  color: grad >= 22.5 ? kAccent : (grad > 0 ? kError : kTextDim),
-                  bold: grad > 0,
-                ),
-              ]);
-            }),
-          ],
-        ),
+    return Column(children: [
+      GradeFiltersBar(
+        filters: _gradeFilters,
+        modules: allMods,
+        onChanged: () => setState(() {}),
       ),
-    );
+      Expanded(
+        child: visibleAttendees.isEmpty
+            ? const Center(
+                child: Text('Nessun voto corrisponde ai filtri',
+                    style: TextStyle(color: kTextDim)))
+            : SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: Table(
+                    border: TableBorder.all(color: kBorder, width: 0.5),
+                    defaultColumnWidth: const FixedColumnWidth(70),
+                    columnWidths: const {0: FixedColumnWidth(160)},
+                    children: [
+                      TableRow(
+                        decoration: const BoxDecoration(color: kSurface),
+                        children: [
+                          _tCell('Frequentatore', bold: true),
+                          ...mods.map((m) => Tooltip(
+                                message: 'M${m.displayCode} - ${m.name}',
+                                child: _tCell('M${m.displayCode}', bold: true),
+                              )),
+                          _tCell('Media', bold: true),
+                        ],
+                      ),
+                      ...visibleAttendees.map((a) {
+                        final summary =
+                            _gradeService.getAttendeeSummary(_course.id, a.id);
+                        final grad =
+                            _gradeService.getGraduationScore(_course.id, a.id);
+                        return TableRow(children: [
+                          _tCell(a.fullName),
+                          ...mods.map((m) {
+                            final ms = _gradeFilters.isActive
+                                ? filteredSummary(a, m)
+                                : summary[m.number];
+                            if (ms == null || !ms.hasGrades) return _tCell('—');
+                            final avg = ms.weightedAverage;
+                            return InkWell(
+                              onTap: () => _moduleGradesDialog(a, m),
+                              child: _tCell(avg.toStringAsFixed(1),
+                                  color: avg >= 22.5 ? kAccent : kError),
+                            );
+                          }),
+                          _tCell(
+                            grad > 0 ? grad.toStringAsFixed(1) : '—',
+                            color: grad >= 22.5
+                                ? kAccent
+                                : (grad > 0 ? kError : kTextDim),
+                            bold: grad > 0,
+                          ),
+                        ]);
+                      }),
+                    ],
+                  ),
+                ),
+              ),
+      ),
+    ]);
   }
 
   // Dettaglio voti del modulo (sola lettura): stessa vista del direttore.

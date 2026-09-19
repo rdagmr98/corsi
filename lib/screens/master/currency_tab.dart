@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../models/user_models.dart';
+import '../../models/reference_models.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/gh_db_service.dart';
 import '../../services/grade_service.dart';
 import '../../services/notification_service.dart';
+import '../../services/reference_service.dart';
 import '../../services/user_service.dart';
 import '../../theme.dart';
 import '../../utils/snackbar.dart';
@@ -20,6 +22,7 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
   final _userService   = UserService();
   final _gradeService  = GradeService();
   final _notifService  = NotificationService();
+  final _refService    = ReferenceService();
   final _db            = GhDbService();
   List<AppUser> _instructors = [];
   bool? _filterGo; // null=tutti, true=GO, false=NO-GO
@@ -455,15 +458,37 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
     final theoryM  = _theoryMods(instr.id);
     final practM   = _practiceMods(instr.id);
     final byYear   = _teachingByYear(instr.id);
-    final profList = _gradeService.getUpdatesForInstructor(instr.id)
+    final updates  = _gradeService.getUpdatesForInstructor(instr.id);
+    final profList = updates
         .where((u) => u.isProfessional)
+        .where((u) => u.date.isAfter(DateTime.now().subtract(const Duration(days: 730))))
         .toList()
       ..sort((a, b) => b.date.compareTo(a.date));
+    final teachList2y = updates
+        .where((u) => u.isTeaching && u.isApproved)
+        .where((u) => u.date.isAfter(DateTime.now().subtract(const Duration(days: 730))))
+        .toList()
+      ..sort((a, b) => b.date.compareTo(a.date));
+    final teachHours2y = teachList2y.fold<double>(0, (s, u) => s + u.hours) +
+        _confirmedHoursLast2Years(instr.id);
     final goTeach  = instr.goOverride || teachH >= 6;
     final goProf   = instr.goOverride || profH >= 35;
     final goDaa    = instr.daaExpiry == null || instr.goOverride ||
         instr.daaExpiry!.isAfter(DateTime.now());
     final go       = _gradeService.isGo(instr);
+    final qualMap = {
+      for (final q in _refService.amcQualifications()) q.id: q,
+    };
+    final quals = (instr.qualifications ?? [])
+        .map((id) => qualMap[id])
+        .whereType<AmcQualification>()
+        .toList();
+    final lauree = quals
+        .where((q) =>
+            q.group.toLowerCase().contains('laurea') ||
+            q.label.toLowerCase().contains('laurea'))
+        .toList();
+    final macchine = quals.where((q) => !lauree.contains(q)).toList();
 
     showDialog(
       context: context,
@@ -480,6 +505,7 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
                 padding: const EdgeInsets.fromLTRB(20, 16, 12, 16),
                 child: Row(children: [
                   Expanded(child: Text(instr.fullName,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(color: kText, fontSize: 18,
                           fontWeight: FontWeight.bold))),
                   if (instr.goOverride)
@@ -516,8 +542,61 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // ── Anagrafica ───────────────────────────────────────
+                      _sectionTitle('Anagrafica / stato di servizio'),
+                      const SizedBox(height: 8),
+                      _kvRow('Nome', instr.fullName),
+                      _kvRow('Grado / titolo', instr.titolo?.trim().isNotEmpty == true
+                          ? instr.titolo! : '—'),
+                      _kvRow('Licenza Part-66', instr.licenza?.trim().isNotEmpty == true
+                          ? instr.licenza! : '—'),
+                      _kvRow('Email', instr.email ?? '—'),
+                      _kvRow('Username', instr.username ?? '—'),
+                      _kvRow('Attivo', instr.isActive ? 'Sì' : 'No'),
+                      _kvRow('Stato GO/NO-GO', go ? 'GO' : 'NO-GO'),
+                      if (instr.goOverride)
+                        _kvRow('Override', 'OJT / GO manuale attivo'),
+                      const SizedBox(height: 16),
+
+                      // ── Qualifiche / abilitazioni ────────────────────────
+                      _sectionTitle('Abilitazioni e lauree (AMC)'),
+                      const SizedBox(height: 8),
+                      if (quals.isEmpty)
+                        const Text('Nessuna qualifica compilata',
+                            style: TextStyle(color: kTextDim, fontSize: 12))
+                      else ...[
+                        if (lauree.isNotEmpty) ...[
+                          const Text('Lauree / titoli',
+                              style: TextStyle(color: kTextDim, fontSize: 11)),
+                          const SizedBox(height: 4),
+                          Wrap(
+                            spacing: 4, runSpacing: 4,
+                            children: lauree
+                                .map((q) => _chip(q.label, kWarning))
+                                .toList(),
+                          ),
+                          const SizedBox(height: 8),
+                        ],
+                        if (macchine.isNotEmpty) ...[
+                          const Text('Abilitazioni macchine / categorie',
+                              style: TextStyle(color: kTextDim, fontSize: 11)),
+                          const SizedBox(height: 4),
+                          Wrap(
+                            spacing: 4, runSpacing: 4,
+                            children: macchine
+                                .map((q) => _chip(
+                                    q.group.isNotEmpty
+                                        ? '${q.group}: ${q.label}'
+                                        : q.label,
+                                    kPrimary))
+                                .toList(),
+                          ),
+                        ],
+                      ],
+                      const SizedBox(height: 20),
+
                       // ── Currency ─────────────────────────────────────────
-                      _sectionTitle('Idoneità (Currency)'),
+                      _sectionTitle('Idoneità (Currency) — come schermo GO/NO-GO'),
                       const SizedBox(height: 8),
                       Row(children: [
                         Expanded(child: _currencyCard(
@@ -562,7 +641,12 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
                       ),
                       const SizedBox(height: 20),
 
-                      // ── Ore insegnamento per anno ────────────────────────
+                      // ── Ore insegnamento 2 anni ──────────────────────────
+                      _sectionTitle(
+                          'Ore insegnamento ultimi 2 anni: '
+                          '${teachHours2y.toStringAsFixed(0)}h '
+                          '(lezioni confermate + registrazioni)'),
+                      const SizedBox(height: 8),
                       _sectionTitle('Storico ore insegnamento per anno'),
                       const SizedBox(height: 8),
                       if (byYear.isEmpty)
@@ -594,7 +678,7 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
 
                       // ── Aggiornamenti professionali ──────────────────────
                       _sectionTitle(
-                          'Aggiornamenti professionali (ultimi 2 anni: '
+                          'Aggiornamenti professionali svolti (ultimi 2 anni: '
                           '${profH.toStringAsFixed(0)}h / 35h)'),
                       const SizedBox(height: 8),
                       if (profList.isEmpty)
@@ -624,12 +708,15 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
                             ),
                             const SizedBox(width: 8),
                             Expanded(child: Text(u.description,
+                                overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(color: kTextDim, fontSize: 11))),
                           ]),
                         )),
                       const SizedBox(height: 20),
 
-                      // ── Sottomoduli abilitati ────────────────────────────
+                      // ── Sottomoduli / materie assegnate ──────────────────
+                      _sectionTitle('Materie assegnate (griglia AMC)'),
+                      const SizedBox(height: 8),
                       Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Expanded(child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -665,6 +752,36 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
                           ],
                         )),
                       ]),
+                      const SizedBox(height: 16),
+                      Builder(builder: (_) {
+                        final courses = GhDbService()
+                            .courses
+                            .where((c) =>
+                                (c['instructor_ids'] as List? ?? [])
+                                    .contains(instr.id))
+                            .map((c) => c['title'] as String? ?? c['id'] as String)
+                            .toList();
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _sectionTitle(
+                                'Corsi assegnati (${courses.length})'),
+                            const SizedBox(height: 6),
+                            if (courses.isEmpty)
+                              const Text('Nessun corso',
+                                  style: TextStyle(
+                                      color: kTextDim, fontSize: 11))
+                            else
+                              ...courses.map((t) => Padding(
+                                    padding: const EdgeInsets.only(bottom: 3),
+                                    child: Text(t,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                            color: kText, fontSize: 12)),
+                                  )),
+                          ],
+                        );
+                      }),
                     ],
                   ),
                 ),
@@ -675,6 +792,36 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
       ),
     );
   }
+
+  double _confirmedHoursLast2Years(String uid) {
+    final cutoff = DateTime.now().subtract(const Duration(days: 730));
+    var n = 0.0;
+    for (final raw in _db.schedules) {
+      if (raw['instructor_id'] != uid) continue;
+      if (raw['confirmed'] != true) continue;
+      if ((raw['time_slot'] as int? ?? 0) <= 0) continue;
+      final d = DateTime.tryParse(raw['date'] as String? ?? '');
+      if (d == null || !d.isAfter(cutoff)) continue;
+      n += 1;
+    }
+    return n;
+  }
+
+  Widget _kvRow(String k, String v) => Padding(
+        padding: const EdgeInsets.only(bottom: 4),
+        child: Row(children: [
+          SizedBox(
+            width: 140,
+            child: Text(k,
+                style: const TextStyle(color: kTextDim, fontSize: 12)),
+          ),
+          Expanded(
+            child: Text(v,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: kText, fontSize: 12)),
+          ),
+        ]),
+      );
 
   // ── Widget helpers ────────────────────────────────────────────────────────
   Widget _goBadge(bool go) => Container(
@@ -835,7 +982,7 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
       Padding(
         padding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
         child: Row(children: [
-          Text('Idoneità Istruttori (${_instructors.length})',
+          Text('Stati di servizio (${_instructors.length})',
               style: Theme.of(context).textTheme.titleLarge),
           const Spacer(),
           ElevatedButton.icon(
