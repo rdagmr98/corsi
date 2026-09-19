@@ -1,18 +1,37 @@
 import 'dart:typed_data';
 
 import 'package:excel/excel.dart';
+import 'package:flutter/material.dart' show Color;
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:intl/intl.dart';
 
 import '../models/course_models.dart';
 import '../models/reference_models.dart';
 import '../models/schedule_models.dart';
 import '../models/user_models.dart';
+import '../theme.dart';
 import '../utils/file_download.dart';
 
-/// Export programma settimanale .xlsx allineato ai template PS (`65_` / `66_`).
-/// Colonne: DATA | ORARIO | ADDESTRAMENTO | Ore Mod. | Ore Tot. Mod. |
-/// ISTRUTTORE | Sott. Mod. | ID TASK | Ore | LOCALITA'
+/// Export programma settimanale .xlsx clonando il template ufficiale PS
+/// (`66_PS` foglio EI — merges/bordi/orari/pausa pranzo preservati).
+///
+/// Colonne (1-based B..N): DATA | ORARIO | ADDESTRAMENTO | Ore Mod. |
+/// Ore Tot. Mod. | ISTRUTTORE | Sott. Mod. | ID TASK | Ore | LOCALITA'
 class ExcelExportService {
+  static const _templateAsset = 'assets/templates/ps_weekly_blank.xlsx';
+
+  /// Blocchi giorno nel template (righe Excel 1-based).
+  static const _dayBlocks = <(int, int)>[
+    (10, 17), // Lun
+    (18, 25), // Mar
+    (26, 33), // Mer
+    (34, 41), // Gio
+    (42, 44), // Ven
+  ];
+
+  /// Offset pausa pranzo (giallo) nei blocchi da 8 righe Lun–Gio.
+  static const _lunchOffset = 5;
+
   static Future<void> downloadWeeklySchedule({
     required Course course,
     required CourseTypeInfo? typeInfo,
@@ -25,7 +44,7 @@ class ExcelExportService {
     required List<AppUser> attendees,
     List<ScheduledLesson> allCourseLessons = const [],
   }) async {
-    final bytes = buildWeeklyScheduleBytes(
+    final bytes = await buildWeeklyScheduleBytes(
       course: course,
       typeInfo: typeInfo,
       weekStart: weekStart,
@@ -47,7 +66,7 @@ class ExcelExportService {
     );
   }
 
-  static Uint8List buildWeeklyScheduleBytes({
+  static Future<Uint8List> buildWeeklyScheduleBytes({
     required Course course,
     required CourseTypeInfo? typeInfo,
     required DateTime weekStart,
@@ -58,13 +77,19 @@ class ExcelExportService {
     required Map<String, String> subNames,
     required List<AppUser> attendees,
     List<ScheduledLesson> allCourseLessons = const [],
-  }) {
-    final excel = Excel.createExcel();
-    final defaultName = excel.getDefaultSheet() ?? excel.sheets.keys.first;
+  }) async {
+    final asset = await rootBundle.load(_templateAsset);
+    final excel = Excel.decodeBytes(
+      asset.buffer.asUint8List(asset.offsetInBytes, asset.lengthInBytes),
+    );
+
     final weekEnd = weekStart.add(const Duration(days: 4));
     final sheetName =
         '${DateFormat('dd.MM').format(weekStart)}_${DateFormat('dd.MM').format(weekEnd)}';
-    excel.rename(defaultName, sheetName);
+    const templateSheet = 'Settimana';
+    if (excel.sheets.containsKey(templateSheet)) {
+      excel.rename(templateSheet, sheetName);
+    }
     final sheet = excel[sheetName];
 
     final modByNumber = {
@@ -83,9 +108,7 @@ class ExcelExportService {
       if (id == null) return '';
       final u = instructors[id];
       if (u == null) return '';
-      final t = u.titolo?.trim();
-      if (t != null && t.isNotEmpty) return '$t ${u.cognome}'.trim();
-      return u.cognome.isNotEmpty ? u.cognome : u.fullName;
+      return u.cognome.toUpperCase();
     }
 
     String instructorLabel(ScheduledLesson l) {
@@ -102,7 +125,15 @@ class ExcelExportService {
       return '${m.theoryHours}+${m.practicalHours}';
     }
 
-    // Progressivi corso-wide (stile Ore Mod. / Ore sottomodulo nei template)
+    String sottMod(ScheduledLesson l) {
+      final code = l.submoduleCode.trim();
+      if (code.isEmpty) return '';
+      final u = code.toUpperCase();
+      if (u.startsWith('T') || u.startsWith('P')) return code;
+      return '${l.isTheory ? 'T' : 'P'}$code';
+    }
+
+    // Progressivi corso-wide (Ore Mod. / Ore sottomodulo)
     final corpus = allCourseLessons.isNotEmpty ? allCourseLessons : weekLessons;
     final sortedAll = [...corpus.where((l) => l.timeSlot > 0)]
       ..sort((a, b) {
@@ -121,258 +152,170 @@ class ExcelExportService {
       subOrdById[l.id] = cntSub[sk]!;
     }
 
-    // Header istituzionale (pattern 66_PS)
-    sheet
-        .cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: 1))
-        .value = TextCellValue('CENTRO ADDESTRATIVO AVIAZIONE ESERCITO');
-    sheet
-        .cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: 2))
-        .value = TextCellValue('REPARTO CORSI SPECIALISTICI/TERRESTRI');
-    sheet
-        .cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: 3))
-        .value = TextCellValue('SEZIONE MANUTENTORI AEROMOBILI MILITARI');
-    sheet
-        .cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: 4))
-        .value = TextCellValue(course.title);
-
-    sheet
-        .cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: 5))
-        .value = TextCellValue('DATA INIZIO CORSO');
+    // Header
+    _setText(sheet, 1, 4, course.title); // B5
     if (course.startDate != null) {
-      sheet
-          .cell(CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: 5))
-          .value = DateCellValue(
-        year: course.startDate!.year,
-        month: course.startDate!.month,
-        day: course.startDate!.day,
+      final d = course.startDate!;
+      _set(
+        sheet,
+        3,
+        5,
+        DateCellValue(year: d.year, month: d.month, day: d.day),
       );
     }
-    sheet
-        .cell(CellIndex.indexByColumnRow(columnIndex: 5, rowIndex: 5))
-        .value = TextCellValue('DATA FINE CORSO (PIANIFICATA)');
     if (course.endDate != null) {
-      sheet
-          .cell(CellIndex.indexByColumnRow(columnIndex: 8, rowIndex: 5))
-          .value = DateCellValue(
-        year: course.endDate!.year,
-        month: course.endDate!.month,
-        day: course.endDate!.day,
+      final d = course.endDate!;
+      _set(
+        sheet,
+        9,
+        5,
+        DateCellValue(year: d.year, month: d.month, day: d.day),
       );
     }
-
     if (course.startDate != null && course.endDate != null) {
       final weeks =
           (course.endDate!.difference(course.startDate!).inDays / 7).ceil();
-      sheet
-          .cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: 6))
-          .value = TextCellValue('DURATA');
-      sheet
-          .cell(CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: 6))
-          .value = TextCellValue('$weeks  SETTIMANE');
-    }
-
-    // Intestazioni colonne — allineate a 66_PS
-    const headers = <int, String>{
-      1: 'DATA',
-      2: 'ORARIO',
-      3: 'ADDESTRAMENTO',
-      6: 'Ore Mod.',
-      7: 'Ore Tot. Mod.',
-      8: 'ISTRUTTORE / RESPONSABILE',
-      10: 'Sott. Mod.',
-      11: 'ID TASK',
-      12: 'Ore',
-      13: "LOCALITA'",
-    };
-    for (final e in headers.entries) {
-      sheet
-          .cell(CellIndex.indexByColumnRow(columnIndex: e.key, rowIndex: 7))
-          .value = TextCellValue(e.value);
+      _setText(sheet, 3, 6, '$weeks  SETTIMANE');
     }
 
     final regular = weekLessons.where((l) => l.timeSlot > 0).toList();
     final recovery = weekLessons.where((l) => l.timeSlot == 0).toList();
-    final slots = typeInfo?.schedule.mondayThursday ?? const <TimeSlot>[];
+    final defaultSlots =
+        typeInfo?.schedule.mondayThursday ?? const <TimeSlot>[];
 
-    var row = 9; // Excel row 10
-    for (var i = 0; i < 5; i++) {
-      final day = weekStart.add(Duration(days: i));
+    for (var dayIdx = 0; dayIdx < 5; dayIdx++) {
+      final day = weekStart.add(Duration(days: dayIdx));
+      final (startRow, endRow) = _dayBlocks[dayIdx]; // 1-based
+      final lunchRow = (endRow - startRow == 7) ? startRow + _lunchOffset : null;
+      final lessonRows = [
+        for (var r = startRow; r <= endRow; r++)
+          if (r != lunchRow) r,
+      ];
+
       final daySlots =
-          typeInfo?.schedule.slotsForWeekday(day.weekday) ?? slots;
-      final dayStartRow = row;
-      var wroteDate = false;
+          typeInfo?.schedule.slotsForWeekday(day.weekday) ?? defaultSlots;
 
-      for (final slot in daySlots) {
-        if (day.weekday == DateTime.friday && slot.slot > 3) continue;
-        final lesson = regular
-            .where((l) =>
-                l.date.year == day.year &&
-                l.date.month == day.month &&
-                l.date.day == day.day &&
-                l.timeSlot == slot.slot)
-            .firstOrNull;
-        final note = weekNotes
-            .where((n) =>
-                n.date.year == day.year &&
-                n.date.month == day.month &&
-                n.date.day == day.day &&
-                n.timeSlot == slot.slot)
-            .firstOrNull;
+      // DATA (merged B start:end)
+      _set(
+        sheet,
+        1,
+        startRow - 1,
+        DateCellValue(year: day.year, month: day.month, day: day.day),
+      );
 
-        if (!wroteDate) {
-          sheet
-              .cell(CellIndex.indexByColumnRow(
-                  columnIndex: 1, rowIndex: row))
-              .value = DateCellValue(
-            year: day.year,
-            month: day.month,
-            day: day.day,
-          );
-          wroteDate = true;
+      for (var i = 0; i < lessonRows.length; i++) {
+        final excelRow1 = lessonRows[i];
+        final rowIdx = excelRow1 - 1;
+        final slot = i < daySlots.length ? daySlots[i] : null;
+
+        // Prefer match by timeSlot number; fallback by order
+        ScheduledLesson? lesson;
+        if (slot != null) {
+          lesson = regular
+              .where((l) =>
+                  l.date.year == day.year &&
+                  l.date.month == day.month &&
+                  l.date.day == day.day &&
+                  l.timeSlot == slot.slot)
+              .firstOrNull;
         }
-
-        sheet
-            .cell(CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: row))
-            .value = TextCellValue('${slot.start}-${slot.end}');
+        final note = slot == null
+            ? null
+            : weekNotes
+                .where((n) =>
+                    n.date.year == day.year &&
+                    n.date.month == day.month &&
+                    n.date.day == day.day &&
+                    n.timeSlot == slot.slot)
+                .firstOrNull;
 
         if (lesson != null) {
-          sheet
-              .cell(CellIndex.indexByColumnRow(
-                  columnIndex: 3, rowIndex: row))
-              .value = TextCellValue(moduleTitle(lesson));
-          sheet
-              .cell(CellIndex.indexByColumnRow(
-                  columnIndex: 6, rowIndex: row))
-              .value = IntCellValue(oreModById[lesson.id] ?? 0);
-          sheet
-              .cell(CellIndex.indexByColumnRow(
-                  columnIndex: 7, rowIndex: row))
-              .value = TextCellValue(oreTotMod(lesson));
-          sheet
-              .cell(CellIndex.indexByColumnRow(
-                  columnIndex: 8, rowIndex: row))
-              .value = TextCellValue(instructorLabel(lesson));
-          sheet
-              .cell(CellIndex.indexByColumnRow(
-                  columnIndex: 10, rowIndex: row))
-              .value = TextCellValue(lesson.submoduleCode);
-          if (lesson.taskId != null) {
-            sheet
-                .cell(CellIndex.indexByColumnRow(
-                    columnIndex: 11, rowIndex: row))
-                .value = TextCellValue('${lesson.taskId}');
-          }
-          sheet
-              .cell(CellIndex.indexByColumnRow(
-                  columnIndex: 12, rowIndex: row))
-              .value = IntCellValue(subOrdById[lesson.id] ?? 0);
-        } else if (note != null && note.text.isNotEmpty) {
-          sheet
-              .cell(CellIndex.indexByColumnRow(
-                  columnIndex: 3, rowIndex: row))
-              .value = TextCellValue(note.text);
-        }
-        row++;
-      }
-
-      for (final rec in recovery.where((l) =>
-          l.date.year == day.year &&
-          l.date.month == day.month &&
-          l.date.day == day.day)) {
-        if (!wroteDate) {
-          sheet
-              .cell(CellIndex.indexByColumnRow(
-                  columnIndex: 1, rowIndex: row))
-              .value = DateCellValue(
-            year: day.year,
-            month: day.month,
-            day: day.day,
+          _fillLessonRow(
+            sheet,
+            rowIdx,
+            lesson: lesson,
+            moduleTitle: moduleTitle(lesson),
+            instructor: instructorLabel(lesson),
+            oreMod: oreModById[lesson.id] ?? 0,
+            oreTot: oreTotMod(lesson),
+            sott: sottMod(lesson),
+            subOrd: subOrdById[lesson.id] ?? 0,
           );
-          wroteDate = true;
+        } else if (note != null && note.text.isNotEmpty) {
+          _setText(sheet, 3, rowIdx, note.text);
         }
-        sheet
-            .cell(CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: row))
-            .value = TextCellValue('Recupero');
-        sheet
-            .cell(CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: row))
-            .value = TextCellValue(moduleTitle(rec));
-        sheet
-            .cell(CellIndex.indexByColumnRow(columnIndex: 8, rowIndex: row))
-            .value = TextCellValue(instructorLabel(rec));
-        sheet
-            .cell(CellIndex.indexByColumnRow(columnIndex: 10, rowIndex: row))
-            .value = TextCellValue(rec.submoduleCode);
-        row++;
       }
 
-      if (wroteDate && row - dayStartRow > 1) {
-        sheet.merge(
-          CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: dayStartRow),
-          CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: row - 1),
+      // Recuperi: riempi slot vuoti dello stesso giorno
+      final dayRec = recovery
+          .where((l) =>
+              l.date.year == day.year &&
+              l.date.month == day.month &&
+              l.date.day == day.day)
+          .toList();
+      var recIdx = 0;
+      for (final excelRow1 in lessonRows) {
+        if (recIdx >= dayRec.length) break;
+        final rowIdx = excelRow1 - 1;
+        final existing = sheet
+            .cell(CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: rowIdx))
+            .value;
+        if (existing != null) continue;
+        final rec = dayRec[recIdx++];
+        _fillLessonRow(
+          sheet,
+          rowIdx,
+          lesson: rec,
+          moduleTitle: 'REC: ${moduleTitle(rec)}',
+          instructor: instructorLabel(rec),
+          oreMod: oreModById[rec.id] ?? 0,
+          oreTot: oreTotMod(rec),
+          sott: sottMod(rec),
+          subOrd: subOrdById[rec.id] ?? 0,
         );
       }
     }
 
-    row += 1;
+    // Direttore
     final directorNames = directors.map((d) {
       final t = d.titolo?.trim();
       return (t != null && t.isNotEmpty)
           ? '$t ${d.cognome} ${d.nome}'.trim()
           : d.fullName;
     }).join(' / ');
-    sheet
-        .cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: row))
-        .value = TextCellValue(
-            'Direttore del corso: ${directorNames.isEmpty ? "—" : directorNames}');
+    _setText(
+      sheet,
+      1,
+      45,
+      'Direttore del corso: ${directorNames.isEmpty ? "—" : directorNames}',
+    );
 
-    row += 2;
-    sheet
-        .cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: row))
-        .value = TextCellValue('PERSONALE INTERESSATO');
-    row += 1;
-    sheet
-        .cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: row))
-        .value = TextCellValue('N.');
-    sheet
-        .cell(CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: row))
-        .value = TextCellValue('GRADO, COGNOME e NOME');
-    sheet
-        .cell(CellIndex.indexByColumnRow(columnIndex: 8, rowIndex: row))
-        .value = TextCellValue('N.');
-    sheet
-        .cell(CellIndex.indexByColumnRow(columnIndex: 9, rowIndex: row))
-        .value = TextCellValue('GRADO, COGNOME e NOME');
-    row += 1;
-
+    // PERSONALE INTERESSATO — riga 50+
     final sortedAtt = [...attendees]
       ..sort((a, b) => a.cognome.compareTo(b.cognome));
     final mid = (sortedAtt.length + 1) ~/ 2;
     final left = sortedAtt.take(mid).toList();
     final right = sortedAtt.skip(mid).toList();
-    final maxRows =
-        left.length > right.length ? left.length : right.length;
+    final maxRows = left.length > right.length ? left.length : right.length;
     for (var i = 0; i < maxRows; i++) {
+      final rowIdx = 49 + i; // Excel row 50
       if (i < left.length) {
-        sheet
-            .cell(CellIndex.indexByColumnRow(
-                columnIndex: 1, rowIndex: row + i))
-            .value = IntCellValue(i + 1);
-        sheet
-            .cell(CellIndex.indexByColumnRow(
-                columnIndex: 2, rowIndex: row + i))
-            .value = TextCellValue(
-                '${left[i].titolo ?? ""} ${left[i].fullName}'.trim());
+        _set(sheet, 1, rowIdx, IntCellValue(i + 1));
+        _setText(
+          sheet,
+          2,
+          rowIdx,
+          '${left[i].titolo ?? ""} ${left[i].fullName}'.trim(),
+        );
       }
       if (i < right.length) {
-        sheet
-            .cell(CellIndex.indexByColumnRow(
-                columnIndex: 8, rowIndex: row + i))
-            .value = IntCellValue(mid + i + 1);
-        sheet
-            .cell(CellIndex.indexByColumnRow(
-                columnIndex: 9, rowIndex: row + i))
-            .value = TextCellValue(
-                '${right[i].titolo ?? ""} ${right[i].fullName}'.trim());
+        _set(sheet, 8, rowIdx, IntCellValue(mid + i + 1));
+        _setText(
+          sheet,
+          9,
+          rowIdx,
+          '${right[i].titolo ?? ""} ${right[i].fullName}'.trim(),
+        );
       }
     }
 
@@ -381,5 +324,73 @@ class ExcelExportService {
       throw StateError('Generazione Excel fallita');
     }
     return Uint8List.fromList(encoded);
+  }
+
+  static void _fillLessonRow(
+    Sheet sheet,
+    int rowIdx, {
+    required ScheduledLesson lesson,
+    required String moduleTitle,
+    required String instructor,
+    required int oreMod,
+    required String oreTot,
+    required String sott,
+    required int subOrd,
+  }) {
+    final bg = _excelColor(moduleColor(lesson.moduleNumber));
+    final style = CellStyle(
+      backgroundColorHex: bg,
+      fontColorHex: ExcelColor.white,
+      fontSize: 9,
+      fontFamily: getFontFamily(FontFamily.Arial),
+      bold: true,
+      horizontalAlign: HorizontalAlign.Center,
+      verticalAlign: VerticalAlign.Center,
+      textWrapping: TextWrapping.WrapText,
+      leftBorder: Border(borderStyle: BorderStyle.Thin),
+      rightBorder: Border(borderStyle: BorderStyle.Thin),
+      topBorder: Border(borderStyle: BorderStyle.Thin),
+      bottomBorder: Border(borderStyle: BorderStyle.Thin),
+    );
+
+    void paint(int col, CellValue value) {
+      final cell = sheet.cell(
+        CellIndex.indexByColumnRow(columnIndex: col, rowIndex: rowIdx),
+      );
+      cell.value = value;
+      cell.cellStyle = style;
+    }
+
+    paint(3, TextCellValue(moduleTitle)); // D ADDESTRAMENTO
+    paint(6, IntCellValue(oreMod)); // G Ore Mod.
+    paint(7, TextCellValue(oreTot)); // H Ore Tot. Mod.
+    paint(8, TextCellValue(instructor)); // I ISTRUTTORE
+    paint(10, TextCellValue(sott)); // K Sott. Mod.
+    if (lesson.taskId != null) {
+      paint(11, TextCellValue('${lesson.taskId}')); // L ID TASK
+    } else {
+      // clear + keep module color on empty task cell
+      paint(11, TextCellValue(''));
+    }
+    paint(12, IntCellValue(subOrd)); // M Ore
+  }
+
+  static ExcelColor _excelColor(Color c) {
+    final argb = (c.a * 255).round() << 24 |
+        (c.r * 255).round() << 16 |
+        (c.g * 255).round() << 8 |
+        (c.b * 255).round();
+    final hex = argb.toRadixString(16).padLeft(8, '0').toUpperCase();
+    return ExcelColor.fromHexString(hex);
+  }
+
+  static void _set(Sheet sheet, int col, int rowIdx, CellValue? value) {
+    sheet
+        .cell(CellIndex.indexByColumnRow(columnIndex: col, rowIndex: rowIdx))
+        .value = value;
+  }
+
+  static void _setText(Sheet sheet, int col, int rowIdx, String text) {
+    _set(sheet, col, rowIdx, TextCellValue(text));
   }
 }

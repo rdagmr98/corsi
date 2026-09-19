@@ -30,3 +30,4 @@ flutter:
   uses-material-design: true
   assets:
     - assets/images/smam_logo.png
+    - assets/templates/ps_weekly_blank.xlsx
