@@ -46,7 +46,12 @@ class PsOoxmlFiller {
   ///
   /// OOXML `sheetPr` child order is strict: tabColor?, outlinePr?, pageSetUpPr?.
   /// Inserting pageSetUpPr before tabColor makes Excel refuse to open the file.
+  /// `view="pageBreakPreview"` on sheetView also makes Excel refuse this package.
   void ensurePrintSetup() {
+    _sheet = _sheet.replaceFirst(
+      RegExp(r'\s*view="pageBreakPreview"'),
+      '',
+    );
     final sheetPrMatch =
         RegExp(r'<sheetPr>(.*?)</sheetPr>', dotAll: true).firstMatch(_sheet);
     if (sheetPrMatch != null) {
@@ -176,15 +181,65 @@ class PsOoxmlFiller {
     );
 
     final out = Archive();
-    for (final e in _files.entries) {
-      final content = e.value.content as List<int>;
-      out.addFile(ArchiveFile(e.key, content.length, content));
+    // Stable order helps Excel; Content_Types first.
+    final keys = _files.keys.toList()
+      ..sort((a, b) {
+        if (a == '[Content_Types].xml') return -1;
+        if (b == '[Content_Types].xml') return 1;
+        return a.compareTo(b);
+      });
+    for (final key in keys) {
+      final content = _files[key]!.content as List<int>;
+      out.addFile(ArchiveFile(key, content.length, content));
     }
     final bytes = ZipEncoder().encode(out);
     if (bytes == null) {
       throw StateError('ZipEncoder failed');
     }
-    return Uint8List.fromList(bytes);
+    // archive sets UTF-8 GP bit (0x800); clear it — Excel is picky.
+    return _clearZipUtf8Flags(Uint8List.fromList(bytes));
+  }
+
+  /// Clear general-purpose bit 11 (UTF-8) on every local + central header.
+  static Uint8List _clearZipUtf8Flags(Uint8List zip) {
+    final out = Uint8List.fromList(zip);
+    var i = 0;
+    while (i + 30 <= out.length) {
+      final sig = out[i] |
+          (out[i + 1] << 8) |
+          (out[i + 2] << 16) |
+          (out[i + 3] << 24);
+      if (sig == 0x04034b50) {
+        // local file header
+        final flags = out[i + 6] | (out[i + 7] << 8);
+        final cleared = flags & ~0x800;
+        out[i + 6] = cleared & 0xff;
+        out[i + 7] = (cleared >> 8) & 0xff;
+        final nameLen = out[i + 26] | (out[i + 27] << 8);
+        final extraLen = out[i + 28] | (out[i + 29] << 8);
+        final compSize = out[i + 18] |
+            (out[i + 19] << 8) |
+            (out[i + 20] << 16) |
+            (out[i + 21] << 24);
+        i += 30 + nameLen + extraLen + compSize;
+        continue;
+      }
+      if (sig == 0x02014b50) {
+        // central directory header
+        final flags = out[i + 8] | (out[i + 9] << 8);
+        final cleared = flags & ~0x800;
+        out[i + 8] = cleared & 0xff;
+        out[i + 9] = (cleared >> 8) & 0xff;
+        final nameLen = out[i + 28] | (out[i + 29] << 8);
+        final extraLen = out[i + 30] | (out[i + 31] << 8);
+        final commentLen = out[i + 32] | (out[i + 33] << 8);
+        i += 46 + nameLen + extraLen + commentLen;
+        continue;
+      }
+      if (sig == 0x06054b50) break; // end of central directory
+      break;
+    }
+    return out;
   }
 
   void _upsertCell(String addr, String afterOpenAttrs, {int? styleId}) {

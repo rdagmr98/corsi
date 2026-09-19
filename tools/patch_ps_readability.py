@@ -129,6 +129,8 @@ def patch_styles(styles: str) -> str:
 
 def patch_sheet(sheet: str) -> str:
     """Fit-to-1-page print. Keep sheetPr child order: tabColor?, outlinePr?, pageSetUpPr?."""
+    # pageBreakPreview + our stripped package → Excel "si è verificato un problema".
+    sheet = re.sub(r'\s*view="pageBreakPreview"', "", sheet, count=1)
     # Repair wrong order from older patches (pageSetUpPr before tabColor → Excel refuses open).
     m = re.search(r"<sheetPr>(.*?)</sheetPr>", sheet, flags=re.DOTALL)
     if m:

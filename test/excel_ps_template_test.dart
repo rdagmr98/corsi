@@ -66,6 +66,7 @@ void main() {
     expect(out.sheet, contains('fitToWidth="1"'));
     expect(out.sheet, contains('fitToHeight="1"'));
     expect(out.sheet, contains('fitToPage="1"'));
+    expect(out.sheet, isNot(contains('pageBreakPreview')));
     // sheetPr children: tabColor before pageSetUpPr (OOXML order)
     final sheetPr =
         RegExp(r'<sheetPr>.*?</sheetPr>', dotAll: true).firstMatch(out.sheet)!;
