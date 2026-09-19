@@ -1,9 +1,11 @@
 import '../models/course_models.dart';
 import '../models/grade_models.dart';
 import '../models/reference_models.dart';
+import '../models/user_models.dart';
 import 'course_service.dart';
 import 'grade_service.dart';
 import 'reference_service.dart';
+import 'user_service.dart';
 
 /// Snapshot KPI corso: media voti + % insufficienze esami modulo.
 class KpiCourseSnapshot {
@@ -12,11 +14,14 @@ class KpiCourseSnapshot {
   final DateTime? periodFrom;
   final DateTime? periodTo;
 
-  /// Media aritmetica voti 0–30 (accertamenti + esami nel periodo).
+  /// Media aritmetica su **tutti** i tentativi (accertamenti + esami) nel
+  /// periodo, inclusi i fallimenti poi recuperati. Non usa [AttendeeGradeSummary]
+  /// / effectiveScore / solo ultimo tentativo — quelli restano per la graduatoria.
   final double? averageScore;
   final int gradedAttempts;
 
-  /// % insufficienze per esame di modulo (ultimi tentativi nel periodo).
+  /// % insufficienze su **tutti** i tentativi d'esame modulo nel periodo
+  /// (un fail recuperato conta ancora come insufficienza).
   final List<KpiModuleFailRate> failRates;
 
   const KpiCourseSnapshot({
@@ -65,6 +70,7 @@ class KpiService {
   final _courses = CourseService();
   final _grades = GradeService();
   final _ref = ReferenceService();
+  final _users = UserService();
 
   List<Course> coursesForUser({String? directorId, bool allIfAdmin = false}) {
     if (allIfAdmin || directorId == null || directorId.isEmpty) {
@@ -73,10 +79,23 @@ class KpiService {
     return _courses.getCoursesForDirector(directorId);
   }
 
+  /// Frequentatori del corso (nome ordinato) per il filtro KPI.
+  List<AppUser> attendeesForCourse(Course course) {
+    final out = <AppUser>[];
+    for (final id in course.attendeeIds) {
+      final u = _users.findById(id);
+      if (u != null) out.add(u);
+    }
+    out.sort((a, b) => a.fullName.compareTo(b.fullName));
+    return out;
+  }
+
+  /// [attendeeIds] null o vuoto = tutti i frequentatori del corso.
   KpiCourseSnapshot snapshot(
     Course course, {
     DateTime? from,
     DateTime? to,
+    Set<String>? attendeeIds,
   }) {
     final typeInfo = _ref.getEffectiveCourseType(
         course.courseTypeId, course.extensionTypeId, course.mamlCombinationId);
@@ -85,16 +104,20 @@ class KpiService {
         ? null
         : DateTime(from.year, from.month, from.day);
     final dayTo = to == null ? null : DateTime(to.year, to.month, to.day);
+    final filterAtt =
+        attendeeIds == null || attendeeIds.isEmpty ? null : attendeeIds;
 
-    bool inPeriod(Grade g) {
+    bool inScope(Grade g) {
+      if (filterAtt != null && !filterAtt.contains(g.attendeeId)) return false;
       final d = DateTime(g.date.year, g.date.month, g.date.day);
       if (dayFrom != null && d.isBefore(dayFrom)) return false;
       if (dayTo != null && d.isAfter(dayTo)) return false;
       return true;
     }
 
+    // Tutti i tentativi nel periodo (fail recuperati inclusi) — non latestAttempts.
     final allGrades =
-        _grades.getGradesForCourse(course.id).where(inPeriod).toList();
+        _grades.getGradesForCourse(course.id).where(inScope).toList();
 
     double? avg;
     if (allGrades.isNotEmpty) {
@@ -105,25 +128,21 @@ class KpiService {
     final failRates = <KpiModuleFailRate>[];
     final mods = typeInfo?.modules ?? const <ModuleInfo>[];
     for (final m in mods) {
+      // Tutti i tentativi d'esame del modulo: un fail poi recuperato resta
+      // nel numeratore (non si tiene solo l'ultimo tentativo per frequentatore).
       final exams = allGrades
           .where((g) =>
               g.moduleNumber == m.number &&
               g.assessmentType == AssessmentType.esame)
           .toList();
       if (exams.isEmpty) continue;
-      // Per frequentatore: ultimo tentativo esame nel periodo
-      final byAtt = <String, Grade>{};
-      for (final g in exams) {
-        byAtt[g.attendeeId] = g; // ordine JSON = cronologico
-      }
-      final latest = byAtt.values.toList();
-      final fails = latest.where((g) => !g.isPassing).length;
+      final fails = exams.where((g) => !g.isPassing).length;
       failRates.add(KpiModuleFailRate(
         moduleNumber: m.number,
         label: 'M${m.displayCode}',
-        examAttempts: latest.length,
+        examAttempts: exams.length,
         failures: fails,
-        failPercent: latest.isEmpty ? 0 : fails * 100.0 / latest.length,
+        failPercent: fails * 100.0 / exams.length,
       ));
     }
 

@@ -2,12 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../models/course_models.dart';
+import '../../models/user_models.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/kpi_service.dart';
 import '../../theme.dart';
 
 /// Vista KPI corso: media voti + % insufficienze esami modulo.
-/// Periodo filtrabile (da–a). Admin (tutti i corsi) e direttore (assegnati).
+/// Periodo filtrabile (da–a) + selezione frequentatori. Admin e direttore.
 class KpiCourseTab extends ConsumerStatefulWidget {
   final String? directorUserId;
   final bool showAllCourses;
@@ -26,6 +27,9 @@ class _KpiCourseTabState extends ConsumerState<KpiCourseTab> {
   final _kpi = KpiService();
   final _fmt = DateFormat('dd/MM/yyyy');
   List<Course> _courses = [];
+  List<AppUser> _attendees = [];
+  /// null = tutti i frequentatori; altrimenti sottoinsieme selezionato.
+  Set<String>? _attendeeFilter;
   Course? _selected;
   KpiCourseSnapshot? _snap;
   DateTime? _from;
@@ -49,14 +53,33 @@ class _KpiCourseTabState extends ConsumerState<KpiCourseTab> {
         _selected = _courses.where((c) => c.id == _selected!.id).firstOrNull ??
             (_courses.isNotEmpty ? _courses.first : null);
       }
+      _syncAttendees();
       if (recalc) _recalc();
     });
+  }
+
+  void _syncAttendees() {
+    _attendees =
+        _selected == null ? [] : _kpi.attendeesForCourse(_selected!);
+    final ids = _attendees.map((u) => u.id).toSet();
+    if (_attendeeFilter != null) {
+      _attendeeFilter = _attendeeFilter!.intersection(ids);
+      if (_attendeeFilter!.isEmpty ||
+          _attendeeFilter!.length == ids.length) {
+        _attendeeFilter = null;
+      }
+    }
   }
 
   void _recalc() {
     _snap = _selected == null
         ? null
-        : _kpi.snapshot(_selected!, from: _from, to: _to);
+        : _kpi.snapshot(
+            _selected!,
+            from: _from,
+            to: _to,
+            attendeeIds: _attendeeFilter,
+          );
   }
 
   Future<void> _reload() async {
@@ -84,6 +107,87 @@ class _KpiCourseTabState extends ConsumerState<KpiCourseTab> {
     if (d != null) setState(() => _to = d);
   }
 
+  String get _attendeeFilterLabel {
+    if (_attendeeFilter == null) return 'Tutti i frequentatori';
+    final n = _attendeeFilter!.length;
+    return '$n / ${_attendees.length} frequentatori';
+  }
+
+  Future<void> _pickAttendees() async {
+    if (_attendees.isEmpty) return;
+    final draft = Set<String>.from(
+        _attendeeFilter ?? _attendees.map((u) => u.id));
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          backgroundColor: kSurface,
+          title: const Text('Frequentatori KPI',
+              style: TextStyle(color: kText)),
+          content: SizedBox(
+            width: 360,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(children: [
+                  TextButton(
+                    onPressed: () => setLocal(
+                        () => draft.addAll(_attendees.map((u) => u.id))),
+                    child: const Text('Tutti'),
+                  ),
+                  TextButton(
+                    onPressed: () => setLocal(draft.clear),
+                    child: const Text('Nessuno'),
+                  ),
+                ]),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 320),
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: _attendees
+                        .map((u) => CheckboxListTile(
+                              dense: true,
+                              value: draft.contains(u.id),
+                              activeColor: kAccent,
+                              title: Text(u.fullName,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                      color: kText, fontSize: 13)),
+                              onChanged: (v) => setLocal(() {
+                                if (v == true) {
+                                  draft.add(u.id);
+                                } else {
+                                  draft.remove(u.id);
+                                }
+                              }),
+                            ))
+                        .toList(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Annulla')),
+            TextButton(
+                onPressed: draft.isEmpty
+                    ? null
+                    : () => Navigator.pop(ctx, true),
+                child: const Text('Applica')),
+          ],
+        ),
+      ),
+    );
+    if (ok != true) return;
+    setState(() {
+      _attendeeFilter =
+          draft.length == _attendees.length ? null : Set.from(draft);
+      _recalc();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_courses.isEmpty) {
@@ -108,6 +212,8 @@ class _KpiCourseTabState extends ConsumerState<KpiCourseTab> {
                 .toList(),
             onChanged: (id) => setState(() {
               _selected = _courses.firstWhere((c) => c.id == id);
+              _attendeeFilter = null;
+              _syncAttendees();
               _recalc();
             }),
           ),
@@ -136,19 +242,25 @@ class _KpiCourseTabState extends ConsumerState<KpiCourseTab> {
               selected: _to != null,
               onTap: _pickTo,
             ),
+            _chip(
+              label: _attendeeFilterLabel,
+              selected: _attendeeFilter != null,
+              onTap: _pickAttendees,
+            ),
             TextButton.icon(
               onPressed: () => setState(_recalc),
               icon: const Icon(Icons.calculate, size: 18),
               label: const Text('Ricalcola'),
             ),
-            if (_from != null || _to != null)
+            if (_from != null || _to != null || _attendeeFilter != null)
               TextButton(
                 onPressed: () => setState(() {
                   _from = null;
                   _to = null;
+                  _attendeeFilter = null;
                   _recalc();
                 }),
-                child: const Text('Tutto il corso'),
+                child: const Text('Reset filtri'),
               ),
           ],
         ),
@@ -156,8 +268,9 @@ class _KpiCourseTabState extends ConsumerState<KpiCourseTab> {
       const Padding(
         padding: EdgeInsets.symmetric(horizontal: 24),
         child: Text(
-          'Media aritmetica voti e % insufficienze esami modulo. '
-          'Scegli un periodo e premi Ricalcola (senza date = tutto il corso).',
+          'Media e tasso insufficienze contano tutti i tentativi nel periodo '
+          '(anche i fail poi recuperati). Filtra periodo e frequentatori, '
+          'poi premi Ricalcola.',
           style: TextStyle(color: kTextDim, fontSize: 12),
         ),
       ),
@@ -179,18 +292,18 @@ class _KpiCourseTabState extends ConsumerState<KpiCourseTab> {
                       ' → '
                       '${snap.periodTo == null ? '…' : _fmt.format(snap.periodTo!)}',
                     ),
-                  _kv('N. voti (accertamenti + esami)',
-                      '${snap.gradedAttempts}'),
+                  _kv('Voti nel periodo', '${snap.gradedAttempts}'),
                   _kv(
                       'Media aritmetica',
                       snap.averageScore == null
                           ? '—'
                           : snap.averageScore!.toStringAsFixed(2)),
                   _kv('Fascia', snap.averageBand),
+                  const SizedBox(height: 6),
                   const Text(
-                    'Nota: media su tutti i voti nel periodo. '
-                    'La graduatoria corso usa medie pesate per modulo.',
-                    style: TextStyle(color: kTextDim, fontSize: 11),
+                    'Tutti i tentativi (accertamenti ed esami), inclusi i fail '
+                    'poi recuperati. La graduatoria corso usa medie pesate.',
+                    style: TextStyle(color: kTextDim, fontSize: 11, height: 1.35),
                   ),
                 ],
               ),
@@ -202,28 +315,41 @@ class _KpiCourseTabState extends ConsumerState<KpiCourseTab> {
                         style: TextStyle(color: kTextDim, fontSize: 12))
                   else
                     ...snap.failRates.map((r) => Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: Row(children: [
-                            SizedBox(
-                              width: 56,
-                              child: Text(r.label,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                      color: kText,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 12)),
-                            ),
-                            Expanded(
-                              child: Text(
-                                '${r.failures}/${r.examAttempts} insuff. '
-                                '(${r.failPercent.toStringAsFixed(1)}%) — ${r.band}',
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                    color: kTextDim, fontSize: 12),
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              SizedBox(
+                                width: 48,
+                                child: Text(r.label,
+                                    style: const TextStyle(
+                                        color: kText,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 13)),
                               ),
-                            ),
-                          ]),
+                              Expanded(
+                                child: Text(
+                                  '${r.failures} insufficienze su ${r.examAttempts} '
+                                  'tentativi (${r.failPercent.toStringAsFixed(1)}%)\n'
+                                  '${r.band}',
+                                  style: const TextStyle(
+                                      color: kTextDim,
+                                      fontSize: 12,
+                                      height: 1.35),
+                                ),
+                              ),
+                            ],
+                          ),
                         )),
+                  if (snap.failRates.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Ogni tentativo d\'esame conta: un insufficiente poi '
+                      'recuperato resta nel tasso.',
+                      style: TextStyle(
+                          color: kTextDim, fontSize: 11, height: 1.35),
+                    ),
+                  ],
                 ],
               ),
             ],
@@ -248,11 +374,11 @@ class _KpiCourseTabState extends ConsumerState<KpiCourseTab> {
       );
 
   Widget _card(String title, List<Widget> children) => Container(
-        margin: const EdgeInsets.only(bottom: 14),
-        padding: const EdgeInsets.all(16),
+        margin: const EdgeInsets.only(bottom: 16),
+        padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
         decoration: BoxDecoration(
           color: kCard,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(10),
           border: Border.all(color: kBorder),
         ),
         child: Column(
@@ -261,29 +387,37 @@ class _KpiCourseTabState extends ConsumerState<KpiCourseTab> {
             Text(title,
                 style: const TextStyle(
                     color: kText,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14)),
-            const SizedBox(height: 10),
+                    fontWeight: FontWeight.w600,
+                    fontSize: 15,
+                    letterSpacing: 0.2)),
+            const SizedBox(height: 12),
             ...children,
           ],
         ),
       );
 
   Widget _kv(String k, String v) => Padding(
-        padding: const EdgeInsets.only(bottom: 4),
+        padding: const EdgeInsets.only(bottom: 8),
         child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
           children: [
-            SizedBox(
-              width: 200,
+            Expanded(
+              flex: 3,
               child: Text(k,
-                  overflow: TextOverflow.ellipsis,
+                  softWrap: true,
                   style: const TextStyle(color: kTextDim, fontSize: 12)),
             ),
+            const SizedBox(width: 12),
             Expanded(
+              flex: 2,
               child: Text(v,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: kText, fontSize: 12)),
+                  textAlign: TextAlign.end,
+                  softWrap: true,
+                  style: const TextStyle(
+                      color: kText,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500)),
             ),
           ],
         ),
