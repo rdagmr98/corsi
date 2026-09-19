@@ -35,6 +35,23 @@ def argb(c: int) -> str:
     return f"{c:08X}"
 
 
+def _luminance(argb_hex: str) -> float:
+    r = int(argb_hex[2:4], 16) / 255
+    g = int(argb_hex[4:6], 16) / 255
+    b = int(argb_hex[6:8], 16) / 255
+
+    def lin(c: float) -> float:
+        return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+    R, G, B = lin(r), lin(g), lin(b)
+    return 0.2126 * R + 0.7152 * G + 0.0722 * B
+
+
+def text_font_for_fill(fill_argb: str, white_id: int, dark_id: int) -> int:
+    """White on dark fills; dark on light fills (lime/amber/cyan)."""
+    return dark_id if _luminance(fill_argb) >= 0.35 else white_id
+
+
 def lesson_rows() -> set[int]:
     rows: set[int] = set()
     for start, end in DAY_BLOCKS:
@@ -129,17 +146,24 @@ def inject_module_styles(styles_xml: str) -> tuple[str, dict[int, int]]:
     border_id = border_count
 
     white_font = (
-        '<font><b/><sz val="9"/><color rgb="FFFFFFFF"/>'
-        '<name val="Arial"/><family val="2"/></font>'
+        '<font><!-- corsi-white --><b/><sz val="8"/>'
+        '<color rgb="FFFFFFFF"/><name val="Arial"/><family val="2"/></font>'
     )
-    styles_xml = styles_xml.replace("</fonts>", white_font + "</fonts>", 1)
+    dark_font = (
+        '<font><!-- corsi-dark --><b/><sz val="8"/>'
+        '<color rgb="FF111827"/><name val="Arial"/><family val="2"/></font>'
+    )
+    styles_xml = styles_xml.replace(
+        "</fonts>", white_font + dark_font + "</fonts>", 1
+    )
     styles_xml = re.sub(
         r'(<fonts[^>]*count=")(\d+)(")',
-        rf"\g<1>{font_count + 1}\g<3>",
+        rf"\g<1>{font_count + 2}\g<3>",
         styles_xml,
         count=1,
     )
-    font_id = font_count
+    white_font_id = font_count
+    dark_font_id = font_count + 1
 
     colors = list(MODULE_PALETTE) + [FALLBACK]
     keys = list(MODULE_ORDER) + [-1]
@@ -160,17 +184,20 @@ def inject_module_styles(styles_xml: str) -> tuple[str, dict[int, int]]:
         count=1,
     )
 
+    # Official lesson cells: shrinkToFit inside ht=15 (no wrap overflow).
     xf_map: dict[int, int] = {}
     new_xfs = ["<!-- corsi-module-xfs -->"]
+    align = (
+        '<alignment horizontal="left" vertical="center" shrinkToFit="1"/>'
+    )
     for i, key in enumerate(keys):
         xf_map[key] = xf_count + i
         fid = fill_ids[key]
+        font_id = text_font_for_fill(argb(colors[i]), white_font_id, dark_font_id)
         new_xfs.append(
             f'<xf numFmtId="0" fontId="{font_id}" fillId="{fid}" '
             f'borderId="{border_id}" xfId="0" applyFont="1" applyFill="1" '
-            f'applyBorder="1" applyAlignment="1">'
-            f'<alignment horizontal="center" vertical="center" wrapText="1"/>'
-            f"</xf>"
+            f'applyBorder="1" applyAlignment="1">{align}</xf>'
         )
     styles_xml = styles_xml.replace("</cellXfs>", "".join(new_xfs) + "</cellXfs>", 1)
     styles_xml = re.sub(

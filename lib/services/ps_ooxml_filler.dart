@@ -31,10 +31,76 @@ class PsOoxmlFiller {
 
   void renameSheet(String name) {
     final safe = _xmlEscape(name);
+    final oldName = RegExp(r'name="([^"]*)"').firstMatch(_workbook)?.group(1);
     _workbook = _workbook.replaceFirst(
       RegExp(r'name="[^"]*"'),
       'name="$safe"',
     );
+    // Keep Print_Area formula in sync with sheet rename.
+    if (oldName != null && oldName.isNotEmpty) {
+      _workbook = _workbook.replaceAll('$oldName!', '$safe!');
+    }
+  }
+
+  /// Landscape, fit 1×1 page — applied at encode so every export prints usable.
+  void ensurePrintSetup() {
+    if (!_sheet.contains('pageSetUpPr')) {
+      if (_sheet.contains('<sheetPr>')) {
+        _sheet = _sheet.replaceFirst(
+          '<sheetPr>',
+          '<sheetPr><pageSetUpPr fitToPage="1"/>',
+        );
+      } else {
+        _sheet = _sheet.replaceFirst(
+          '<dimension',
+          '<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><dimension',
+        );
+      }
+    } else {
+      _sheet = _sheet.replaceFirst(
+        RegExp(r'<pageSetUpPr[^/]*/>'),
+        '<pageSetUpPr fitToPage="1"/>',
+      );
+    }
+
+    const pageSetup =
+        '<pageSetup paperSize="9" fitToWidth="1" fitToHeight="1" '
+        'orientation="landscape" r:id="rId1"/>';
+    if (RegExp(r'<pageSetup\b').hasMatch(_sheet)) {
+      _sheet = _sheet.replaceFirst(RegExp(r'<pageSetup\b[^/]*/>'), pageSetup);
+    } else {
+      _sheet = _sheet.replaceFirst('<pageMargins', '$pageSetup<pageMargins');
+    }
+
+    const margins =
+        '<pageMargins left="0.25" right="0.25" top="0.3" bottom="0.3" '
+        'header="0.2" footer="0.2"/>';
+    _sheet = _sheet.replaceFirst(RegExp(r'<pageMargins\b[^/]*/>'), margins);
+
+    final sheetName =
+        RegExp(r'name="([^"]+)"').firstMatch(_workbook)?.group(1) ??
+            'Settimana';
+    final safe = sheetName.replaceAll("'", "''");
+    final dn =
+        '<definedName name="_xlnm.Print_Area" localSheetId="0">'
+        "'$safe'!\$A\$1:\$O\$70</definedName>";
+    if (_workbook.contains('_xlnm.Print_Area')) {
+      _workbook = _workbook.replaceFirst(
+        RegExp(
+          r'<definedName name="_xlnm\.Print_Area"[^>]*>.*?</definedName>',
+          dotAll: true,
+        ),
+        dn,
+      );
+    } else if (_workbook.contains('<definedNames>')) {
+      _workbook =
+          _workbook.replaceFirst('<definedNames>', '<definedNames>$dn');
+    } else {
+      _workbook = _workbook.replaceFirst(
+        '</workbook>',
+        '<definedNames>$dn</definedNames></workbook>',
+      );
+    }
   }
 
   void setText(String addr, String text, {int? styleId}) {
@@ -80,15 +146,18 @@ class PsOoxmlFiller {
   }
 
   Uint8List encode() {
+    ensurePrintSetup();
+    final sheetBytes = utf8.encode(_sheet);
+    final wbBytes = utf8.encode(_workbook);
     _files['xl/worksheets/sheet1.xml'] = ArchiveFile(
       'xl/worksheets/sheet1.xml',
-      utf8.encode(_sheet).length,
-      utf8.encode(_sheet),
+      sheetBytes.length,
+      sheetBytes,
     );
     _files['xl/workbook.xml'] = ArchiveFile(
       'xl/workbook.xml',
-      utf8.encode(_workbook).length,
-      utf8.encode(_workbook),
+      wbBytes.length,
+      wbBytes,
     );
 
     final out = Archive();
