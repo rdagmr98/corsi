@@ -1,6 +1,11 @@
 """Extract single-sheet blank from 66_PS EI with full styles — no openpyxl rewrite.
 
 Usage: python tools/extract_ps_blank.py && python tools/rebuild_ps_blank.py
+       then python tools/finalize_ps_blank.py  # strip pageBreakPreview for Excel
+
+Looks for official workbook in order:
+  F:\\66_PS …2026.09.07.xlsx
+  corsi/ref/official/66_PS….xlsx (local cache)
 """
 from __future__ import annotations
 
@@ -8,14 +13,33 @@ import re
 import zipfile
 from pathlib import Path
 
-SRC = Path(r"F:\66_PS 3° BTC B1 2025 EI+ CC - 2026.09.07.xlsx")
-OUT = Path(r"C:\Users\Gianmarco\corsi\assets\templates\ps_weekly_blank.xlsx")
-SRC_SHEET_XML = "xl/worksheets/sheet44.xml"
+ROOT = Path(__file__).resolve().parents[1]
+_official = ROOT / "ref" / "official"
+CANDIDATES = [
+    Path(r"F:\66_PS 3° BTC B1 2025 EI+ CC - 2026.09.07.xlsx"),
+    Path(r"F:\65_PS 3° BTC B1 2025 EI+ CC - 2026.07.27.xlsx"),
+    *sorted(_official.glob("66_PS*.xlsx")) if _official.exists() else [],
+    *sorted(_official.glob("65_PS*.xlsx")) if _official.exists() else [],
+]
+OUT = ROOT / "assets/templates/ps_weekly_blank.xlsx"
+SRC_SHEET_XML = "xl/worksheets/sheet44.xml"  # EI week layout on 66_PS
 SRC_PRINTER = "xl/printerSettings/printerSettings44.bin"
 
 
+def resolve_src() -> Path:
+    for p in CANDIDATES:
+        if p.is_file():
+            return p
+    raise SystemExit(
+        "Official PS workbook not found. Copy 66_PS xlsx to F:\\ or "
+        f"{_official}"
+    )
+
+
 def main() -> None:
-    with zipfile.ZipFile(SRC, "r") as zin:
+    src = resolve_src()
+    print("source", src)
+    with zipfile.ZipFile(src, "r") as zin:
         sheet = zin.read(SRC_SHEET_XML).decode("utf-8")
         styles = zin.read("xl/styles.xml")
         theme = zin.read("xl/theme/theme1.xml")
@@ -25,6 +49,8 @@ def main() -> None:
 
     sheet = re.sub(r"<drawing[^/]*/>", "", sheet)
     sheet = re.sub(r"<legacyDrawing[^/]*/>", "", sheet)
+    # Excel refuses this package with pageBreakPreview on the stripped sheet.
+    sheet = re.sub(r'\s*view="pageBreakPreview"', "", sheet)
 
     rels = (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'

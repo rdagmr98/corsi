@@ -1,0 +1,524 @@
+"""Re-derive ps_weekly_blank.xlsx from official 66_PS (or clear current blank).
+
+Prefer: F:\\66_PS …xlsx EI week sheet — copy package parts, clear week data cells only.
+Fallback: clear data cells on existing assets/templates/ps_weekly_blank.xlsx
+(when F: missing). Never invent layout.
+
+Also strips view=pageBreakPreview (Excel open killer on stripped packages).
+"""
+from __future__ import annotations
+
+import re
+import shutil
+import sys
+import zipfile
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+OUT = ROOT / "assets/templates/ps_weekly_blank.xlsx"
+MAP_OUT = ROOT / "lib/services/ps_module_style_map.dart"
+
+SRC_CANDIDATES = [
+    Path(r"F:\66_PS 3° BTC B1 2025 EI+ CC - 2026.09.07.xlsx"),
+    Path(r"F:\65_PS 3° BTC B1 2025 EI+ CC - 2026.07.27.xlsx"),
+]
+
+# Prefer sheet used historically (76S / sheet44); else first *EI* week-like name.
+PREFERRED_SHEET_HINTS = ("sheet44.xml", "76S", "09giugno", "giugno")
+
+DAY_BLOCKS = [(10, 17), (18, 25), (26, 33), (34, 41), (42, 44)]
+LUNCH_OFFSET = 5
+# Official empty-cell styles (from 66_PS EI lesson row) — keep if present.
+EMPTY_BY_COL = {
+    "D": 1159,
+    "E": 1159,
+    "F": 1159,
+    "G": 541,
+    "H": 541,
+    "I": 1160,
+    "J": 1160,
+    "K": 560,
+    "L": 546,
+    "M": 541,
+    "N": 1278,  # LOCALITA' — always blank (app doesn't know aula)
+}
+
+MODULE_ORDER = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 16, 17, 50, 51, 53, 54]
+MODULE_PALETTE = [
+    0xFF6366F1,
+    0xFF3B82F6,
+    0xFF06B6D4,
+    0xFF14B8A6,
+    0xFF22C55E,
+    0xFF84CC16,
+    0xFFF59E0B,
+    0xFFF97316,
+    0xFFEF4444,
+    0xFFEC4899,
+    0xFFA855F7,
+    0xFF8B5CF6,
+    0xFF0EA5E9,
+    0xFF10B981,
+    0xFFD97706,
+    0xFF64748B,
+    0xFF78716C,
+    0xFF854D0E,
+    0xFF166534,
+]
+FALLBACK = 0xFF6B7280
+
+
+def argb(c: int) -> str:
+    return f"{c:08X}"
+
+
+def _luminance(argb_hex: str) -> float:
+    r = int(argb_hex[2:4], 16) / 255
+    g = int(argb_hex[4:6], 16) / 255
+    b = int(argb_hex[6:8], 16) / 255
+
+    def lin(c: float) -> float:
+        return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+    return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+
+
+def text_font_for_fill(fill_argb: str, white_id: int, dark_id: int) -> int:
+    return dark_id if _luminance(fill_argb) >= 0.35 else white_id
+
+
+def lesson_rows() -> set[int]:
+    rows: set[int] = set()
+    for start, end in DAY_BLOCKS:
+        lunch = start + LUNCH_OFFSET if (end - start) == 7 else None
+        for r in range(start, end + 1):
+            if r != lunch:
+                rows.add(r)
+    return rows
+
+
+def col_row(addr: str) -> tuple[str, int] | None:
+    m = re.fullmatch(r"([A-Z]+)(\d+)", addr)
+    if not m:
+        return None
+    return m.group(1), int(m.group(2))
+
+
+def style_of(cell_xml: str) -> str | None:
+    sm = re.search(r'\bs="(\d+)"', cell_xml)
+    return sm.group(1) if sm else None
+
+
+def clear_week_data(sheet: str) -> str:
+    """Clear only week-specific content; keep orari (C), lunch chrome, merges/styles."""
+    lessons = lesson_rows()
+    day_starts = {s for s, _ in DAY_BLOCKS}
+
+    def repl_cell(m: re.Match) -> str:
+        full = m.group(0)
+        addr = m.group(1) or m.group(2)
+        parsed = col_row(addr)
+        if not parsed:
+            return full
+        col, row = parsed
+        s_id = style_of(full)
+
+        # Day date cells — empty, keep style
+        if col == "B" and row in day_starts:
+            s_attr = f' s="{s_id}"' if s_id else ""
+            return f'<c r="{addr}"{s_attr}/>'
+
+        # Lesson data columns — empty (N/località always blank)
+        if row in lessons and col in EMPTY_BY_COL:
+            sid = s_id or str(EMPTY_BY_COL[col])
+            return f'<c r="{addr}" s="{sid}"/>'
+
+        # Header placeholders
+        if addr == "B5":
+            sid = s_id or "1264"
+            return (
+                f'<c r="{addr}" s="{sid}" t="inlineStr">'
+                f"<is><t>{{{{COURSE_TITLE}}}}</t></is></c>"
+            )
+        if addr in ("D6", "J6", "D7"):
+            s_attr = f' s="{s_id}"' if s_id else ""
+            return f'<c r="{addr}"{s_attr}/>'
+        if addr == "B46":
+            sid = s_id or "1177"
+            return (
+                f'<c r="{addr}" s="{sid}" t="inlineStr">'
+                f"<is><t>Direttore del corso: </t></is></c>"
+            )
+        # Attendee list area
+        if row >= 50 and col in ("B", "C", "I", "J"):
+            s_attr = f' s="{s_id}"' if s_id else ""
+            return f'<c r="{addr}"{s_attr}/>'
+        return full
+
+    sheet = re.sub(
+        r'<c r="([A-Z]+\d+)"[^>]*?/>|<c r="([A-Z]+\d+)"[^>]*?>.*?</c>',
+        repl_cell,
+        sheet,
+        flags=re.DOTALL,
+    )
+    # Excel open killer on our single-sheet package
+    sheet = re.sub(r'\s*view="pageBreakPreview"', "", sheet)
+    # sheetPr order: tabColor?, outlinePr?, pageSetUpPr?
+    m = re.search(r"<sheetPr>(.*?)</sheetPr>", sheet, flags=re.DOTALL)
+    if m:
+        body = m.group(1)
+        tab = re.search(r"<tabColor\b[^/]*/>", body)
+        outline = re.search(r"<outlinePr\b[^/]*/>", body)
+        parts = []
+        if tab:
+            parts.append(tab.group(0))
+        if outline:
+            parts.append(outline.group(0))
+        parts.append('<pageSetUpPr fitToPage="1"/>')
+        sheet = (
+            sheet[: m.start()]
+            + "<sheetPr>"
+            + "".join(parts)
+            + "</sheetPr>"
+            + sheet[m.end() :]
+        )
+    return sheet
+
+
+def inject_module_styles(styles_xml: str) -> tuple[str, dict[int, int]]:
+    def count_attr(tag: str) -> int:
+        m = re.search(rf'<{tag}[^>]*count="(\d+)"', styles_xml)
+        return int(m.group(1)) if m else 0
+
+    keys = MODULE_ORDER + [-1]
+    # finalize_ps_blank strips HTML comments; detect via palette fill or font markers
+    already = (
+        "<!-- corsi-module-xfs -->" in styles_xml
+        or "corsi-white" in styles_xml
+        or "corsi-dark" in styles_xml
+        or argb(MODULE_PALETTE[0]) in styles_xml
+    )
+    if already:
+        if "<!-- corsi-module-xfs -->" not in styles_xml:
+            m = re.search(
+                r'(<cellXfs[^>]*count="(\d+)">)(.*)(</cellXfs>)',
+                styles_xml,
+                flags=re.DOTALL,
+            )
+            if not m:
+                raise SystemExit("cellXfs missing while module fills present")
+            count = int(m.group(2))
+            body = m.group(3)
+            xfs = re.findall(r"<xf\b[^/]*?(?:/>|>.*?</xf>)", body, flags=re.DOTALL)
+            if len(xfs) != count:
+                raise SystemExit(f"cellXfs count mismatch {len(xfs)}!={count}")
+            if len(xfs) < len(keys):
+                raise SystemExit("not enough cellXfs for module map")
+            keep, mod_xfs = xfs[: -len(keys)], xfs[-len(keys) :]
+            new_body = "".join(keep) + "<!-- corsi-module-xfs -->" + "".join(mod_xfs)
+            styles_xml = styles_xml[: m.start(3)] + new_body + styles_xml[m.end(3) :]
+        total = count_attr("cellXfs")
+        start = total - len(keys)
+        xf_map = {k: start + i for i, k in enumerate(keys)}
+        return styles_xml, xf_map
+
+    fill_count = count_attr("fills")
+    font_count = count_attr("fonts")
+    border_count = count_attr("borders")
+    xf_count = count_attr("cellXfs")
+
+    thin_border = (
+        '<border><left style="thin"><color auto="1"/></left>'
+        '<right style="thin"><color auto="1"/></right>'
+        '<top style="thin"><color auto="1"/></top>'
+        '<bottom style="thin"><color auto="1"/></bottom>'
+        "<diagonal/></border>"
+    )
+    styles_xml = styles_xml.replace("</borders>", thin_border + "</borders>", 1)
+    styles_xml = re.sub(
+        r'(<borders[^>]*count=")(\d+)(")',
+        rf"\g<1>{border_count + 1}\g<3>",
+        styles_xml,
+        count=1,
+    )
+    border_id = border_count
+
+    white_font = (
+        '<font><!-- corsi-white --><b/><sz val="8"/>'
+        '<color rgb="FFFFFFFF"/><name val="Arial"/><family val="2"/></font>'
+    )
+    dark_font = (
+        '<font><!-- corsi-dark --><b/><sz val="8"/>'
+        '<color rgb="FF111827"/><name val="Arial"/><family val="2"/></font>'
+    )
+    styles_xml = styles_xml.replace("</fonts>", white_font + dark_font + "</fonts>", 1)
+    styles_xml = re.sub(
+        r'(<fonts[^>]*count=")(\d+)(")',
+        rf"\g<1>{font_count + 2}\g<3>",
+        styles_xml,
+        count=1,
+    )
+    white_font_id = font_count
+    dark_font_id = font_count + 1
+
+    colors = list(MODULE_PALETTE) + [FALLBACK]
+    keys = list(MODULE_ORDER) + [-1]
+    new_fills = []
+    fill_ids = {}
+    for i, col in enumerate(colors):
+        fill_ids[keys[i]] = fill_count + i
+        new_fills.append(
+            f'<fill><patternFill patternType="solid">'
+            f'<fgColor rgb="{argb(col)}"/><bgColor indexed="64"/>'
+            f"</patternFill></fill>"
+        )
+    styles_xml = styles_xml.replace("</fills>", "".join(new_fills) + "</fills>", 1)
+    styles_xml = re.sub(
+        r'(<fills[^>]*count=")(\d+)(")',
+        rf"\g<1>{fill_count + len(colors)}\g<3>",
+        styles_xml,
+        count=1,
+    )
+
+    xf_map: dict[int, int] = {}
+    new_xfs = ["<!-- corsi-module-xfs -->"]
+    align = '<alignment horizontal="left" vertical="center" shrinkToFit="1"/>'
+    for i, key in enumerate(keys):
+        xf_map[key] = xf_count + i
+        fid = fill_ids[key]
+        font_id = text_font_for_fill(argb(colors[i]), white_font_id, dark_font_id)
+        new_xfs.append(
+            f'<xf numFmtId="0" fontId="{font_id}" fillId="{fid}" '
+            f'borderId="{border_id}" xfId="0" applyFont="1" applyFill="1" '
+            f'applyBorder="1" applyAlignment="1">{align}</xf>'
+        )
+    styles_xml = styles_xml.replace("</cellXfs>", "".join(new_xfs) + "</cellXfs>", 1)
+    styles_xml = re.sub(
+        r'(<cellXfs[^>]*count=")(\d+)(")',
+        rf"\g<1>{xf_count + len(keys)}\g<3>",
+        styles_xml,
+        count=1,
+    )
+    return styles_xml, xf_map
+
+
+def write_dart_map(xf_map: dict[int, int]) -> None:
+    lines = [
+        "// GENERATED by tools/rederive_ps_blank.py — do not edit by hand.",
+        "// Maps moduleNumber -> cellXf index in ps_weekly_blank.xlsx styles.",
+        "const psModuleXfByNumber = <int, int>{",
+    ]
+    for k in MODULE_ORDER:
+        lines.append(f"  {k}: {xf_map[k]},")
+    lines.append(f"  -1: {xf_map[-1]}, // fallback")
+    lines.append("};")
+    lines.append("")
+    lines.append("int psModuleXf(int moduleNumber) =>")
+    lines.append("    psModuleXfByNumber[moduleNumber] ?? psModuleXfByNumber[-1]!;")
+    lines.append("")
+    MAP_OUT.write_text("\n".join(lines), encoding="utf-8")
+
+
+def resolve_ei_sheet(zin: zipfile.ZipFile) -> tuple[str, str]:
+    """Return (sheet_xml_path, printer_bin_path_or_empty)."""
+    wb = zin.read("xl/workbook.xml").decode("utf-8", "replace")
+    rels = zin.read("xl/_rels/workbook.xml.rels").decode("utf-8", "replace")
+    rid_target: dict[str, str] = {}
+    for m in re.finditer(
+        r'<Relationship[^>]*Id="(rId\d+)"[^>]*Target="([^"]+)"', rels
+    ):
+        rid_target[m.group(1)] = m.group(2)
+    for m in re.finditer(
+        r'<Relationship[^>]*Target="([^"]+)"[^>]*Id="(rId\d+)"', rels
+    ):
+        rid_target[m.group(2)] = m.group(1)
+
+    sheets = []
+    for m in re.finditer(
+        r'<sheet[^>]*name="([^"]+)"[^>]*r:id="(rId\d+)"', wb
+    ):
+        name, rid = m.group(1), m.group(2)
+        target = rid_target.get(rid, "")
+        if target and not target.startswith("xl/"):
+            target = "xl/" + target.lstrip("/")
+        sheets.append((name, target))
+
+    ei = [(n, t) for n, t in sheets if "EI" in n.upper()]
+    if not ei:
+        raise SystemExit("no EI sheet in source workbook")
+
+    pick = ei[0]
+    for n, t in ei:
+        blob = f"{n}|{t}"
+        if any(h.lower() in blob.lower() for h in PREFERRED_SHEET_HINTS):
+            pick = (n, t)
+            break
+    # printerSettingsN.bin often matches sheetN
+    printer = ""
+    m = re.search(r"sheet(\d+)\.xml$", pick[1])
+    if m:
+        cand = f"xl/printerSettings/printerSettings{m.group(1)}.bin"
+        if cand in zin.namelist():
+            printer = cand
+    print(f"using sheet {pick[0]!r} -> {pick[1]} printer={printer or 'none'}")
+    return pick[1], printer
+
+
+def pack_from_official(src: Path) -> None:
+    with zipfile.ZipFile(src, "r") as zin:
+        sheet_path, printer_path = resolve_ei_sheet(zin)
+        sheet = zin.read(sheet_path).decode("utf-8")
+        styles = zin.read("xl/styles.xml").decode("utf-8")
+        theme = zin.read("xl/theme/theme1.xml")
+        shared = zin.read("xl/sharedStrings.xml")
+        core = zin.read("docProps/core.xml")
+        printer = zin.read(printer_path) if printer_path else b""
+
+    sheet = re.sub(r"<drawing[^/]*/>", "", sheet)
+    sheet = re.sub(r"<legacyDrawing[^/]*/>", "", sheet)
+    # Drop printer r:id if we omit printer binary
+    if not printer:
+        sheet = re.sub(r'\s+r:id="[^"]+"', "", sheet)
+    sheet = clear_week_data(sheet)
+    styles, xf_map = inject_module_styles(styles)
+    write_dart_map(xf_map)
+
+    rels = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+    )
+    if printer:
+        rels += (
+            '<Relationship Id="rId1" '
+            'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/printerSettings" '
+            'Target="../printerSettings/printerSettings1.bin"/>'
+        )
+    rels += "</Relationships>"
+
+    content_types = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Default Extension="bin" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.printerSettings"/>
+  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/xl/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>
+  <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+  <Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>
+  <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
+  <Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
+</Types>
+"""
+    workbook = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+ xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets>
+    <sheet name="Settimana" sheetId="1" r:id="rId1"/>
+  </sheets>
+  <definedNames>
+    <definedName name="_xlnm.Print_Area" localSheetId="0">'Settimana'!$A$1:$O$70</definedName>
+  </definedNames>
+</workbook>
+"""
+    wb_rels = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="theme/theme1.xml"/>
+  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+  <Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>
+</Relationships>
+"""
+    root_rels = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
+  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>
+</Relationships>
+"""
+    app = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties">
+  <Application>corsi</Application>
+</Properties>
+"""
+
+    # Ensure pageSetup fit 1x1 landscape without breaking printer rid
+    has_printer = bool(printer)
+    page_setup = (
+        '<pageSetup paperSize="9" fitToWidth="1" fitToHeight="1" '
+        'orientation="landscape"'
+        + (' r:id="rId1"' if has_printer else "")
+        + "/>"
+    )
+    if re.search(r"<pageSetup\b", sheet):
+        sheet = re.sub(r"<pageSetup\b[^/]*/>", page_setup, sheet, count=1)
+
+    OUT.parent.mkdir(parents=True, exist_ok=True)
+    tmp = OUT.with_suffix(".tmp.xlsx")
+    with zipfile.ZipFile(tmp, "w", compression=zipfile.ZIP_DEFLATED) as zout:
+        def w(name: str, data: bytes | str) -> None:
+            info = zipfile.ZipInfo(name)
+            info.compress_type = zipfile.ZIP_DEFLATED
+            info.flag_bits = 0  # no UTF-8 GP bit — Excel picky
+            zout.writestr(info, data if isinstance(data, bytes) else data.encode("utf-8"))
+
+        w("[Content_Types].xml", content_types)
+        w("_rels/.rels", root_rels)
+        w("docProps/core.xml", core)
+        w("docProps/app.xml", app)
+        w("xl/workbook.xml", workbook)
+        w("xl/_rels/workbook.xml.rels", wb_rels)
+        w("xl/styles.xml", styles)
+        w("xl/theme/theme1.xml", theme)
+        w("xl/sharedStrings.xml", shared)
+        w("xl/worksheets/sheet1.xml", sheet)
+        if printer:
+            w("xl/worksheets/_rels/sheet1.xml.rels", rels)
+            w("xl/printerSettings/printerSettings1.bin", printer)
+    shutil.move(tmp, OUT)
+    print("wrote from official", src.name, "->", OUT, "size", OUT.stat().st_size)
+
+
+def clear_existing_blank() -> None:
+    with zipfile.ZipFile(OUT, "r") as zin:
+        data = {n: zin.read(n) for n in zin.namelist()}
+    sheet = clear_week_data(data["xl/worksheets/sheet1.xml"].decode("utf-8"))
+    styles, xf_map = inject_module_styles(data["xl/styles.xml"].decode("utf-8"))
+    write_dart_map(xf_map)
+    data["xl/worksheets/sheet1.xml"] = sheet.encode("utf-8")
+    data["xl/styles.xml"] = styles.encode("utf-8")
+    wb = data["xl/workbook.xml"].decode("utf-8")
+    if "_xlnm.Print_Area" not in wb:
+        wb = wb.replace(
+            "</workbook>",
+            "<definedNames>"
+            '<definedName name="_xlnm.Print_Area" localSheetId="0">'
+            "'Settimana'!$A$1:$O$70</definedName>"
+            "</definedNames></workbook>",
+            1,
+        )
+    data["xl/workbook.xml"] = wb.encode("utf-8")
+    tmp = OUT.with_suffix(".tmp.xlsx")
+    with zipfile.ZipFile(tmp, "w", compression=zipfile.ZIP_DEFLATED) as zout:
+        for n, b in data.items():
+            info = zipfile.ZipInfo(n)
+            info.compress_type = zipfile.ZIP_DEFLATED
+            info.flag_bits = 0
+            zout.writestr(info, b)
+    shutil.move(tmp, OUT)
+    print("cleared existing blank", OUT, "size", OUT.stat().st_size)
+
+
+def main() -> None:
+    src = next((p for p in SRC_CANDIDATES if p.exists()), None)
+    if src:
+        pack_from_official(src)
+    else:
+        print("WARN: official 66/65_PS not on F: — clearing data cells on existing blank")
+        if not OUT.exists():
+            raise SystemExit(f"missing {OUT}")
+        clear_existing_blank()
+    print("module15 xf ok")
+
+
+if __name__ == "__main__":
+    main()

@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:corsi/services/excel_export_service.dart';
 import 'package:corsi/services/ps_module_style_map.dart';
 import 'package:corsi/services/ps_ooxml_filler.dart';
 
@@ -40,6 +41,22 @@ void main() {
       sott: 'T6.1',
       oreSub: 1,
     );
+    final long =
+        'Modulo 11A Turbine Aeroplane Aerodynamics, Structures and Systems';
+    expect(long.length, greaterThan(ExcelExportService.addestramentoMaxChars));
+    final fitted = ExcelExportService.fitAddestramento(long);
+    expect(fitted.length, ExcelExportService.addestramentoMaxChars);
+    expect(fitted.endsWith('…'), isTrue);
+    filler.paintLessonRow(
+      row1Based: 13,
+      moduleNumber: 11,
+      addestramento: fitted,
+      oreMod: 1,
+      oreTot: '114+30',
+      instructor: 'MATERNI',
+      sott: 'T11A.18',
+      oreSub: 1,
+    );
     final outBytes = filler.encode();
     File('build/ps_sample_ooxml.xlsx')
       ..parent.createSync(recursive: true)
@@ -55,8 +72,16 @@ void main() {
     expect(out.sheetName, '07.09_11.09');
     expect(out.sheet, contains('Modulo 15 GAS TURBINE ENGINE'));
     expect(out.sheet, contains('3° Corso BTC Cat.B1 2025'));
+    expect(out.sheet, contains(fitted));
+    expect(out.sheet, isNot(contains(long)));
     expect(out.sheet, contains('s="${psModuleXf(15)}"'));
     expect(out.sheet, contains('s="${psModuleXf(6)}"'));
+    // Empty taskId → self-closing L cell (no empty <t></t>)
+    expect(
+      RegExp(r'<c r="L11"[^>]*/>').hasMatch(out.sheet) ||
+          RegExp(r'<c r="L12"[^>]*/>').hasMatch(out.sheet),
+      isTrue,
+    );
     // Header chrome still present (not rewritten away)
     expect(out.sheet, contains('r="B2"'));
     expect(out.sheet, contains('r="B6"'));

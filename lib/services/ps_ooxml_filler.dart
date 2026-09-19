@@ -160,9 +160,11 @@ class PsOoxmlFiller {
     if (taskId != null && taskId.isNotEmpty) {
       setText('L$row1Based', taskId, styleId: xf);
     } else {
-      setText('L$row1Based', '', styleId: xf);
+      // Leave ID TASK empty (unknown) — style only, no value.
+      _upsertCell('L$row1Based', '/>', styleId: xf);
     }
     setInt('M$row1Based', oreSub, styleId: xf);
+    // LOCALITA' / aula: never invent — leave N empty (template style).
   }
 
   Uint8List encode() {

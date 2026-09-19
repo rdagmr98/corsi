@@ -16,8 +16,13 @@ import 'ps_ooxml_filler.dart';
 ///
 /// Colonne (1-based B..N): DATA | ORARIO | ADDESTRAMENTO | Ore Mod. |
 /// Ore Tot. Mod. | ISTRUTTORE | Sott. Mod. | ID TASK | Ore | LOCALITA'
+///
+/// Unknown fields (aula/LOCALITA', firme, ecc.) restano vuoti.
 class ExcelExportService {
   static const _templateAsset = 'assets/templates/ps_weekly_blank.xlsx';
+
+  /// Max chars for ADDESTRAMENTO (D:F merge, print 1 page). Submodule is in K.
+  static const addestramentoMaxChars = 42;
 
   /// Blocchi giorno nel template (righe Excel 1-based).
   static const _dayBlocks = <(int, int)>[
@@ -30,6 +35,16 @@ class ExcelExportService {
 
   /// Offset pausa pranzo (giallo) nei blocchi da 8 righe Lun–Gio.
   static const _lunchOffset = 5;
+
+  /// Truncate for print; keeps prefix, ellipsis if over limit.
+  /// Submodule is already in col K — full module title is less critical.
+  static String fitAddestramento(String text,
+      {int max = addestramentoMaxChars}) {
+    final t = text.trim().replaceAll(RegExp(r'\s+'), ' ');
+    if (t.length <= max) return t;
+    if (max <= 1) return '…';
+    return '${t.substring(0, max - 1)}…';
+  }
 
   static Future<void> downloadWeeklySchedule({
     required Course course,
@@ -210,7 +225,7 @@ class ExcelExportService {
           filler.paintLessonRow(
             row1Based: excelRow1,
             moduleNumber: lesson.moduleNumber,
-            addestramento: moduleTitle(lesson),
+            addestramento: fitAddestramento(moduleTitle(lesson)),
             oreMod: oreModById[lesson.id] ?? 0,
             oreTot: oreTotMod(lesson),
             instructor: instructorLabel(lesson),
@@ -220,7 +235,7 @@ class ExcelExportService {
           );
           filledRows.add(excelRow1);
         } else if (note != null && note.text.isNotEmpty) {
-          filler.setText('D$excelRow1', note.text);
+          filler.setText('D$excelRow1', fitAddestramento(note.text));
           filledRows.add(excelRow1);
         }
       }
@@ -239,7 +254,8 @@ class ExcelExportService {
         filler.paintLessonRow(
           row1Based: excelRow1,
           moduleNumber: rec.moduleNumber,
-          addestramento: 'REC: ${moduleTitle(rec)}',
+          addestramento:
+              fitAddestramento('REC: ${moduleTitle(rec)}'),
           oreMod: oreModById[rec.id] ?? 0,
           oreTot: oreTotMod(rec),
           instructor: instructorLabel(rec),
@@ -257,9 +273,12 @@ class ExcelExportService {
           ? '$t ${d.cognome} ${d.nome}'.trim()
           : d.fullName;
     }).join(' / ');
+    // Leave blank after label if unknown (same as aula — no invented placeholder).
     filler.setText(
       'B46',
-      'Direttore del corso: ${directorNames.isEmpty ? "—" : directorNames}',
+      directorNames.isEmpty
+          ? 'Direttore del corso: '
+          : 'Direttore del corso: $directorNames',
     );
 
     final sortedAtt = [...attendees]
