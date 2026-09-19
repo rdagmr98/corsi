@@ -1,51 +1,75 @@
 import 'dart:io';
+import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:excel/excel.dart';
+import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:corsi/services/ps_module_style_map.dart';
+import 'package:corsi/services/ps_ooxml_filler.dart';
+
 void main() {
-  test('PS blank template roundtrip preserves merges', () async {
-    final bytes = await File('assets/templates/ps_weekly_blank.xlsx').readAsBytes();
-    final excel = Excel.decodeBytes(bytes);
-    expect(excel.sheets.containsKey('Settimana'), isTrue);
-    final sheet = excel['Settimana'];
+  test('OOXML fill preserves merges and header cells', () {
+    final blankBytes =
+        File('assets/templates/ps_weekly_blank.xlsx').readAsBytesSync();
+    final blank = _SheetZip(blankBytes);
 
-    // Write a sample lesson like production
-    final style = CellStyle(
-      backgroundColorHex: ExcelColor.fromHexString('FF6366F1'),
-      fontColorHex: ExcelColor.white,
-      fontSize: 9,
-      bold: true,
+    final filler = PsOoxmlFiller(Uint8List.fromList(blankBytes));
+    filler.load();
+    filler.renameSheet('07.09_11.09');
+    filler.setText('B5', '3° Corso BTC Cat.B1 2025');
+    filler.setDate('B10', DateTime(2026, 9, 7));
+    filler.paintLessonRow(
+      row1Based: 11,
+      moduleNumber: 15,
+      addestramento: 'Modulo 15 GAS TURBINE ENGINE',
+      oreMod: 66,
+      oreTot: '180+50',
+      instructor: 'BALLOI',
+      sott: 'T15.9',
+      oreSub: 4,
     );
-    void paint(int col, int row, CellValue v) {
-      final c = sheet.cell(CellIndex.indexByColumnRow(columnIndex: col, rowIndex: row));
-      c.value = v;
-      c.cellStyle = style;
-    }
+    final outBytes = filler.encode();
+    File('build/ps_sample_ooxml.xlsx')
+      ..parent.createSync(recursive: true)
+      ..writeAsBytesSync(outBytes);
 
-    sheet.cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: 4)).value =
-        TextCellValue('TEST CORSO BTC');
-    sheet.cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: 9)).value =
-        DateCellValue(year: 2026, month: 9, day: 7);
-    paint(3, 10, TextCellValue('Modulo 15 GAS TURBINE ENGINE'));
-    paint(6, 10, IntCellValue(66));
-    paint(7, 10, TextCellValue('180+50'));
-    paint(8, 10, TextCellValue('BALLOI'));
-    paint(10, 10, TextCellValue('T15.9'));
-    paint(12, 10, IntCellValue(4));
+    final out = _SheetZip(outBytes);
 
-    final out = excel.encode();
-    expect(out, isNotNull);
-    final outFile = File('build/ps_weekly_roundtrip_test.xlsx');
-    outFile.parent.createSync(recursive: true);
-    await outFile.writeAsBytes(Uint8List.fromList(out!));
-
-    final again = Excel.decodeBytes(out);
-    final s2 = again.tables.values.first;
-    expect(s2.cell(CellIndex.indexByString('D11')).value.toString(),
-        contains('Modulo 15'));
-    // spans / merges present
-    expect(s2.spannedItems.isNotEmpty, isTrue);
+    expect(blank.mergeCount, 158);
+    expect(out.mergeCount, 158);
+    expect(out.sheetName, '07.09_11.09');
+    expect(out.sheet, contains('Modulo 15 GAS TURBINE ENGINE'));
+    expect(out.sheet, contains('3° Corso BTC Cat.B1 2025'));
+    expect(out.sheet, contains('s="${psModuleXf(15)}"'));
+    // Header chrome still present (not rewritten away)
+    expect(out.sheet, contains('r="B2"'));
+    expect(out.sheet, contains('r="B6"'));
+    expect(out.sheet, contains('r="D15"'));
   });
+}
+
+class _SheetZip {
+  _SheetZip(List<int> bytes) {
+    final archive = ZipDecoder().decodeBytes(bytes);
+    for (final f in archive.files) {
+      if (!f.isFile) continue;
+      final data = f.content as List<int>;
+      if (f.name == 'xl/worksheets/sheet1.xml') {
+        sheet = utf8.decode(data);
+      } else if (f.name == 'xl/workbook.xml') {
+        workbook = utf8.decode(data);
+      }
+    }
+  }
+
+  late final String sheet;
+  late final String workbook;
+
+  int get mergeCount => RegExp(r'<mergeCell ').allMatches(sheet).length;
+
+  String get sheetName {
+    final m = RegExp(r'name="([^"]+)"').firstMatch(workbook);
+    return m?.group(1) ?? '';
+  }
 }
