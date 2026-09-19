@@ -36,6 +36,11 @@ class AppUser {
   final bool isActive;
   final bool goOverride;
   final DateTime? daaExpiry;
+  // Data perdita currency (null = nessuna registrata / ripristinata senza storico locale).
+  final DateTime? currencyLostAt;
+  // OJT capacità didattiche: 'iniziale' | 'ripristino' (+ data).
+  final String? ojtKind;
+  final DateTime? ojtAt;
   // Qualifiche AMC (id da reference.amcRules.qualifications); null = mai compilate.
   final List<String>? qualifications;
   // Titolo abilitazione e numero licenza Part-66 (solo istruttori).
@@ -54,12 +59,21 @@ class AppUser {
     this.isActive = true,
     this.goOverride = false,
     this.daaExpiry,
+    this.currencyLostAt,
+    this.ojtKind,
+    this.ojtAt,
     this.qualifications,
     this.titolo,
     this.licenza,
     required this.createdAt,
     required this.updatedAt,
   });
+
+  static String? ojtKindLabel(String? kind) => switch (kind) {
+    'iniziale' => 'OJT iniziali',
+    'ripristino' => 'OJT di ripristino',
+    _ => null,
+  };
 
   UserRole get userRole => UserRoleExt.fromString(role);
   String get fullName => '$cognome $nome'.trim();
@@ -77,6 +91,13 @@ class AppUser {
     goOverride: j['go_override'] as bool? ?? false,
     daaExpiry: j['daaa_expiry'] != null
         ? DateTime.tryParse(j['daaa_expiry'] as String)
+        : null,
+    currencyLostAt: j['currency_lost_at'] != null
+        ? DateTime.tryParse(j['currency_lost_at'] as String)
+        : null,
+    ojtKind: j['ojt_kind'] as String?,
+    ojtAt: j['ojt_at'] != null
+        ? DateTime.tryParse(j['ojt_at'] as String)
         : null,
     qualifications: j['qualifications'] != null
         ? List<String>.from(j['qualifications'] as List)
@@ -101,6 +122,10 @@ class AppUser {
     'is_active': isActive,
     'go_override': goOverride,
     if (daaExpiry != null) 'daaa_expiry': daaExpiry!.toIso8601String().substring(0, 10),
+    if (currencyLostAt != null)
+      'currency_lost_at': currencyLostAt!.toIso8601String().substring(0, 10),
+    if (ojtKind != null) 'ojt_kind': ojtKind,
+    if (ojtAt != null) 'ojt_at': ojtAt!.toIso8601String().substring(0, 10),
     if (qualifications != null) 'qualifications': qualifications,
     if (titolo != null) 'titolo': titolo,
     if (licenza != null) 'licenza': licenza,
@@ -119,6 +144,9 @@ class AppUser {
     bool? isActive,
     bool? goOverride,
     Object? daaExpiry = _s,
+    Object? currencyLostAt = _s,
+    Object? ojtKind = _s,
+    Object? ojtAt = _s,
     Object? qualifications = _s,
     Object? titolo = _s,
     Object? licenza = _s,
@@ -132,6 +160,11 @@ class AppUser {
     isActive: isActive ?? this.isActive,
     goOverride: goOverride ?? this.goOverride,
     daaExpiry: identical(daaExpiry, _s) ? this.daaExpiry : daaExpiry as DateTime?,
+    currencyLostAt: identical(currencyLostAt, _s)
+        ? this.currencyLostAt
+        : currencyLostAt as DateTime?,
+    ojtKind: identical(ojtKind, _s) ? this.ojtKind : ojtKind as String?,
+    ojtAt: identical(ojtAt, _s) ? this.ojtAt : ojtAt as DateTime?,
     qualifications: identical(qualifications, _s)
         ? this.qualifications
         : qualifications as List<String>?,

@@ -412,42 +412,223 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
     }
   }
 
-  // ── GO override dialog ────────────────────────────────────────────────────
+  // ── GO override / OJT dialog ──────────────────────────────────────────────
   Future<void> _toggleGoOverride(AppUser instr) async {
-    final newVal = !instr.goOverride;
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: kCard,
-        title: Text(newVal ? 'Imposta GO manuale' : 'Rimuovi GO manuale',
-            style: const TextStyle(color: kText)),
-        content: Text(
-          newVal
-              ? '${instr.cognome} sarà marcato GO indipendentemente dalle ore di lezione (OJT / ripristino currency).\n\nConfirmi?'
-              : 'Rimuovere il GO manuale per ${instr.cognome}? La valutazione tornerà automatica.',
-          style: const TextStyle(color: kTextDim),
+    if (instr.goOverride) {
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: kCard,
+          title: const Text('Rimuovi GO manuale',
+              style: TextStyle(color: kText)),
+          content: Text(
+            'Rimuovere il GO manuale per ${instr.cognome}? '
+            'La valutazione tornerà automatica (resta lo storico OJT).',
+            style: const TextStyle(color: kTextDim),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Annulla', style: TextStyle(color: kTextDim)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: kError),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Rimuovi'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Annulla', style: TextStyle(color: kTextDim)),
-          ),
-          ElevatedButton(
-            style: newVal ? null : ElevatedButton.styleFrom(backgroundColor: kError),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(newVal ? 'Imposta GO' : 'Rimuovi'),
-          ),
-        ],
-      ),
-    );
-    if (confirm == true) {
+      );
+      if (confirm != true) return;
       try {
-        await _userService.setGoOverride(instr.id, newVal);
+        await _userService.setGoOverride(instr.id, false);
       } catch (_) {
         showAppError('Salvataggio GO manuale non riuscito. Riprova.');
       } finally {
         _reload();
       }
+      return;
+    }
+
+    String kind = instr.ojtKind == 'ripristino' ? 'ripristino' : 'iniziale';
+    DateTime ojtDate = instr.ojtAt ?? DateTime.now();
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlg) => AlertDialog(
+          backgroundColor: kCard,
+          title: const Text('OJT capacità didattiche',
+              style: TextStyle(color: kText)),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text(
+              '${instr.cognome} sarà marcato GO (override) fino al '
+              'raggiungimento naturale dei requisiti orari.',
+              style: const TextStyle(color: kTextDim, fontSize: 12),
+            ),
+            const SizedBox(height: 16),
+            DropdownButtonFormField<String>(
+              value: kind,
+              dropdownColor: kSurface,
+              style: const TextStyle(color: kText, fontSize: 13),
+              decoration: const InputDecoration(
+                labelText: 'Tipo OJT',
+                labelStyle: TextStyle(color: kTextDim),
+              ),
+              items: const [
+                DropdownMenuItem(
+                    value: 'iniziale', child: Text('OJT iniziali')),
+                DropdownMenuItem(
+                    value: 'ripristino',
+                    child: Text('OJT di ripristino')),
+              ],
+              onChanged: (v) => setDlg(() => kind = v!),
+            ),
+            const SizedBox(height: 12),
+            Row(children: [
+              Expanded(
+                child: Text(
+                  'Data: ${DateFormat('dd/MM/yyyy').format(ojtDate)}',
+                  style: const TextStyle(color: kText, fontSize: 13),
+                ),
+              ),
+              TextButton(
+                onPressed: () async {
+                  final d = await showDatePicker(
+                    context: ctx,
+                    initialDate: ojtDate,
+                    firstDate: DateTime(2015),
+                    lastDate: DateTime.now().add(const Duration(days: 30)),
+                  );
+                  if (d != null) setDlg(() => ojtDate = d);
+                },
+                child: const Text('Cambia'),
+              ),
+            ]),
+          ]),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Annulla', style: TextStyle(color: kTextDim)),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Imposta GO'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirm != true) return;
+    try {
+      await _userService.setGoOverride(instr.id, true,
+          ojtKind: kind, ojtAt: ojtDate);
+      await _gradeService.addUpdate(
+        instructorId: instr.id,
+        type: 'ojt',
+        hours: 0,
+        description: AppUser.ojtKindLabel(kind) ?? 'OJT',
+        date: ojtDate,
+      );
+    } catch (_) {
+      showAppError('Salvataggio OJT non riuscito. Riprova.');
+    } finally {
+      _reload();
+    }
+  }
+
+  // ── Perdita currency dialog ───────────────────────────────────────────────
+  Future<void> _editCurrencyLost(AppUser instr) async {
+    DateTime? lost = instr.currencyLostAt;
+    final confirmed = await showDialog<Object?>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlg) => AlertDialog(
+          backgroundColor: kCard,
+          title: Text('Perdita currency – ${instr.cognome}',
+              style: const TextStyle(color: kText)),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Text(
+              'Data in cui l\'istruttore ha perso la currency '
+              '(capacità didattiche).',
+              style: TextStyle(color: kTextDim, fontSize: 12),
+            ),
+            const SizedBox(height: 16),
+            Row(children: [
+              Expanded(
+                child: Text(
+                  lost != null
+                      ? DateFormat('dd/MM/yyyy').format(lost!)
+                      : 'Non registrata',
+                  style: TextStyle(
+                    color: lost == null ? kTextDim : kError,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              TextButton(
+                onPressed: () async {
+                  final d = await showDatePicker(
+                    context: ctx,
+                    initialDate: lost ?? DateTime.now(),
+                    firstDate: DateTime(2015),
+                    lastDate: DateTime.now(),
+                  );
+                  if (d != null) setDlg(() => lost = d);
+                },
+                child: const Text('Cambia'),
+              ),
+              if (lost != null)
+                TextButton(
+                  onPressed: () => setDlg(() => lost = null),
+                  child:
+                      const Text('Rimuovi', style: TextStyle(color: kError)),
+                ),
+            ]),
+          ]),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annulla', style: TextStyle(color: kTextDim)),
+            ),
+            ElevatedButton(
+              onPressed: () =>
+                  Navigator.pop(ctx, lost ?? const _RemoveDate()),
+              child: const Text('Salva'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirmed == null) return;
+    final newLost = confirmed is _RemoveDate ? null : confirmed as DateTime;
+    try {
+      final prev = instr.currencyLostAt;
+      await _userService.setCurrencyLostAt(instr.id, newLost);
+      if (newLost != null &&
+          (prev == null ||
+              prev.toIso8601String().substring(0, 10) !=
+                  newLost.toIso8601String().substring(0, 10))) {
+        await _gradeService.addUpdate(
+          instructorId: instr.id,
+          type: 'currency_loss',
+          hours: 0,
+          description: 'Perdita della currency',
+          date: newLost,
+        );
+      } else if (newLost == null && prev != null) {
+        await _gradeService.addUpdate(
+          instructorId: instr.id,
+          type: 'currency_loss',
+          hours: 0,
+          description: 'Currency ripristinata',
+          date: DateTime.now(),
+        );
+      }
+    } catch (_) {
+      showAppError('Salvataggio perdita currency non riuscito. Riprova.');
+    } finally {
+      _reload();
     }
   }
 
@@ -517,8 +698,23 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
                         borderRadius: BorderRadius.circular(4),
                         border: Border.all(color: kWarning),
                       ),
-                      child: const Text('OJT', style: TextStyle(color: kWarning,
-                          fontSize: 10, fontWeight: FontWeight.bold)),
+                      child: Text(
+                          AppUser.ojtKindLabel(instr.ojtKind) ?? 'OJT',
+                          style: const TextStyle(color: kWarning,
+                              fontSize: 10, fontWeight: FontWeight.bold)),
+                    ),
+                  if (instr.currencyLostAt != null && !instr.goOverride)
+                    Container(
+                      margin: const EdgeInsets.only(right: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: kError.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: kError),
+                      ),
+                      child: const Text('CURRENCY PERSA',
+                          style: TextStyle(color: kError,
+                              fontSize: 10, fontWeight: FontWeight.bold)),
                     ),
                   _goBadge(go),
                   const SizedBox(width: 8),
@@ -555,7 +751,45 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
                       _kvRow('Attivo', instr.isActive ? 'Sì' : 'No'),
                       _kvRow('Stato GO/NO-GO', go ? 'GO' : 'NO-GO'),
                       if (instr.goOverride)
-                        _kvRow('Override', 'OJT / GO manuale attivo'),
+                        _kvRow(
+                          'Override',
+                          '${AppUser.ojtKindLabel(instr.ojtKind) ?? 'OJT'}'
+                          '${instr.ojtAt != null ? ' · ${DateFormat('dd/MM/yyyy').format(instr.ojtAt!)}' : ''}',
+                        ),
+                      _kvRow(
+                        'Perdita currency',
+                        instr.currencyLostAt != null
+                            ? DateFormat('dd/MM/yyyy')
+                                .format(instr.currencyLostAt!)
+                            : '—',
+                      ),
+                      if (!instr.goOverride &&
+                          (instr.ojtKind != null || instr.ojtAt != null))
+                        _kvRow(
+                          'Ultimo OJT',
+                          '${AppUser.ojtKindLabel(instr.ojtKind) ?? 'OJT'}'
+                          '${instr.ojtAt != null ? ' · ${DateFormat('dd/MM/yyyy').format(instr.ojtAt!)}' : ''}',
+                        ),
+                      const SizedBox(height: 8),
+                      OutlinedButton.icon(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          _editCurrencyLost(instr);
+                        },
+                        icon: const Icon(Icons.event_busy, size: 16,
+                            color: kError),
+                        label: Text(
+                          instr.currencyLostAt == null
+                              ? 'Registra perdita currency'
+                              : 'Modifica perdita currency',
+                          style: const TextStyle(color: kError, fontSize: 12),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: kError),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 6),
+                        ),
+                      ),
                       const SizedBox(height: 16),
 
                       // ── Qualifiche / abilitazioni ────────────────────────
@@ -627,7 +861,7 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
                         label: Text(
                           instr.goOverride
                               ? 'Rimuovi GO manuale (OJT)'
-                              : 'Imposta GO manuale per OJT / ripristino',
+                              : 'Registra OJT iniziali / di ripristino',
                           style: TextStyle(
                               color: instr.goOverride ? kError : kWarning,
                               fontSize: 12),
@@ -640,6 +874,56 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
                         ),
                       ),
                       const SizedBox(height: 20),
+
+                      // ── Storico perdita / OJT ────────────────────────────
+                      Builder(builder: (_) {
+                        final hist = updates
+                            .where((u) => u.isCurrencyLoss || u.isOjt)
+                            .toList()
+                          ..sort((a, b) => b.date.compareTo(a.date));
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _sectionTitle(
+                                'Storico perdita currency / OJT (${hist.length})'),
+                            const SizedBox(height: 8),
+                            if (hist.isEmpty)
+                              const Text('Nessun evento registrato',
+                                  style: TextStyle(
+                                      color: kTextDim, fontSize: 12))
+                            else
+                              ...hist.map((u) => Padding(
+                                    padding:
+                                        const EdgeInsets.only(bottom: 4),
+                                    child: Row(children: [
+                                      SizedBox(
+                                        width: 72,
+                                        child: Text(
+                                          DateFormat('dd/MM/yyyy')
+                                              .format(u.date),
+                                          style: const TextStyle(
+                                              color: kTextDim,
+                                              fontSize: 11),
+                                        ),
+                                      ),
+                                      Expanded(
+                                        child: Text(
+                                          u.description,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            color: u.isCurrencyLoss
+                                                ? kError
+                                                : kWarning,
+                                            fontSize: 11,
+                                          ),
+                                        ),
+                                      ),
+                                    ]),
+                                  )),
+                            const SizedBox(height: 20),
+                          ],
+                        );
+                      }),
 
                       // ── Ore insegnamento 2 anni ──────────────────────────
                       _sectionTitle(
@@ -1085,8 +1369,20 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
                               style: const TextStyle(color: kText,
                                   fontSize: 13, fontWeight: FontWeight.w600)),
                           if (instr.goOverride)
-                            const Text('GO manuale (OJT)',
-                                style: TextStyle(color: kWarning, fontSize: 10)),
+                            Text(
+                              AppUser.ojtKindLabel(instr.ojtKind) ??
+                                  'GO manuale (OJT)',
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                  color: kWarning, fontSize: 10),
+                            )
+                          else if (instr.currencyLostAt != null)
+                            Text(
+                              'Currency persa ${DateFormat('dd/MM/yy').format(instr.currencyLostAt!)}',
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                  color: kError, fontSize: 10),
+                            ),
                         ],
                       ),
                     ),

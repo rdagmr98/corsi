@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import '../../models/user_models.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/course_service.dart';
 import '../../services/grade_service.dart';
@@ -42,9 +43,11 @@ class _InstructorHoursScreenState extends ConsumerState<InstructorHoursScreen> {
     final updates = _gradeService.getUpdatesForInstructor(widget.userId);
     final me      = _userService.findById(widget.userId);
     final daaExpiry = me?.daaExpiry;
-    final teachOk = teachH >= 6;
-    final profOk  = profH >= 35;
-    final daaOk   = daaExpiry == null || daaExpiry.isAfter(DateTime.now());
+    final teachOk = teachH >= 6 || (me?.goOverride ?? false);
+    final profOk  = profH >= 35 || (me?.goOverride ?? false);
+    final daaOk   = daaExpiry == null ||
+        (me?.goOverride ?? false) ||
+        daaExpiry.isAfter(DateTime.now());
 
     return RefreshIndicator(
       onRefresh: _reload,
@@ -74,6 +77,12 @@ class _InstructorHoursScreenState extends ConsumerState<InstructorHoursScreen> {
             if (daaExpiry != null) ...[
               const SizedBox(height: 12),
               _daaCard(daaExpiry, daaOk),
+            ],
+            if (me?.goOverride == true ||
+                me?.currencyLostAt != null ||
+                me?.ojtKind != null) ...[
+              const SizedBox(height: 12),
+              _serviceStatusCard(me!),
             ],
             if (lessonsByCourse.isNotEmpty) ...[
               const SizedBox(height: 24),
@@ -129,7 +138,23 @@ class _InstructorHoursScreenState extends ConsumerState<InstructorHoursScreen> {
                 child: Text('Nessun record', style: TextStyle(color: kTextDim)),
               )
             else
-              ...updates.reversed.map((u) => Card(
+              ...updates.reversed.map((u) {
+                final IconData icon;
+                final Color iconColor;
+                if (u.isCurrencyLoss) {
+                  icon = Icons.event_busy;
+                  iconColor = kError;
+                } else if (u.isOjt) {
+                  icon = Icons.how_to_reg;
+                  iconColor = kWarning;
+                } else if (u.isTeaching) {
+                  icon = Icons.school;
+                  iconColor = kPrimary;
+                } else {
+                  icon = Icons.update;
+                  iconColor = kAccent;
+                }
+                return Card(
                 color: kCard,
                 margin: const EdgeInsets.only(bottom: 6),
                 shape: RoundedRectangleBorder(
@@ -139,11 +164,7 @@ class _InstructorHoursScreenState extends ConsumerState<InstructorHoursScreen> {
                       : BorderSide.none,
                 ),
                 child: ListTile(
-                  leading: Icon(
-                    u.isTeaching ? Icons.school : Icons.update,
-                    color: u.isTeaching ? kPrimary : kAccent,
-                    size: 20,
-                  ),
+                  leading: Icon(icon, color: iconColor, size: 20),
                   title: Text(u.description, style: const TextStyle(color: kText, fontSize: 13)),
                   subtitle: Text(DateFormat('dd/MM/yyyy').format(u.date),
                       style: const TextStyle(color: kTextDim, fontSize: 11)),
@@ -157,12 +178,15 @@ class _InstructorHoursScreenState extends ConsumerState<InstructorHoursScreen> {
                           child: const Text('In attesa',
                               style: TextStyle(color: kWarning, fontSize: 10, fontWeight: FontWeight.bold)),
                         )
-                      : Text(
-                          '${u.hours}h',
-                          style: const TextStyle(color: kText, fontWeight: FontWeight.bold),
-                        ),
+                      : (u.isCurrencyLoss || u.isOjt)
+                          ? const SizedBox.shrink()
+                          : Text(
+                              '${u.hours}h',
+                              style: const TextStyle(color: kText, fontWeight: FontWeight.bold),
+                            ),
                 ),
-              )),
+              );
+              }),
           ],
         ),
       ),
@@ -264,6 +288,45 @@ class _InstructorHoursScreenState extends ConsumerState<InstructorHoursScreen> {
               },
               child: const Text('Invia'),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _serviceStatusCard(AppUser me) {
+    final ojtLabel = AppUser.ojtKindLabel(me.ojtKind);
+    return Card(
+      color: kCard,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: (me.goOverride ? kWarning : kError).withOpacity(0.3),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Stato di servizio',
+                style: TextStyle(color: kText, fontSize: 13, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            if (me.currencyLostAt != null)
+              Text(
+                'Perdita currency: ${DateFormat('dd/MM/yyyy').format(me.currencyLostAt!)}',
+                style: const TextStyle(color: kError, fontSize: 12),
+              ),
+            if (ojtLabel != null || me.ojtAt != null) ...[
+              if (me.currencyLostAt != null) const SizedBox(height: 4),
+              Text(
+                '${ojtLabel ?? 'OJT'}'
+                '${me.ojtAt != null ? ': ${DateFormat('dd/MM/yyyy').format(me.ojtAt!)}' : ''}'
+                '${me.goOverride ? ' (GO attivo)' : ''}',
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: kWarning, fontSize: 12),
+              ),
+            ],
           ],
         ),
       ),

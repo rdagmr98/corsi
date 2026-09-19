@@ -117,15 +117,37 @@ class UserService {
     await _db.saveUsers(users);
   }
 
-  Future<void> setGoOverride(String userId, bool value) async {
+  Future<void> setGoOverride(String userId, bool value,
+      {String? ojtKind, DateTime? ojtAt}) async {
     final users = _db.users.toList();
     final idx = users.indexWhere((u) => u['id'] == userId);
     if (idx < 0) return;
-    users[idx] = {
-      ...users[idx],
-      'go_override': value,
-      'updated_at': DateTime.now().toIso8601String(),
-    };
+    final updated = Map<String, dynamic>.from(users[idx] as Map<String, dynamic>);
+    updated['go_override'] = value;
+    if (value) {
+      if (ojtKind != null) updated['ojt_kind'] = ojtKind;
+      if (ojtAt != null) {
+        updated['ojt_at'] = ojtAt.toIso8601String().substring(0, 10);
+      }
+    }
+    // ponytail: keep last ojt_kind/ojt_at after decay for stato di servizio
+    updated['updated_at'] = DateTime.now().toIso8601String();
+    users[idx] = updated;
+    await _db.saveUsers(users);
+  }
+
+  Future<void> setCurrencyLostAt(String userId, DateTime? date) async {
+    final users = _db.users.toList();
+    final idx = users.indexWhere((u) => u['id'] == userId);
+    if (idx < 0) return;
+    final updated = Map<String, dynamic>.from(users[idx] as Map<String, dynamic>);
+    if (date == null) {
+      updated.remove('currency_lost_at');
+    } else {
+      updated['currency_lost_at'] = date.toIso8601String().substring(0, 10);
+    }
+    updated['updated_at'] = DateTime.now().toIso8601String();
+    users[idx] = updated;
     await _db.saveUsers(users);
   }
 

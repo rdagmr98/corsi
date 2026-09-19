@@ -126,6 +126,8 @@ class InstructorUpdate {
 
   bool get isTeaching => type == 'teaching';
   bool get isProfessional => type == 'professional';
+  bool get isCurrencyLoss => type == 'currency_loss';
+  bool get isOjt => type == 'ojt';
   bool get isApproved => status == 'approved';
   bool get isPending => status == 'pending';
 
