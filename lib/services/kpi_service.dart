@@ -14,9 +14,10 @@ class KpiCourseSnapshot {
   final DateTime? periodFrom;
   final DateTime? periodTo;
 
-  /// Media aritmetica su **tutti** i tentativi (accertamenti + esami) nel
-  /// periodo, inclusi i fallimenti poi recuperati. Non usa [AttendeeGradeSummary]
-  /// / effectiveScore / solo ultimo tentativo — quelli restano per la graduatoria.
+  /// Media aritmetica semplice Σscore/n su **tutti** i tentativi nel periodo
+  /// (accertamenti ed esami **stesso peso**). Non usa [AssessmentType.weight]
+  /// (1/2), [AttendeeGradeSummary], effectiveScore né solo ultimo tentativo —
+  /// quelli restano per la graduatoria / medie modulo.
   final double? averageScore;
   final int gradedAttempts;
 
@@ -119,6 +120,7 @@ class KpiService {
     final allGrades =
         _grades.getGradesForCourse(course.id).where(inScope).toList();
 
+    // KPI media: peso uguale accertamento/esame (no AssessmentType.weight).
     double? avg;
     if (allGrades.isNotEmpty) {
       avg = allGrades.map((g) => g.score).reduce((a, b) => a + b) /

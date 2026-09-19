@@ -268,9 +268,9 @@ class _KpiCourseTabState extends ConsumerState<KpiCourseTab> {
       const Padding(
         padding: EdgeInsets.symmetric(horizontal: 24),
         child: Text(
-          'Media e tasso insufficienze contano tutti i tentativi nel periodo '
-          '(anche i fail poi recuperati). Filtra periodo e frequentatori, '
-          'poi premi Ricalcola.',
+          'Media KPI: stesso peso accertamenti/esami su tutti i tentativi '
+          'nel periodo (anche fail recuperati). Filtra periodo e '
+          'frequentatori, poi premi Ricalcola.',
           style: TextStyle(color: kTextDim, fontSize: 12),
         ),
       ),
@@ -294,15 +294,16 @@ class _KpiCourseTabState extends ConsumerState<KpiCourseTab> {
                     ),
                   _kv('Voti nel periodo', '${snap.gradedAttempts}'),
                   _kv(
-                      'Media aritmetica',
+                      'Media semplice (stesso peso)',
                       snap.averageScore == null
                           ? '—'
                           : snap.averageScore!.toStringAsFixed(2)),
                   _kv('Fascia', snap.averageBand),
                   const SizedBox(height: 6),
                   const Text(
-                    'Tutti i tentativi (accertamenti ed esami), inclusi i fail '
-                    'poi recuperati. La graduatoria corso usa medie pesate.',
+                    'Media aritmetica di tutti i tentativi nel periodo '
+                    '(accertamenti ed esami stesso peso; fail recuperati '
+                    'inclusi). Diversa dalla graduatoria (pesi 1 e 2).',
                     style: TextStyle(color: kTextDim, fontSize: 11, height: 1.35),
                   ),
                 ],
