@@ -4,53 +4,30 @@ import '../models/reference_models.dart';
 import 'course_service.dart';
 import 'grade_service.dart';
 import 'reference_service.dart';
-import 'schedule_service.dart';
 
-/// Dati aggregati per compilare i KPI MTOE-A-2-1 (a–d).
+/// Snapshot KPI corso: media voti + % insufficienze esami modulo.
 class KpiCourseSnapshot {
   final Course course;
   final CourseTypeInfo? typeInfo;
+  final DateTime? periodFrom;
+  final DateTime? periodTo;
 
-  /// (a) scostamento temporale in giorni (stimato).
-  final int? temporalDeviationDays;
-  final String temporalMethod;
-  final int plannedLessons;
-  final int confirmedLessons;
-  final DateTime? lastConfirmedDate;
-  final DateTime? lastPlannedDate;
-
-  /// (b) questionari — non in app.
-  final bool hasQuestionnaires;
-
-  /// (c) media valutazioni 0–30 (ultimi tentativi).
+  /// Media aritmetica voti 0–30 (accertamenti + esami nel periodo).
   final double? averageScore;
   final int gradedAttempts;
 
-  /// (d) % insufficienze per esame di modulo.
+  /// % insufficienze per esame di modulo (ultimi tentativi nel periodo).
   final List<KpiModuleFailRate> failRates;
 
   const KpiCourseSnapshot({
     required this.course,
     required this.typeInfo,
-    required this.temporalDeviationDays,
-    required this.temporalMethod,
-    required this.plannedLessons,
-    required this.confirmedLessons,
-    required this.lastConfirmedDate,
-    required this.lastPlannedDate,
-    required this.hasQuestionnaires,
+    required this.periodFrom,
+    required this.periodTo,
     required this.averageScore,
     required this.gradedAttempts,
     required this.failRates,
   });
-
-  String get temporalBand {
-    final d = temporalDeviationDays;
-    if (d == null) return 'n/d';
-    if (d <= 10) return 'Ottimo (0–10 gg)';
-    if (d <= 20) return 'Buono (11–20 gg)';
-    return 'Non accettabile (>20 gg)';
-  }
 
   String get averageBand {
     final a = averageScore;
@@ -87,7 +64,6 @@ class KpiModuleFailRate {
 class KpiService {
   final _courses = CourseService();
   final _grades = GradeService();
-  final _schedule = ScheduleService();
   final _ref = ReferenceService();
 
   List<Course> coursesForUser({String? directorId, bool allIfAdmin = false}) {
@@ -97,46 +73,29 @@ class KpiService {
     return _courses.getCoursesForDirector(directorId);
   }
 
-  KpiCourseSnapshot snapshot(Course course) {
+  KpiCourseSnapshot snapshot(
+    Course course, {
+    DateTime? from,
+    DateTime? to,
+  }) {
     final typeInfo = _ref.getEffectiveCourseType(
         course.courseTypeId, course.extensionTypeId, course.mamlCombinationId);
-    final lessons = _schedule.getLessonsForCourse(course.id);
-    final regular = lessons.where((l) => l.timeSlot > 0).toList();
-    final confirmed = regular.where((l) => l.confirmed).toList();
-    confirmed.sort((a, b) => a.date.compareTo(b.date));
-    regular.sort((a, b) => a.date.compareTo(b.date));
 
-    final lastConfirmed =
-        confirmed.isEmpty ? null : confirmed.last.date;
-    final lastPlanned = regular.isEmpty ? null : regular.last.date;
+    final dayFrom = from == null
+        ? null
+        : DateTime(from.year, from.month, from.day);
+    final dayTo = to == null ? null : DateTime(to.year, to.month, to.day);
 
-    // Scostamento: differenza tra ultima lezione pianificata e ultima svolta
-    // (proxy del ritardo calendario rispetto al programma).
-    int? deviation;
-    var method =
-        'Differenza giorni tra ultima lezione pianificata e ultima svolta';
-    if (lastPlanned != null && lastConfirmed != null) {
-      deviation = lastPlanned.difference(lastConfirmed).inDays.abs();
-      if (lastConfirmed.isAfter(lastPlanned) ||
-          lastConfirmed.isAtSameMomentAs(lastPlanned)) {
-        deviation = 0;
-      } else {
-        deviation = lastPlanned.difference(lastConfirmed).inDays;
-      }
-    } else if (course.endDate != null && lastConfirmed != null) {
-      // Fallback: fine corso pianificata vs progresso attuale
-      final today = DateTime.now();
-      if (today.isAfter(course.endDate!) &&
-          confirmed.length < regular.length) {
-        deviation = today.difference(course.endDate!).inDays;
-        method =
-            'Fallback: oggi oltre fine corso pianificata con lezioni residue';
-      }
+    bool inPeriod(Grade g) {
+      final d = DateTime(g.date.year, g.date.month, g.date.day);
+      if (dayFrom != null && d.isBefore(dayFrom)) return false;
+      if (dayTo != null && d.isAfter(dayTo)) return false;
+      return true;
     }
 
-    final allGrades = _grades.getGradesForCourse(course.id);
-    // Media KPI (c): media aritmetica di tutti i voti (accertamenti + esami)
-    // come da testo KPI — non solo ultimi tentativi.
+    final allGrades =
+        _grades.getGradesForCourse(course.id).where(inPeriod).toList();
+
     double? avg;
     if (allGrades.isNotEmpty) {
       avg = allGrades.map((g) => g.score).reduce((a, b) => a + b) /
@@ -152,7 +111,7 @@ class KpiService {
               g.assessmentType == AssessmentType.esame)
           .toList();
       if (exams.isEmpty) continue;
-      // Per frequentatore: ultimo tentativo esame
+      // Per frequentatore: ultimo tentativo esame nel periodo
       final byAtt = <String, Grade>{};
       for (final g in exams) {
         byAtt[g.attendeeId] = g; // ordine JSON = cronologico
@@ -171,13 +130,8 @@ class KpiService {
     return KpiCourseSnapshot(
       course: course,
       typeInfo: typeInfo,
-      temporalDeviationDays: deviation,
-      temporalMethod: method,
-      plannedLessons: regular.length,
-      confirmedLessons: confirmed.length,
-      lastConfirmedDate: lastConfirmed,
-      lastPlannedDate: lastPlanned,
-      hasQuestionnaires: false,
+      periodFrom: from,
+      periodTo: to,
       averageScore: avg,
       gradedAttempts: allGrades.length,
       failRates: failRates,

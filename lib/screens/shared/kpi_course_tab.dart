@@ -6,8 +6,8 @@ import '../../providers/auth_provider.dart';
 import '../../services/kpi_service.dart';
 import '../../theme.dart';
 
-/// Vista dati corso per compilare KPI MTOE-A-2-1 (a–d).
-/// Usata da admin (tutti i corsi) e direttore (corsi assegnati).
+/// Vista KPI corso: media voti + % insufficienze esami modulo.
+/// Periodo filtrabile (da–a). Admin (tutti i corsi) e direttore (assegnati).
 class KpiCourseTab extends ConsumerStatefulWidget {
   final String? directorUserId;
   final bool showAllCourses;
@@ -24,17 +24,20 @@ class KpiCourseTab extends ConsumerStatefulWidget {
 
 class _KpiCourseTabState extends ConsumerState<KpiCourseTab> {
   final _kpi = KpiService();
+  final _fmt = DateFormat('dd/MM/yyyy');
   List<Course> _courses = [];
   Course? _selected;
   KpiCourseSnapshot? _snap;
+  DateTime? _from;
+  DateTime? _to;
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _load(recalc: true);
   }
 
-  void _load() {
+  void _load({bool recalc = false}) {
     setState(() {
       _courses = _kpi.coursesForUser(
         directorId: widget.showAllCourses ? null : widget.directorUserId,
@@ -46,18 +49,43 @@ class _KpiCourseTabState extends ConsumerState<KpiCourseTab> {
         _selected = _courses.where((c) => c.id == _selected!.id).firstOrNull ??
             (_courses.isNotEmpty ? _courses.first : null);
       }
-      _snap = _selected == null ? null : _kpi.snapshot(_selected!);
+      if (recalc) _recalc();
     });
+  }
+
+  void _recalc() {
+    _snap = _selected == null
+        ? null
+        : _kpi.snapshot(_selected!, from: _from, to: _to);
   }
 
   Future<void> _reload() async {
     await ref.read(authProvider).reloadDb();
-    _load();
+    _load(recalc: true);
+  }
+
+  Future<void> _pickFrom() async {
+    final d = await showDatePicker(
+      context: context,
+      initialDate: _from ?? DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2035),
+    );
+    if (d != null) setState(() => _from = d);
+  }
+
+  Future<void> _pickTo() async {
+    final d = await showDatePicker(
+      context: context,
+      initialDate: _to ?? DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2035),
+    );
+    if (d != null) setState(() => _to = d);
   }
 
   @override
   Widget build(BuildContext context) {
-    final fmt = DateFormat('dd/MM/yyyy');
     if (_courses.isEmpty) {
       return const Center(
           child: Text('Nessun corso disponibile',
@@ -80,7 +108,7 @@ class _KpiCourseTabState extends ConsumerState<KpiCourseTab> {
                 .toList(),
             onChanged: (id) => setState(() {
               _selected = _courses.firstWhere((c) => c.id == id);
-              _snap = _kpi.snapshot(_selected!);
+              _recalc();
             }),
           ),
           const Spacer(),
@@ -89,11 +117,47 @@ class _KpiCourseTabState extends ConsumerState<KpiCourseTab> {
               onPressed: _reload),
         ]),
       ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+        child: Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            const Text('Periodo:',
+                style: TextStyle(color: kTextDim, fontSize: 12)),
+            _chip(
+              label: _from == null ? 'Da data' : 'Da ${_fmt.format(_from!)}',
+              selected: _from != null,
+              onTap: _pickFrom,
+            ),
+            _chip(
+              label: _to == null ? 'A data' : 'A ${_fmt.format(_to!)}',
+              selected: _to != null,
+              onTap: _pickTo,
+            ),
+            TextButton.icon(
+              onPressed: () => setState(_recalc),
+              icon: const Icon(Icons.calculate, size: 18),
+              label: const Text('Ricalcola'),
+            ),
+            if (_from != null || _to != null)
+              TextButton(
+                onPressed: () => setState(() {
+                  _from = null;
+                  _to = null;
+                  _recalc();
+                }),
+                child: const Text('Tutto il corso'),
+              ),
+          ],
+        ),
+      ),
       const Padding(
         padding: EdgeInsets.symmetric(horizontal: 24),
         child: Text(
-          'Dati aggregati per compilare MTOE-A-2-1 (a–d). '
-          'Non genera il Word: mostra i numeri da trascrivere.',
+          'Media aritmetica voti e % insufficienze esami modulo. '
+          'Scegli un periodo e premi Ricalcola (senza date = tutto il corso).',
           style: TextStyle(color: kTextDim, fontSize: 12),
         ),
       ),
@@ -106,41 +170,15 @@ class _KpiCourseTabState extends ConsumerState<KpiCourseTab> {
             padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
             children: [
               _card(
-                'KPI (a) — Scostamento temporale',
+                'Media delle valutazioni',
                 [
-                  _kv('Lezioni pianificate', '${snap.plannedLessons}'),
-                  _kv('Lezioni svolte (confermate)', '${snap.confirmedLessons}'),
-                  _kv(
-                      'Ultima svolta',
-                      snap.lastConfirmedDate == null
-                          ? '—'
-                          : fmt.format(snap.lastConfirmedDate!)),
-                  _kv(
-                      'Ultima pianificata',
-                      snap.lastPlannedDate == null
-                          ? '—'
-                          : fmt.format(snap.lastPlannedDate!)),
-                  _kv(
-                      'Scostamento (gg)',
-                      snap.temporalDeviationDays?.toString() ?? 'n/d'),
-                  _kv('Fascia KPI', snap.temporalBand),
-                  _kv('Metodo', snap.temporalMethod),
-                ],
-              ),
-              _card(
-                'KPI (b) — Questionario qualità percepita',
-                [
-                  _kv(
-                      'Dato in app',
-                      snap.hasQuestionnaires
-                          ? 'Disponibile'
-                          : 'NON DISPONIBILE — gap: questionari non gestiti'),
-                ],
-                warn: !snap.hasQuestionnaires,
-              ),
-              _card(
-                'KPI (c) — Media delle valutazioni',
-                [
+                  if (snap.periodFrom != null || snap.periodTo != null)
+                    _kv(
+                      'Periodo',
+                      '${snap.periodFrom == null ? '…' : _fmt.format(snap.periodFrom!)}'
+                      ' → '
+                      '${snap.periodTo == null ? '…' : _fmt.format(snap.periodTo!)}',
+                    ),
                   _kv('N. voti (accertamenti + esami)',
                       '${snap.gradedAttempts}'),
                   _kv(
@@ -148,19 +186,19 @@ class _KpiCourseTabState extends ConsumerState<KpiCourseTab> {
                       snap.averageScore == null
                           ? '—'
                           : snap.averageScore!.toStringAsFixed(2)),
-                  _kv('Fascia KPI', snap.averageBand),
+                  _kv('Fascia', snap.averageBand),
                   const Text(
-                    'Nota: media su tutti i voti registrati (come da testo KPI). '
-                    'La graduatoria corso usa invece medie pesate per modulo.',
+                    'Nota: media su tutti i voti nel periodo. '
+                    'La graduatoria corso usa medie pesate per modulo.',
                     style: TextStyle(color: kTextDim, fontSize: 11),
                   ),
                 ],
               ),
               _card(
-                'KPI (d) — Tasso di incidenza insufficienze (esami modulo)',
+                'Tasso di insufficienze (esami modulo)',
                 [
                   if (snap.failRates.isEmpty)
-                    const Text('Nessun esame di modulo registrato',
+                    const Text('Nessun esame di modulo nel periodo',
                         style: TextStyle(color: kTextDim, fontSize: 12))
                   else
                     ...snap.failRates.map((r) => Padding(
@@ -169,6 +207,7 @@ class _KpiCourseTabState extends ConsumerState<KpiCourseTab> {
                             SizedBox(
                               width: 56,
                               child: Text(r.label,
+                                  overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(
                                       color: kText,
                                       fontWeight: FontWeight.bold,
@@ -193,22 +232,35 @@ class _KpiCourseTabState extends ConsumerState<KpiCourseTab> {
     ]);
   }
 
-  Widget _card(String title, List<Widget> children, {bool warn = false}) =>
-      Container(
+  Widget _chip({
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+  }) =>
+      ActionChip(
+        label: Text(label,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+                color: selected ? kText : kTextDim, fontSize: 12)),
+        backgroundColor: selected ? kCard : kSurface,
+        side: BorderSide(color: selected ? kAccent : kBorder),
+        onPressed: onTap,
+      );
+
+  Widget _card(String title, List<Widget> children) => Container(
         margin: const EdgeInsets.only(bottom: 14),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: kCard,
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-              color: warn ? kWarning.withOpacity(0.5) : kBorder),
+          border: Border.all(color: kBorder),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(title,
-                style: TextStyle(
-                    color: warn ? kWarning : kText,
+                style: const TextStyle(
+                    color: kText,
                     fontWeight: FontWeight.bold,
                     fontSize: 14)),
             const SizedBox(height: 10),
@@ -225,10 +277,12 @@ class _KpiCourseTabState extends ConsumerState<KpiCourseTab> {
             SizedBox(
               width: 200,
               child: Text(k,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(color: kTextDim, fontSize: 12)),
             ),
             Expanded(
               child: Text(v,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(color: kText, fontSize: 12)),
             ),
           ],
