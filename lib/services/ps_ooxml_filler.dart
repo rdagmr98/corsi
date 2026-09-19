@@ -43,33 +43,48 @@ class PsOoxmlFiller {
   }
 
   /// Landscape, fit 1×1 page — applied at encode so every export prints usable.
+  ///
+  /// OOXML `sheetPr` child order is strict: tabColor?, outlinePr?, pageSetUpPr?.
+  /// Inserting pageSetUpPr before tabColor makes Excel refuse to open the file.
   void ensurePrintSetup() {
-    if (!_sheet.contains('pageSetUpPr')) {
-      if (_sheet.contains('<sheetPr>')) {
-        _sheet = _sheet.replaceFirst(
-          '<sheetPr>',
-          '<sheetPr><pageSetUpPr fitToPage="1"/>',
-        );
-      } else {
-        _sheet = _sheet.replaceFirst(
-          '<dimension',
-          '<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><dimension',
-        );
-      }
+    final sheetPrMatch =
+        RegExp(r'<sheetPr>(.*?)</sheetPr>', dotAll: true).firstMatch(_sheet);
+    if (sheetPrMatch != null) {
+      final body = sheetPrMatch.group(1)!;
+      final tab = RegExp(r'<tabColor\b[^/]*/>').firstMatch(body)?.group(0);
+      final outline =
+          RegExp(r'<outlinePr\b[^/]*/>').firstMatch(body)?.group(0);
+      final rebuilt = StringBuffer('<sheetPr>');
+      if (tab != null) rebuilt.write(tab);
+      if (outline != null) rebuilt.write(outline);
+      rebuilt.write('<pageSetUpPr fitToPage="1"/>');
+      rebuilt.write('</sheetPr>');
+      _sheet = _sheet.replaceFirst(sheetPrMatch.group(0)!, rebuilt.toString());
+    } else if (RegExp(r'<sheetPr\b[^>]*/>').hasMatch(_sheet)) {
+      _sheet = _sheet.replaceFirst(
+        RegExp(r'<sheetPr\b[^>]*/>'),
+        '<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>',
+      );
     } else {
       _sheet = _sheet.replaceFirst(
-        RegExp(r'<pageSetUpPr[^/]*/>'),
-        '<pageSetUpPr fitToPage="1"/>',
+        '<dimension',
+        '<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><dimension',
       );
     }
 
-    const pageSetup =
+    // Preserve printerSettings r:id when present on the template.
+    final hasPrinterRid =
+        RegExp(r'<pageSetup\b[^>]*\br:id="').hasMatch(_sheet);
+    final pageSetup =
         '<pageSetup paperSize="9" fitToWidth="1" fitToHeight="1" '
-        'orientation="landscape" r:id="rId1"/>';
+        'orientation="landscape"'
+        '${hasPrinterRid ? ' r:id="rId1"' : ''}/>';
     if (RegExp(r'<pageSetup\b').hasMatch(_sheet)) {
       _sheet = _sheet.replaceFirst(RegExp(r'<pageSetup\b[^/]*/>'), pageSetup);
-    } else {
+    } else if (_sheet.contains('<pageMargins')) {
       _sheet = _sheet.replaceFirst('<pageMargins', '$pageSetup<pageMargins');
+    } else {
+      _sheet = _sheet.replaceFirst('</worksheet>', '$pageSetup</worksheet>');
     }
 
     const margins =

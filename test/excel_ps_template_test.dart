@@ -66,6 +66,10 @@ void main() {
     expect(out.sheet, contains('fitToWidth="1"'));
     expect(out.sheet, contains('fitToHeight="1"'));
     expect(out.sheet, contains('fitToPage="1"'));
+    // sheetPr children: tabColor before pageSetUpPr (OOXML order)
+    final sheetPr =
+        RegExp(r'<sheetPr>.*?</sheetPr>', dotAll: true).firstMatch(out.sheet)!;
+    expect(sheetPr.group(0)!.indexOf('tabColor'), lessThan(sheetPr.group(0)!.indexOf('pageSetUpPr')));
     expect(out.workbook, contains("'07.09_11.09'!\$A\$1:\$O\$70"));
   });
 }

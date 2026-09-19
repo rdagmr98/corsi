@@ -128,28 +128,43 @@ def patch_styles(styles: str) -> str:
 
 
 def patch_sheet(sheet: str) -> str:
-    if "fitToPage" not in sheet:
-        if "<sheetPr>" in sheet:
-            sheet = sheet.replace(
-                "<sheetPr>",
-                '<sheetPr><pageSetUpPr fitToPage="1"/>',
-                1,
-            )
-        else:
-            sheet = re.sub(
-                r"(<sheetPr[^>]*>)",
-                r'\1<pageSetUpPr fitToPage="1"/>',
-                sheet,
-                count=1,
-            )
+    """Fit-to-1-page print. Keep sheetPr child order: tabColor?, outlinePr?, pageSetUpPr?."""
+    # Repair wrong order from older patches (pageSetUpPr before tabColor → Excel refuses open).
+    m = re.search(r"<sheetPr>(.*?)</sheetPr>", sheet, flags=re.DOTALL)
+    if m:
+        body = m.group(1)
+        tab = re.search(r"<tabColor\b[^/]*/>", body)
+        outline = re.search(r"<outlinePr\b[^/]*/>", body)
+        parts = []
+        if tab:
+            parts.append(tab.group(0))
+        if outline:
+            parts.append(outline.group(0))
+        parts.append('<pageSetUpPr fitToPage="1"/>')
+        sheet = sheet[: m.start()] + "<sheetPr>" + "".join(parts) + "</sheetPr>" + sheet[m.end() :]
+    elif re.search(r"<sheetPr\b[^>]*/>", sheet):
+        sheet = re.sub(
+            r"<sheetPr\b[^>]*/>",
+            '<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>',
+            sheet,
+            count=1,
+        )
+    else:
+        sheet = sheet.replace(
+            "<dimension",
+            '<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><dimension',
+            1,
+        )
 
-    sheet = re.sub(
-        r"<pageSetup\b[^/]*/>",
+    # Keep existing printerSettings r:id if present; otherwise plain pageSetup.
+    has_printer_rid = bool(re.search(r'<pageSetup\b[^>]*\br:id="', sheet))
+    page_setup = (
         '<pageSetup paperSize="9" fitToWidth="1" fitToHeight="1" '
-        'orientation="landscape" r:id="rId1"/>',
-        sheet,
-        count=1,
+        'orientation="landscape"'
+        + (' r:id="rId1"' if has_printer_rid else "")
+        + "/>"
     )
+    sheet = re.sub(r"<pageSetup\b[^/]*/>", page_setup, sheet, count=1)
     sheet = re.sub(
         r"<pageMargins\b[^/]*/>",
         '<pageMargins left="0.25" right="0.25" top="0.3" bottom="0.3" '
