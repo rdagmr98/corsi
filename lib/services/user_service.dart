@@ -45,6 +45,7 @@ class UserService {
     List<String>? qualifications,
     String? titolo,
     String? licenza,
+    String? forza,
   }) async {
     final users = _db.users.toList();
     final now = DateTime.now().toIso8601String();
@@ -61,6 +62,7 @@ class UserService {
       if (qualifications != null) 'qualifications': qualifications,
       if (titolo != null && titolo.isNotEmpty) 'titolo': titolo,
       if (licenza != null && licenza.isNotEmpty) 'licenza': licenza,
+      if (forza != null && forza.isNotEmpty) 'forza': forza,
       'created_at': now,
       'updated_at': now,
     };

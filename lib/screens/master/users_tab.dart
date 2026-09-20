@@ -51,7 +51,9 @@ class _UsersTabState extends ConsumerState<UsersTab> {
     final emailCtrl = TextEditingController(text: user?.email ?? '');
     final usernameCtrl = TextEditingController(text: user?.username ?? '');
     final passwordCtrl = TextEditingController();
+    final titoloCtrl = TextEditingController(text: user?.titolo ?? '');
     UserRole selectedRole = user?.userRole ?? UserRole.attendee;
+    String selectedForza = (user?.forza ?? 'EI').toUpperCase() == 'CC' ? 'CC' : 'EI';
 
     // Qualifiche AMC (solo istruttori): regole ANNESSO MTOE-P-3-1.
     final allQuals = _refService.amcQualifications();
@@ -99,6 +101,26 @@ class _UsersTabState extends ConsumerState<UsersTab> {
                         .toList(),
                     onChanged: (v) => setDlg(() => selectedRole = v ?? selectedRole),
                   ),
+                  if (selectedRole == UserRole.attendee) ...[
+                    const SizedBox(height: 12),
+                    _field('Grado', titoloCtrl, hint: 'es. GRD, CAR. SC'),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      value: selectedForza,
+                      dropdownColor: kSurface,
+                      style: const TextStyle(color: kText),
+                      decoration: const InputDecoration(
+                        labelText: 'Forza (PS colonne)',
+                        isDense: true,
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 'EI', child: Text('EI — Esercito (sinistra)')),
+                        DropdownMenuItem(value: 'CC', child: Text('CC — Carabinieri (destra)')),
+                      ],
+                      onChanged: (v) =>
+                          setDlg(() => selectedForza = v ?? selectedForza),
+                    ),
+                  ],
                   if (selectedRole == UserRole.instructor && allQuals.isNotEmpty) ...[
                     const SizedBox(height: 16),
                     const Divider(color: kBorder, height: 1),
@@ -186,6 +208,8 @@ class _UsersTabState extends ConsumerState<UsersTab> {
                 final password = passwordCtrl.text.trim();
                 if (nome.isEmpty || cognome.isEmpty || username.isEmpty) return;
                 final isInstructor = selectedRole == UserRole.instructor;
+                final isAttendee = selectedRole == UserRole.attendee;
+                final grado = titoloCtrl.text.trim();
                 try {
                   if (user == null) {
                     if (password.isEmpty) return;
@@ -197,6 +221,8 @@ class _UsersTabState extends ConsumerState<UsersTab> {
                       password: password,
                       role: selectedRole,
                       qualifications: isInstructor ? selQuals.toList() : null,
+                      titolo: isAttendee && grado.isNotEmpty ? grado : null,
+                      forza: isAttendee ? selectedForza : null,
                     );
                     if (isInstructor) {
                       await AmcService().applyQualifications(created.id, selQuals);
@@ -209,6 +235,10 @@ class _UsersTabState extends ConsumerState<UsersTab> {
                       username: username,
                       role: selectedRole.value,
                       qualifications: isInstructor ? selQuals.toList() : user.qualifications,
+                      titolo: isAttendee
+                          ? (grado.isEmpty ? null : grado)
+                          : user.titolo,
+                      forza: isAttendee ? selectedForza : user.forza,
                     ));
                     if (password.isNotEmpty) {
                       await _userService.updatePassword(user.id, password);

@@ -43,9 +43,11 @@ class AppUser {
   final DateTime? ojtAt;
   // Qualifiche AMC (id da reference.amcRules.qualifications); null = mai compilate.
   final List<String>? qualifications;
-  // Titolo abilitazione e numero licenza Part-66 (solo istruttori).
+  // Grado / titolo (frequentatori: es. GRD, CAR. SC; istruttori: abilitazione).
   final String? titolo;
   final String? licenza;
+  /// Forza armata per PS PERSONALE: `EI` (sinistra) o `CC` (destra). Null = EI.
+  final String? forza;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -65,6 +67,7 @@ class AppUser {
     this.qualifications,
     this.titolo,
     this.licenza,
+    this.forza,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -104,6 +107,7 @@ class AppUser {
         : null,
     titolo: j['titolo'] as String?,
     licenza: j['licenza'] as String?,
+    forza: j['forza'] as String?,
     createdAt: DateTime.parse(
       j['created_at'] as String? ?? DateTime.now().toIso8601String(),
     ),
@@ -129,6 +133,7 @@ class AppUser {
     if (qualifications != null) 'qualifications': qualifications,
     if (titolo != null) 'titolo': titolo,
     if (licenza != null) 'licenza': licenza,
+    if (forza != null) 'forza': forza,
     'created_at': createdAt.toIso8601String(),
     'updated_at': updatedAt.toIso8601String(),
   };
@@ -150,6 +155,7 @@ class AppUser {
     Object? qualifications = _s,
     Object? titolo = _s,
     Object? licenza = _s,
+    Object? forza = _s,
   }) => AppUser(
     id: id,
     nome: nome ?? this.nome,
@@ -170,7 +176,15 @@ class AppUser {
         : qualifications as List<String>?,
     titolo: identical(titolo, _s) ? this.titolo : titolo as String?,
     licenza: identical(licenza, _s) ? this.licenza : licenza as String?,
+    forza: identical(forza, _s) ? this.forza : forza as String?,
     createdAt: createdAt,
     updatedAt: DateTime.now(),
   );
+
+  bool get isCarabinieri =>
+      (forza ?? '').toUpperCase() == 'CC' ||
+      RegExp(
+        r'(?:^|\b)(?:CAR\.?|CC|CARABINIER)',
+        caseSensitive: false,
+      ).hasMatch(titolo ?? '');
 }

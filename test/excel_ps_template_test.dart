@@ -160,6 +160,17 @@ void main() {
     expect(blank.sheet, contains('r="B48"'));
     expect(blank.sheet, contains('r="C49"'));
     expect(blank.sheet, contains('r="J49"'));
+    // Accountable Manager footer (66_PS I62/I63 labels; I64 name empty)
+    expect(
+      RegExp(r'<c r="I62"[^>]*t="s"[^>]*>\s*<v>672</v>').hasMatch(blank.sheet),
+      isTrue,
+      reason: 'I62 must keep IL COMANDANTE (ss 672)',
+    );
+    expect(
+      RegExp(r'<c r="I63"[^>]*t="s"[^>]*>\s*<v>673</v>').hasMatch(blank.sheet),
+      isTrue,
+      reason: 'I63 must keep (Accountable Manager) (ss 673)',
+    );
   });
 
   test('attendee PS label and Carabinieri split match 66_PS columns', () {
@@ -171,16 +182,34 @@ void main() {
           cognome: 'Codina',
           role: 'attendee',
           titolo: 'GRD',
+          forza: 'EI',
           createdAt: DateTime(2026),
           updatedAt: DateTime(2026),
         ),
       ),
       'GRD LORENZO CODINA',
     );
+    // forza=CC → destra (anche senza titolo CAR.)
     expect(
       ExcelExportService.isCarabinieriAttendee(
         AppUser(
           id: '2',
+          nome: 'Christian',
+          cognome: 'LA RASPATA',
+          role: 'attendee',
+          forza: 'CC',
+          titolo: 'CAR. SC',
+          createdAt: DateTime(2026),
+          updatedAt: DateTime(2026),
+        ),
+      ),
+      isTrue,
+    );
+    // titolo CAR. alone still counts
+    expect(
+      ExcelExportService.isCarabinieriAttendee(
+        AppUser(
+          id: '2b',
           nome: 'Christian',
           cognome: 'Laraspata',
           role: 'attendee',

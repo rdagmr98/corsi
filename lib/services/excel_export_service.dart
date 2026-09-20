@@ -35,12 +35,6 @@ class ExcelExportService {
   /// Template data slots: rows 50–58 (9), chrome ends at 58.
   static const attendeeMaxRows = 9;
 
-  /// Carabinieri column if grado/titolo looks like CC (else Esercito).
-  static final _carabinieriTitolo = RegExp(
-    r'(?:^|\b)(?:CAR\.?|CC|CARABINIER)',
-    caseSensitive: false,
-  );
-
   /// Template label: "GRADO, NOME e COGNOME".
   static String attendeePsLabel(AppUser u) {
     final grado = (u.titolo ?? '').trim();
@@ -49,8 +43,8 @@ class ExcelExportService {
     return [grado, nome, cognome].where((s) => s.isNotEmpty).join(' ');
   }
 
-  static bool isCarabinieriAttendee(AppUser u) =>
-      _carabinieriTitolo.hasMatch(u.titolo ?? '');
+  /// Destra (CARABINIERI) se `forza=CC` o grado titolo tipo CAR./CC.
+  static bool isCarabinieriAttendee(AppUser u) => u.isCarabinieri;
 
   /// Blocchi giorno nel template (righe Excel 1-based).
   static const _dayBlocks = <(int, int)>[

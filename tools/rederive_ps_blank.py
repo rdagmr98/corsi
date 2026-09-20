@@ -174,12 +174,16 @@ def clear_week_data(sheet: str) -> str:
                 f'<c r="{addr}" s="{sid}" t="inlineStr">'
                 f"<is><t>Direttore del corso: </t></is></c>"
             )
-        # Attendee list area (headers B48/B49/C49/I49/J49 stay — PERSONALE + GRADO…)
-        if row >= 50 and col in ("B", "C", "I", "J"):
+        # Attendee data only (rows 50–58). Do NOT clear I62–I64 AM footer.
+        if 50 <= row <= 58 and col in ("B", "C", "I", "J"):
             s_attr = f' s="{s_id}"' if s_id else ""
             return f'<c r="{addr}"{s_attr}/>'
-        # N8 LOCALITA'/AULA: keep official shared-string cell (t="s" v=678).
-        # Do NOT rewrite to short "LOCALITA'" — padding places both labels in N8:O9.
+        # AM signature name (I64:N64) — blank if unknown; keep I62/I63 labels.
+        if row == 64 and col in ("I", "J", "K", "L", "M", "N"):
+            s_attr = f' s="{s_id}"' if s_id else ""
+            return f'<c r="{addr}"{s_attr}/>'
+        # N8:O9 LOCALITA'/AULA: keep official shared-string 678 (one merge col).
+        # Data cells N stay empty when aula unknown — no dual-column invent.
         return full
 
     sheet = re.sub(
