@@ -62,21 +62,195 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
       _selected = _courses.where((c) => c.id == _selected!.id).firstOrNull ?? _selected;
     }
     _refreshWeek();
-    _ensureAulaDefaults();
+    _ensureCoursePsDefaults();
   }
 
-  /// Persiste default aula corso + backfill lezioni senza aula (3° BTC → 3).
-  Future<void> _ensureAulaDefaults() async {
+  /// Persiste header PS 3° BTC (da 66_PS) + default aula + backfill lezioni.
+  Future<void> _ensureCoursePsDefaults() async {
     final c = _selected;
     if (c == null) return;
-    final def = c.resolvedDefaultAula;
+    final updated = await _courseService.ensurePsHeaderDefaults(c);
+    if (!mounted) return;
+    setState(() => _selected = updated);
+    final def = updated.resolvedDefaultAula;
     if (def == null) return;
-    if (c.defaultAula == null) {
-      await _courseService.updateCourse(c.copyWith(defaultAula: def));
-      _selected = _courseService.findById(c.id) ?? c.copyWith(defaultAula: def);
+    if (updated.defaultAula == null) {
+      await _courseService.updateCourse(updated.copyWith(defaultAula: def));
+      if (!mounted) return;
+      setState(() {
+        _selected = _courseService.findById(c.id) ??
+            updated.copyWith(defaultAula: def);
+      });
     }
     final n = await _scheduleService.ensureLessonAulas(c.id, def);
     if (n > 0 && mounted) _refreshWeek();
+  }
+
+  Future<void> _showPsHeaderSettings() async {
+    if (_selected == null) return;
+    DateTime? start = _selected!.startDate;
+    DateTime? end = _selected!.endDate;
+    final durationCtrl = TextEditingController(
+      text: _selected!.durationWeeks?.toString() ?? '',
+    );
+    final delayCtrl = TextEditingController(
+      text: _selected!.delayWeeks?.toString() ?? '',
+    );
+    int aula = _selected!.resolvedDefaultAula ?? 3;
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlg) => AlertDialog(
+          backgroundColor: kCard,
+          title: const Text('Dati corso (Excel PS)',
+              style: TextStyle(color: kText)),
+          content: SizedBox(
+            width: 420,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _psDateRow(
+                  'DATA INIZIO CORSO',
+                  start,
+                  () async {
+                    final d = await showDatePicker(
+                      context: ctx,
+                      initialDate: start ?? DateTime.now(),
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime(2035),
+                    );
+                    if (d != null) setDlg(() => start = d);
+                  },
+                  () => setDlg(() => start = null),
+                ),
+                const SizedBox(height: 12),
+                _psDateRow(
+                  'DATA FINE CORSO (PIANIFICATA)',
+                  end,
+                  () async {
+                    final d = await showDatePicker(
+                      context: ctx,
+                      initialDate: end ?? start ?? DateTime.now(),
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime(2035),
+                    );
+                    if (d != null) setDlg(() => end = d);
+                  },
+                  () => setDlg(() => end = null),
+                ),
+                const SizedBox(height: 12),
+                const Text('DURATA (n. settimane)',
+                    style: TextStyle(color: kTextDim, fontSize: 12)),
+                TextField(
+                  controller: durationCtrl,
+                  keyboardType: TextInputType.number,
+                  style: const TextStyle(color: kText),
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    hintText: 'es. 86',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text('EVENTUALE RITARDO (N. SETT.)',
+                    style: TextStyle(color: kTextDim, fontSize: 12)),
+                TextField(
+                  controller: delayCtrl,
+                  keyboardType: TextInputType.number,
+                  style: const TextStyle(color: kText),
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    hintText: 'vuoto se nessuno',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text('Aula / classe default (1–7)',
+                    style: TextStyle(color: kTextDim, fontSize: 12)),
+                DropdownButtonFormField<int>(
+                  value: aula,
+                  dropdownColor: kSurface,
+                  style: const TextStyle(color: kText),
+                  decoration: const InputDecoration(isDense: true),
+                  items: [
+                    for (var i = 1; i <= 7; i++)
+                      DropdownMenuItem(
+                        value: i,
+                        child: Text('Aula $i',
+                            overflow: TextOverflow.ellipsis),
+                      ),
+                  ],
+                  onChanged: (v) => setDlg(() => aula = v ?? aula),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annulla', style: TextStyle(color: kTextDim)),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final dur = int.tryParse(durationCtrl.text.trim());
+                final del = int.tryParse(delayCtrl.text.trim());
+                Navigator.pop(ctx);
+                final updated = _selected!.copyWith(
+                  startDate: start,
+                  endDate: end,
+                  durationWeeks: dur,
+                  delayWeeks: delayCtrl.text.trim().isEmpty ? null : del,
+                  defaultAula: aula,
+                );
+                await _courseService.updateCourse(updated);
+                if (!mounted) return;
+                setState(() {
+                  _selected = _courseService.findById(updated.id) ?? updated;
+                });
+              },
+              child: const Text('Salva'),
+            ),
+          ],
+        ),
+      ),
+    );
+    durationCtrl.dispose();
+    delayCtrl.dispose();
+  }
+
+  Widget _psDateRow(
+    String label,
+    DateTime? value,
+    VoidCallback onPick,
+    VoidCallback onClear,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(color: kTextDim, fontSize: 12)),
+        const SizedBox(height: 4),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                value != null
+                    ? DateFormat('dd/MM/yyyy').format(value)
+                    : 'Non impostata',
+                style: const TextStyle(color: kText, fontSize: 13),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            TextButton(onPressed: onPick, child: const Text('Scegli')),
+            if (value != null)
+              TextButton(
+                onPressed: onClear,
+                child: const Text('Pulisci',
+                    style: TextStyle(color: kTextDim)),
+              ),
+          ],
+        ),
+      ],
+    );
   }
 
   void _refreshWeek() {
@@ -1648,6 +1822,12 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
               IconButton(icon: const Icon(Icons.chevron_right), onPressed: _nextWeek, color: kText),
               const SizedBox(width: 8),
               if (_selected != null) ...[
+                OutlinedButton.icon(
+                  onPressed: _showPsHeaderSettings,
+                  icon: const Icon(Icons.edit_calendar, size: 16),
+                  label: const Text('Dati corso PS', style: TextStyle(fontSize: 12)),
+                ),
+                const SizedBox(width: 8),
                 OutlinedButton.icon(
                   onPressed: _showExcludedDates,
                   icon: Icon(Icons.event_busy, size: 16,

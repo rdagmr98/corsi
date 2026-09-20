@@ -32,8 +32,30 @@ class _DirectorOverviewTabState extends ConsumerState<DirectorOverviewTab> {
   void _load() {
     setState(() {
       _courses = _courseService.getCoursesForDirector(widget.userId);
-      if (_selected == null && _courses.isNotEmpty) _selected = _courses.first;
+      if (_selected == null && _courses.isNotEmpty) {
+        _selected = _courses.first;
+      } else if (_selected != null) {
+        _selected = _courses.where((c) => c.id == _selected!.id).firstOrNull ??
+            _selected;
+      }
     });
+    _ensurePsDefaults();
+  }
+
+  Future<void> _ensurePsDefaults() async {
+    final c = _selected;
+    if (c == null) return;
+    final updated = await _courseService.ensurePsHeaderDefaults(c);
+    if (!mounted) return;
+    if (updated.startDate != c.startDate ||
+        updated.endDate != c.endDate ||
+        updated.durationWeeks != c.durationWeeks ||
+        updated.defaultAula != c.defaultAula) {
+      setState(() {
+        _selected = updated;
+        _courses = _courseService.getCoursesForDirector(widget.userId);
+      });
+    }
   }
 
   Future<void> _reload() async {
@@ -61,9 +83,12 @@ class _DirectorOverviewTabState extends ConsumerState<DirectorOverviewTab> {
                   items: _courses
                       .map((c) => DropdownMenuItem(value: c.id, child: Text(c.title)))
                       .toList(),
-                  onChanged: (id) => setState(() {
-                    _selected = _courses.firstWhere((c) => c.id == id);
-                  }),
+                  onChanged: (id) {
+                    setState(() {
+                      _selected = _courses.firstWhere((c) => c.id == id);
+                    });
+                    _ensurePsDefaults();
+                  },
                 ),
               const SizedBox(width: 8),
               IconButton(icon: const Icon(Icons.refresh, color: kTextDim), onPressed: _reload),
@@ -168,6 +193,8 @@ class _DirectorOverviewTabState extends ConsumerState<DirectorOverviewTab> {
               ),
             ),
           ),
+          const SizedBox(height: 12),
+          _psHeaderCard(course),
           const SizedBox(height: 12),
           // Progress bar
           LinearProgressIndicator(
@@ -375,6 +402,224 @@ class _DirectorOverviewTabState extends ConsumerState<DirectorOverviewTab> {
         ],
       ),
     );
+  }
+
+  Widget _psHeaderCard(Course course) {
+    String fmtDate(DateTime? d) =>
+        d != null ? DateFormat('dd/MM/yyyy').format(d) : '—';
+    return Card(
+      color: kCard,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Expanded(
+                  child: Text('Dati corso (Excel PS)',
+                      style: TextStyle(
+                          color: kText,
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold),
+                      overflow: TextOverflow.ellipsis),
+                ),
+                TextButton.icon(
+                  onPressed: () => _editPsHeader(course),
+                  icon: const Icon(Icons.edit, size: 14),
+                  label: const Text('Modifica', style: TextStyle(fontSize: 12)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            _psLine('DATA INIZIO CORSO', fmtDate(course.startDate)),
+            _psLine('DATA FINE CORSO (PIANIFICATA)', fmtDate(course.endDate)),
+            _psLine(
+              'DURATA',
+              course.durationWeeks != null
+                  ? Course.formatDurationWeeks(course.durationWeeks!)
+                  : '—',
+            ),
+            _psLine(
+              'EVENTUALE RITARDO (N. SETT.)',
+              course.delayWeeks?.toString() ?? '—',
+            ),
+            _psLine(
+              'Aula / classe default',
+              course.resolvedDefaultAula != null
+                  ? 'Aula ${course.resolvedDefaultAula}'
+                  : '—',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _psLine(String label, String value) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 260,
+              child: Text(label,
+                  style: const TextStyle(color: kTextDim, fontSize: 12),
+                  overflow: TextOverflow.ellipsis),
+            ),
+            Expanded(
+              child: Text(value,
+                  style: const TextStyle(color: kText, fontSize: 13),
+                  overflow: TextOverflow.ellipsis),
+            ),
+          ],
+        ),
+      );
+
+  Future<void> _editPsHeader(Course course) async {
+    DateTime? start = course.startDate;
+    DateTime? end = course.endDate;
+    final durationCtrl =
+        TextEditingController(text: course.durationWeeks?.toString() ?? '');
+    final delayCtrl =
+        TextEditingController(text: course.delayWeeks?.toString() ?? '');
+    int aula = course.resolvedDefaultAula ?? 3;
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlg) => AlertDialog(
+          backgroundColor: kCard,
+          title: const Text('Dati corso (Excel PS)',
+              style: TextStyle(color: kText)),
+          content: SizedBox(
+            width: 420,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('DATA INIZIO CORSO',
+                    style: TextStyle(color: kTextDim, fontSize: 12)),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        start != null
+                            ? DateFormat('dd/MM/yyyy').format(start!)
+                            : 'Non impostata',
+                        style: const TextStyle(color: kText),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () async {
+                        final d = await showDatePicker(
+                          context: ctx,
+                          initialDate: start ?? DateTime.now(),
+                          firstDate: DateTime(2020),
+                          lastDate: DateTime(2035),
+                        );
+                        if (d != null) setDlg(() => start = d);
+                      },
+                      child: const Text('Scegli'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                const Text('DATA FINE CORSO (PIANIFICATA)',
+                    style: TextStyle(color: kTextDim, fontSize: 12)),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        end != null
+                            ? DateFormat('dd/MM/yyyy').format(end!)
+                            : 'Non impostata',
+                        style: const TextStyle(color: kText),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () async {
+                        final d = await showDatePicker(
+                          context: ctx,
+                          initialDate: end ?? start ?? DateTime.now(),
+                          firstDate: DateTime(2020),
+                          lastDate: DateTime(2035),
+                        );
+                        if (d != null) setDlg(() => end = d);
+                      },
+                      child: const Text('Scegli'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                const Text('DURATA (n. settimane)',
+                    style: TextStyle(color: kTextDim, fontSize: 12)),
+                TextField(
+                  controller: durationCtrl,
+                  keyboardType: TextInputType.number,
+                  style: const TextStyle(color: kText),
+                  decoration: const InputDecoration(isDense: true),
+                ),
+                const SizedBox(height: 8),
+                const Text('EVENTUALE RITARDO (N. SETT.)',
+                    style: TextStyle(color: kTextDim, fontSize: 12)),
+                TextField(
+                  controller: delayCtrl,
+                  keyboardType: TextInputType.number,
+                  style: const TextStyle(color: kText),
+                  decoration: const InputDecoration(
+                      isDense: true, hintText: 'vuoto se nessuno'),
+                ),
+                const SizedBox(height: 8),
+                const Text('Aula / classe default (1–7)',
+                    style: TextStyle(color: kTextDim, fontSize: 12)),
+                DropdownButtonFormField<int>(
+                  value: aula,
+                  dropdownColor: kSurface,
+                  style: const TextStyle(color: kText),
+                  decoration: const InputDecoration(isDense: true),
+                  items: [
+                    for (var i = 1; i <= 7; i++)
+                      DropdownMenuItem(
+                        value: i,
+                        child: Text('Aula $i',
+                            overflow: TextOverflow.ellipsis),
+                      ),
+                  ],
+                  onChanged: (v) => setDlg(() => aula = v ?? aula),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annulla', style: TextStyle(color: kTextDim)),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final dur = int.tryParse(durationCtrl.text.trim());
+                final delRaw = delayCtrl.text.trim();
+                Navigator.pop(ctx);
+                await _courseService.updateCourse(course.copyWith(
+                  startDate: start,
+                  endDate: end,
+                  durationWeeks: dur,
+                  delayWeeks: delRaw.isEmpty ? null : int.tryParse(delRaw),
+                  defaultAula: aula,
+                ));
+                if (mounted) _load();
+              },
+              child: const Text('Salva'),
+            ),
+          ],
+        ),
+      ),
+    );
+    durationCtrl.dispose();
+    delayCtrl.dispose();
   }
 
   Widget _hoursRow(String label, int done, int plan, Color color) => Padding(

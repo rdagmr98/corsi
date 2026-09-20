@@ -183,7 +183,7 @@ def clear_week_data(sheet: str) -> str:
                 f'<c r="{addr}" s="{sid}" t="inlineStr">'
                 f"<is><t>{{{{COURSE_TITLE}}}}</t></is></c>"
             )
-        if addr in ("D6", "J6", "D7"):
+        if addr in ("D6", "J6", "D7", "J7"):
             s_attr = f' s="{s_id}"' if s_id else ""
             return f'<c r="{addr}"{s_attr}/>'
         if addr == "B46":

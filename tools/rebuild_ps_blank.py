@@ -91,7 +91,7 @@ def rewrite_sheet(sheet: str) -> str:
 
         if addr == "B5":
             return '<c r="B5" s="1264" t="inlineStr"><is><t>{{COURSE_TITLE}}</t></is></c>'
-        if addr in ("D6", "J6", "D7"):
+        if addr in ("D6", "J6", "D7", "J7"):
             sm = re.search(r'\bs="(\d+)"', full)
             s_attr = f' s="{sm.group(1)}"' if sm else ""
             return f'<c r="{addr}"{s_attr}/>'

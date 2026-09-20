@@ -5,12 +5,41 @@ import 'dart:typed_data';
 import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:corsi/models/course_models.dart';
+import 'package:corsi/models/user_models.dart';
 import 'package:corsi/services/excel_export_service.dart';
 import 'package:corsi/services/ps_module_style_map.dart';
 import 'package:corsi/services/ps_ooxml_filler.dart';
-import 'package:corsi/models/user_models.dart';
 
 void main() {
+  test('Course.formatDurationWeeks matches 66_PS spacing', () {
+    expect(Course.formatDurationWeeks(86), '86  SETTIMANE');
+  });
+
+  test('Course PS header fields round-trip JSON', () {
+    final c = Course(
+      id: 'x',
+      courseTypeId: 'b1',
+      title: '3° Corso BTC Cat.B1 2025',
+      startDate: Course.btc3Start,
+      endDate: Course.btc3PlannedEnd,
+      status: 'active',
+      durationWeeks: Course.btc3DurationWeeks,
+      defaultAula: 3,
+      createdBy: 't',
+      createdAt: DateTime(2025, 1, 1),
+      updatedAt: DateTime(2025, 1, 1),
+    );
+    final again = Course.fromJson(c.toJson());
+    expect(again.startDate, DateTime(2025, 3, 10));
+    expect(again.endDate, DateTime(2027, 2, 28));
+    expect(again.durationWeeks, 86);
+    expect(again.delayWeeks, isNull);
+    expect(again.toJson()['duration_weeks'], 86);
+    // Null must be serialized so updateCourse merge can clear delay_weeks.
+    expect(again.toJson()['delay_weeks'], isNull);
+  });
+
   test('OOXML fill preserves merges and header cells', () {
     final blankBytes =
         File('assets/templates/ps_weekly_blank.xlsx').readAsBytesSync();
@@ -20,6 +49,10 @@ void main() {
     filler.load();
     filler.renameSheet('07.09_11.09');
     filler.setText('B5', '3° Corso BTC Cat.B1 2025');
+    // Celle ufficiali header corso (stesso layout blank / 66_PS EI).
+    filler.setDate('D6', DateTime(2025, 3, 10));
+    filler.setDate('J6', DateTime(2027, 2, 28));
+    filler.setText('D7', Course.formatDurationWeeks(86));
     filler.setDate('B10', DateTime(2026, 9, 7));
     // First teaching hour is row 11 — row 10 stays Disposizione.
     filler.paintLessonRow(
@@ -79,6 +112,9 @@ void main() {
     expect(blank.mergeCount, 158);
     expect(out.mergeCount, 158);
     expect(out.sheetName, '07.09_11.09');
+    expect(out.sheet, contains('86  SETTIMANE'));
+    expect(RegExp(r'<c r="D6"[^>]*>\s*<v>').hasMatch(out.sheet), isTrue);
+    expect(RegExp(r'<c r="J6"[^>]*>\s*<v>').hasMatch(out.sheet), isTrue);
     expect(out.sheet, contains('Modulo 15 GAS TURBINE ENGINE'));
     expect(out.sheet, contains('3° Corso BTC Cat.B1 2025'));
     expect(out.sheet, contains(fitted));

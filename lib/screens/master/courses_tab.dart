@@ -70,6 +70,12 @@ class _CoursesTabState extends ConsumerState<CoursesTab> {
     String? selectedMamlCombo = course?.mamlCombinationId;
     final titleCtrl     = TextEditingController(text: course?.title ?? '');
     DateTime? startDate = course?.startDate;
+    DateTime? endDate = course?.endDate;
+    final durationCtrl =
+        TextEditingController(text: course?.durationWeeks?.toString() ?? '');
+    final delayCtrl =
+        TextEditingController(text: course?.delayWeeks?.toString() ?? '');
+    int? defaultAula = course?.resolvedDefaultAula;
     Set<String> selectedDirectors  = Set.from(course?.directorIds ?? []);
     Set<String> selectedAttendees  = Set.from(course?.attendeeIds ?? []);
 
@@ -143,16 +149,18 @@ class _CoursesTabState extends ConsumerState<CoursesTab> {
                     decoration: const InputDecoration(isDense: true, hintText: 'es. 4° BTC'),
                   ),
                   const SizedBox(height: 12),
-                  _label('Data inizio'),
+                  _label('DATA INIZIO CORSO'),
                   Row(
                     children: [
-                      Text(
-                        startDate != null
-                            ? DateFormat('dd/MM/yyyy').format(startDate!)
-                            : 'Non impostata',
-                        style: const TextStyle(color: kText),
+                      Expanded(
+                        child: Text(
+                          startDate != null
+                              ? DateFormat('dd/MM/yyyy').format(startDate!)
+                              : 'Non impostata',
+                          style: const TextStyle(color: kText),
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
-                      const SizedBox(width: 12),
                       TextButton(
                         onPressed: () async {
                           final d = await showDatePicker(
@@ -166,6 +174,72 @@ class _CoursesTabState extends ConsumerState<CoursesTab> {
                         child: const Text('Scegli'),
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 12),
+                  _label('DATA FINE CORSO (PIANIFICATA)'),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          endDate != null
+                              ? DateFormat('dd/MM/yyyy').format(endDate!)
+                              : 'Non impostata',
+                          style: const TextStyle(color: kText),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () async {
+                          final d = await showDatePicker(
+                            context: ctx,
+                            initialDate: endDate ?? startDate ?? DateTime.now(),
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime(2035),
+                          );
+                          if (d != null) setDlg(() => endDate = d);
+                        },
+                        child: const Text('Scegli'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  _label('DURATA (n. settimane)'),
+                  TextField(
+                    controller: durationCtrl,
+                    keyboardType: TextInputType.number,
+                    style: const TextStyle(color: kText),
+                    decoration: const InputDecoration(
+                        isDense: true, hintText: 'es. 86'),
+                  ),
+                  const SizedBox(height: 12),
+                  _label('EVENTUALE RITARDO (N. SETT.)'),
+                  TextField(
+                    controller: delayCtrl,
+                    keyboardType: TextInputType.number,
+                    style: const TextStyle(color: kText),
+                    decoration: const InputDecoration(
+                        isDense: true, hintText: 'vuoto se nessuno'),
+                  ),
+                  const SizedBox(height: 12),
+                  _label('Aula / classe default (1–7)'),
+                  DropdownButtonFormField<int?>(
+                    value: defaultAula,
+                    dropdownColor: kSurface,
+                    style: const TextStyle(color: kText),
+                    decoration: const InputDecoration(isDense: true),
+                    items: [
+                      const DropdownMenuItem<int?>(
+                        value: null,
+                        child: Text('—', style: TextStyle(color: kTextDim)),
+                      ),
+                      for (var i = 1; i <= 7; i++)
+                        DropdownMenuItem(
+                          value: i,
+                          child: Text('Aula $i',
+                              overflow: TextOverflow.ellipsis),
+                        ),
+                    ],
+                    onChanged: (v) => setDlg(() => defaultAula = v),
                   ),
                   const Divider(color: kBorder, height: 28),
                   // ── DIRETTORE ───────────────────────────────────────────
@@ -195,11 +269,13 @@ class _CoursesTabState extends ConsumerState<CoursesTab> {
                 final title = titleCtrl.text.trim();
                 if (title.isEmpty || selectedType == null) return;
                 final masterId = ref.read(authProvider).currentUser?.id ?? '';
+                final dur = int.tryParse(durationCtrl.text.trim());
+                final delRaw = delayCtrl.text.trim();
 
                 Navigator.pop(ctx);
                 try {
                   if (isNew) {
-                    await _courseService.createCourse(
+                    final created = await _courseService.createCourse(
                       courseTypeId: selectedType!,
                       title: title,
                       createdBy: masterId,
@@ -209,12 +285,24 @@ class _CoursesTabState extends ConsumerState<CoursesTab> {
                       instructorIds: instructors.map((u) => u.id).toList(),
                       attendeeIds: selectedAttendees.toList(),
                     );
+                    await _courseService.updateCourse(created.copyWith(
+                      endDate: endDate,
+                      durationWeeks: dur,
+                      delayWeeks:
+                          delRaw.isEmpty ? null : int.tryParse(delRaw),
+                      defaultAula: defaultAula,
+                    ));
                   } else {
                     await _courseService.updateCourse(course!.copyWith(
                       courseTypeId: selectedType,
                       mamlCombinationId: selectedMamlCombo,
                       title: title,
                       startDate: startDate,
+                      endDate: endDate,
+                      durationWeeks: dur,
+                      delayWeeks:
+                          delRaw.isEmpty ? null : int.tryParse(delRaw),
+                      defaultAula: defaultAula,
                       directorIds: selectedDirectors.toList(),
                       instructorIds: instructors.map((u) => u.id).toList(),
                       attendeeIds: selectedAttendees.toList(),

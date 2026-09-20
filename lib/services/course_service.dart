@@ -98,9 +98,31 @@ class CourseService {
   Future<void> completeCourse(String courseId) async {
     final course = findById(courseId);
     if (course == null) return;
-    await updateCourse(course.copyWith(
-      status: 'completed',
-      endDate: DateTime.now(),
-    ));
+    // endDate = DATA FINE CORSO (PIANIFICATA) sul PS — non sovrascrivere.
+    await updateCourse(course.copyWith(status: 'completed'));
+  }
+
+  /// Riempie header PS 3° BTC da `66_PS` ufficiale se fine/durata mancano.
+  /// Se manca il seed (fine o durata), allinea anche inizio ai valori foglio EI.
+  Future<Course> ensurePsHeaderDefaults(Course course) async {
+    if (!course.is3Btc) return course;
+    var next = course;
+    var changed = false;
+    final needsSeed = next.endDate == null || next.durationWeeks == null;
+    if (needsSeed) {
+      next = next.copyWith(
+        startDate: Course.btc3Start,
+        endDate: Course.btc3PlannedEnd,
+        durationWeeks: Course.btc3DurationWeeks,
+      );
+      changed = true;
+    }
+    if (next.defaultAula == null && next.resolvedDefaultAula != null) {
+      next = next.copyWith(defaultAula: next.resolvedDefaultAula);
+      changed = true;
+    }
+    if (!changed) return course;
+    await updateCourse(next);
+    return findById(course.id) ?? next;
   }
 }

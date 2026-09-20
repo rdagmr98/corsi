@@ -212,17 +212,19 @@ class ExcelExportService {
       subOrdById[l.id] = cntSub[sk]!;
     }
 
+    // Header corso = celle ufficiali 66_PS (B6/D6, F6/J6, B7/D7, F7/J7).
     filler.setText('B5', course.title);
     if (course.startDate != null) {
-      filler.setDate('D6', course.startDate!);
+      filler.setDate('D6', course.startDate!); // DATA INIZIO CORSO
     }
     if (course.endDate != null) {
-      filler.setDate('J6', course.endDate!);
+      filler.setDate('J6', course.endDate!); // DATA FINE CORSO (PIANIFICATA)
     }
-    if (course.startDate != null && course.endDate != null) {
-      final weeks =
-          (course.endDate!.difference(course.startDate!).inDays / 7).ceil();
-      filler.setText('D7', '$weeks  SETTIMANE');
+    if (course.durationWeeks != null) {
+      filler.setText('D7', Course.formatDurationWeeks(course.durationWeeks!));
+    }
+    if (course.delayWeeks != null) {
+      filler.setInt('J7', course.delayWeeks!); // EVENTUALE RITARDO (N. SETT.)
     }
 
     final regular = weekLessons.where((l) => l.timeSlot > 0).toList();

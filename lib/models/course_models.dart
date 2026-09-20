@@ -29,7 +29,9 @@ class Course {
   final String? extensionTypeId; // optional mil extension (e.g. 'b1mil' for a b1 course)
   final String? mamlCombinationId; // VFI combination id for maml courses
   final String title;
+  /// DATA INIZIO CORSO (PS D6).
   final DateTime? startDate;
+  /// DATA FINE CORSO (PIANIFICATA) (PS J6).
   final DateTime? endDate;
   final String status;
   final List<String> directorIds;
@@ -38,6 +40,10 @@ class Course {
   final List<String> excludedDates; // YYYY-MM-DD days excluded from auto-schedule
   /// Aula default 1–7 (teoria). Null → inferenza 3° BTC = 3.
   final int? defaultAula;
+  /// DURATA sul PS (D7), in settimane. Null = cella vuota in export.
+  final int? durationWeeks;
+  /// EVENTUALE RITARDO (N. SETT.) sul PS (J7). Null = cella vuota.
+  final int? delayWeeks;
   final String createdBy;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -56,6 +62,8 @@ class Course {
     this.instructorIds = const [],
     this.excludedDates = const [],
     this.defaultAula,
+    this.durationWeeks,
+    this.delayWeeks,
     required this.createdBy,
     required this.createdAt,
     required this.updatedAt,
@@ -78,6 +86,14 @@ class Course {
     return null;
   }
 
+  /// Testo DURATA come sul 66_PS (`86  SETTIMANE`, due spazi).
+  static String formatDurationWeeks(int weeks) => '$weeks  SETTIMANE';
+
+  /// Valori ufficiali header PS del 3° BTC (Desktop `66_PS … 2026.09.07.xlsx`).
+  static final DateTime btc3Start = DateTime(2025, 3, 10);
+  static final DateTime btc3PlannedEnd = DateTime(2027, 2, 28);
+  static const int btc3DurationWeeks = 86;
+
   factory Course.fromJson(Map<String, dynamic> j) {
     final title = j['title'] as String;
     final rawAula = j['default_aula'];
@@ -85,6 +101,12 @@ class Course {
     if (rawAula != null) {
       final n = rawAula is int ? rawAula : int.tryParse(rawAula.toString());
       if (n != null && n >= 1 && n <= 7) defAula = n;
+    }
+    int? parsePosInt(dynamic raw) {
+      if (raw == null) return null;
+      final n = raw is int ? raw : int.tryParse(raw.toString());
+      if (n == null || n < 0) return null;
+      return n;
     }
     return Course(
       id: j['id'] as String,
@@ -104,6 +126,8 @@ class Course {
       instructorIds: List<String>.from(j['instructor_ids'] as List? ?? []),
       excludedDates: List<String>.from(j['excluded_dates'] as List? ?? []),
       defaultAula: defAula,
+      durationWeeks: parsePosInt(j['duration_weeks']),
+      delayWeeks: parsePosInt(j['delay_weeks']),
       createdBy: j['created_by'] as String? ?? '',
       createdAt: DateTime.parse(
         j['created_at'] as String? ?? DateTime.now().toIso8601String(),
@@ -128,6 +152,9 @@ class Course {
     'instructor_ids': instructorIds,
     'excluded_dates': excludedDates,
     if (defaultAula != null) 'default_aula': defaultAula,
+    // Sempre presenti così il clear in UI sovrascrive il merge updateCourse.
+    'duration_weeks': durationWeeks,
+    'delay_weeks': delayWeeks,
     'created_by': createdBy,
     'created_at': createdAt.toIso8601String(),
     'updated_at': updatedAt.toIso8601String(),
@@ -146,6 +173,8 @@ class Course {
     List<String>? instructorIds,
     List<String>? excludedDates,
     Object? defaultAula = _s,
+    Object? durationWeeks = _s,
+    Object? delayWeeks = _s,
   }) => Course(
     id: id,
     courseTypeId: courseTypeId ?? this.courseTypeId,
@@ -160,6 +189,8 @@ class Course {
     instructorIds: instructorIds ?? this.instructorIds,
     excludedDates: excludedDates ?? this.excludedDates,
     defaultAula: identical(defaultAula, _s) ? this.defaultAula : defaultAula as int?,
+    durationWeeks: identical(durationWeeks, _s) ? this.durationWeeks : durationWeeks as int?,
+    delayWeeks: identical(delayWeeks, _s) ? this.delayWeeks : delayWeeks as int?,
     createdBy: createdBy,
     createdAt: createdAt,
     updatedAt: DateTime.now(),
