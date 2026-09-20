@@ -36,6 +36,8 @@ class Course {
   final List<String> attendeeIds;
   final List<String> instructorIds;
   final List<String> excludedDates; // YYYY-MM-DD days excluded from auto-schedule
+  /// Aula default 1–7 (teoria). Null → inferenza 3° BTC = 3.
+  final int? defaultAula;
   final String createdBy;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -53,6 +55,7 @@ class Course {
     this.attendeeIds = const [],
     this.instructorIds = const [],
     this.excludedDates = const [],
+    this.defaultAula,
     required this.createdBy,
     required this.createdAt,
     required this.updatedAt,
@@ -61,31 +64,55 @@ class Course {
   CourseStatus get courseStatus => CourseStatusExt.fromString(status);
   bool get isActive => status == 'active';
 
-  factory Course.fromJson(Map<String, dynamic> j) => Course(
-    id: j['id'] as String,
-    courseTypeId: j['course_type_id'] as String,
-    extensionTypeId: j['extension_type_id'] as String?,
-    mamlCombinationId: j['maml_combination_id'] as String?,
-    title: j['title'] as String,
-    startDate: j['start_date'] != null
-        ? DateTime.tryParse(j['start_date'] as String)
-        : null,
-    endDate: j['end_date'] != null
-        ? DateTime.tryParse(j['end_date'] as String)
-        : null,
-    status: j['status'] as String? ?? 'planning',
-    directorIds: List<String>.from(j['director_ids'] as List? ?? []),
-    attendeeIds: List<String>.from(j['attendee_ids'] as List? ?? []),
-    instructorIds: List<String>.from(j['instructor_ids'] as List? ?? []),
-    excludedDates: List<String>.from(j['excluded_dates'] as List? ?? []),
-    createdBy: j['created_by'] as String? ?? '',
-    createdAt: DateTime.parse(
-      j['created_at'] as String? ?? DateTime.now().toIso8601String(),
-    ),
-    updatedAt: DateTime.parse(
-      j['updated_at'] as String? ?? DateTime.now().toIso8601String(),
-    ),
-  );
+  /// 3° BTC (es. "3° Corso BTC", "3BTC") — aula ufficiale 3.
+  bool get is3Btc =>
+      RegExp(r'3\s*[°º]?\s*.*\bBTC\b|\b3BTC\b', caseSensitive: false)
+          .hasMatch(title);
+
+  /// Aula effettiva del corso (campo o default 3 per 3° BTC).
+  int? get resolvedDefaultAula {
+    if (defaultAula != null && defaultAula! >= 1 && defaultAula! <= 7) {
+      return defaultAula;
+    }
+    if (is3Btc) return 3;
+    return null;
+  }
+
+  factory Course.fromJson(Map<String, dynamic> j) {
+    final title = j['title'] as String;
+    final rawAula = j['default_aula'];
+    int? defAula;
+    if (rawAula != null) {
+      final n = rawAula is int ? rawAula : int.tryParse(rawAula.toString());
+      if (n != null && n >= 1 && n <= 7) defAula = n;
+    }
+    return Course(
+      id: j['id'] as String,
+      courseTypeId: j['course_type_id'] as String,
+      extensionTypeId: j['extension_type_id'] as String?,
+      mamlCombinationId: j['maml_combination_id'] as String?,
+      title: title,
+      startDate: j['start_date'] != null
+          ? DateTime.tryParse(j['start_date'] as String)
+          : null,
+      endDate: j['end_date'] != null
+          ? DateTime.tryParse(j['end_date'] as String)
+          : null,
+      status: j['status'] as String? ?? 'planning',
+      directorIds: List<String>.from(j['director_ids'] as List? ?? []),
+      attendeeIds: List<String>.from(j['attendee_ids'] as List? ?? []),
+      instructorIds: List<String>.from(j['instructor_ids'] as List? ?? []),
+      excludedDates: List<String>.from(j['excluded_dates'] as List? ?? []),
+      defaultAula: defAula,
+      createdBy: j['created_by'] as String? ?? '',
+      createdAt: DateTime.parse(
+        j['created_at'] as String? ?? DateTime.now().toIso8601String(),
+      ),
+      updatedAt: DateTime.parse(
+        j['updated_at'] as String? ?? DateTime.now().toIso8601String(),
+      ),
+    );
+  }
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -100,6 +127,7 @@ class Course {
     'attendee_ids': attendeeIds,
     'instructor_ids': instructorIds,
     'excluded_dates': excludedDates,
+    if (defaultAula != null) 'default_aula': defaultAula,
     'created_by': createdBy,
     'created_at': createdAt.toIso8601String(),
     'updated_at': updatedAt.toIso8601String(),
@@ -117,6 +145,7 @@ class Course {
     List<String>? attendeeIds,
     List<String>? instructorIds,
     List<String>? excludedDates,
+    Object? defaultAula = _s,
   }) => Course(
     id: id,
     courseTypeId: courseTypeId ?? this.courseTypeId,
@@ -130,6 +159,7 @@ class Course {
     attendeeIds: attendeeIds ?? this.attendeeIds,
     instructorIds: instructorIds ?? this.instructorIds,
     excludedDates: excludedDates ?? this.excludedDates,
+    defaultAula: identical(defaultAula, _s) ? this.defaultAula : defaultAula as int?,
     createdBy: createdBy,
     createdAt: createdAt,
     updatedAt: DateTime.now(),

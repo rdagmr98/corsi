@@ -62,6 +62,21 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
       _selected = _courses.where((c) => c.id == _selected!.id).firstOrNull ?? _selected;
     }
     _refreshWeek();
+    _ensureAulaDefaults();
+  }
+
+  /// Persiste default aula corso + backfill lezioni senza aula (3° BTC → 3).
+  Future<void> _ensureAulaDefaults() async {
+    final c = _selected;
+    if (c == null) return;
+    final def = c.resolvedDefaultAula;
+    if (def == null) return;
+    if (c.defaultAula == null) {
+      await _courseService.updateCourse(c.copyWith(defaultAula: def));
+      _selected = _courseService.findById(c.id) ?? c.copyWith(defaultAula: def);
+    }
+    final n = await _scheduleService.ensureLessonAulas(c.id, def);
+    if (n > 0 && mounted) _refreshWeek();
   }
 
   void _refreshWeek() {
@@ -195,6 +210,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
       typeInfo: _typeInfo!,
       hasAttendeesInRecovery: hasRecovery,
       excludedDates: _selected!.excludedDates,
+      defaultAula: _selected!.resolvedDefaultAula,
     );
     _load();
   }
@@ -274,6 +290,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
         instructors.any((i) => i.id == presetInstructor) ? presetInstructor : null;
     String? selectedInstructor2;
     dynamic selectedTaskId;
+    int selectedAula = _selected!.resolvedDefaultAula ?? 3;
 
     await showDialog(
       context: context,
@@ -410,6 +427,29 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                       if (type != 'pratica') selectedInstructor2 = null;
                     }),
                   ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<int>(
+                    value: selectedAula,
+                    dropdownColor: kSurface,
+                    isExpanded: true,
+                    style: const TextStyle(color: kText),
+                    decoration: InputDecoration(
+                      labelText: type == 'pratica'
+                          ? 'Aula (Excel pratica = HANGAR 6)'
+                          : 'Aula',
+                      isDense: true,
+                    ),
+                    items: [
+                      for (var i = 1; i <= 7; i++)
+                        DropdownMenuItem(
+                          value: i,
+                          child: Text('Aula $i',
+                              overflow: TextOverflow.ellipsis),
+                        ),
+                    ],
+                    onChanged: (v) =>
+                        setDlg(() => selectedAula = v ?? selectedAula),
+                  ),
                   // Task dropdown per la pratica
                   if (type == 'pratica' && selSub != null && selSub.practicalTasks.isNotEmpty) ...[
                     const SizedBox(height: 12),
@@ -535,6 +575,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                     instructorId: selectedInstructor,
                     instructorId2: id2,
                     taskId: tid,
+                    aula: selectedAula,
                   );
                   await _notifService.notifyLessonScheduled(
                     attendeeIds: _selected!.attendeeIds,
@@ -583,6 +624,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                     instructorId: selectedInstructor,
                     instructorId2: id2,
                     taskId: tid,
+                    aula: selectedAula,
                   );
                   await _notifService.notifyLessonScheduled(
                     attendeeIds: _selected!.attendeeIds,
@@ -1097,6 +1139,8 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
     String selectedSubmodule = lesson.submoduleCode;
     bool recompile = true;
     final lessonType = isTheory ? 'teoria' : 'pratica';
+    int selectedAula =
+        lesson.aula ?? _selected!.resolvedDefaultAula ?? 3;
 
     // Assenze frequentatori per quest'ora: pre-compilate dai record esistenti.
     final attendees = _userService.getAllUsers()
@@ -1170,6 +1214,29 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                     child: Text(e.$2, overflow: TextOverflow.ellipsis),
                   )).toList(),
                   onChanged: (v) => setDlg(() => selectedSubmodule = v ?? selectedSubmodule),
+                ),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<int>(
+                  value: selectedAula,
+                  dropdownColor: kSurface,
+                  isExpanded: true,
+                  style: const TextStyle(color: kText, fontSize: 12),
+                  decoration: InputDecoration(
+                    labelText: isTheory
+                        ? 'Aula'
+                        : 'Aula (Excel pratica = HANGAR 6)',
+                    isDense: true,
+                  ),
+                  items: [
+                    for (var i = 1; i <= 7; i++)
+                      DropdownMenuItem(
+                        value: i,
+                        child: Text('Aula $i',
+                            overflow: TextOverflow.ellipsis),
+                      ),
+                  ],
+                  onChanged: (v) =>
+                      setDlg(() => selectedAula = v ?? selectedAula),
                 ),
                 const SizedBox(height: 8),
                 DropdownButtonFormField<String?>(
@@ -1294,10 +1361,12 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                             ? selectedInstructor2
                             : null;
                         if (selectedInstructor != lesson.instructorId ||
-                            id2 != lesson.instructorId2) {
+                            id2 != lesson.instructorId2 ||
+                            selectedAula != lesson.aula) {
                           await _scheduleService.updateLesson(lesson.copyWith(
                             instructorId: selectedInstructor,
                             instructorId2: id2,
+                            aula: selectedAula,
                           ));
                         }
                         // La validazione registra sempre l'appello:
@@ -1342,6 +1411,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                   submoduleCode: selectedSubmodule,
                   moduleNumber: newModuleNum,
                   topic: newTopic,
+                  aula: selectedAula,
                 ));
                 if (selectedInstructor != null &&
                     selectedInstructor != lesson.instructorId) {

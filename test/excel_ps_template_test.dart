@@ -31,6 +31,7 @@ void main() {
       instructor: 'BALLOI',
       sott: 'T15.9',
       oreSub: 4,
+      localita: 'AULA 3',
     );
     // Module fill must keep BLACK text (never white), even on darker fills.
     filler.paintLessonRow(
@@ -42,6 +43,7 @@ void main() {
       instructor: 'ROSSI',
       sott: 'T6.1',
       oreSub: 1,
+      localita: 'HANGAR 6',
     );
     final long =
         'Modulo 11A Turbine Aeroplane Aerodynamics, Structures and Systems';
@@ -62,6 +64,7 @@ void main() {
       instructor: 'MATERNI',
       sott: 'T11A.18',
       oreSub: 1,
+      localita: 'AULA 3',
     );
     final outBytes = filler.encode();
     File('build/ps_sample_ooxml.xlsx')
@@ -90,6 +93,19 @@ void main() {
     expect(RegExp('<c r="J11"[^>]*s="$xf15L"').hasMatch(out.sheet), isTrue);
     expect(RegExp('<c r="G11"[^>]*s="$xf15C"').hasMatch(out.sheet), isTrue);
     expect(RegExp('<c r="M11"[^>]*s="$xf15C"').hasMatch(out.sheet), isTrue);
+    // LOCALITA' filled with style 1230 (thin borders aligned to O=1231)
+    expect(out.sheet, contains('AULA 3'));
+    expect(out.sheet, contains('HANGAR 6'));
+    expect(
+      RegExp(r'<c r="N11" s="1230" t="inlineStr"><is><t>AULA 3</t>')
+          .hasMatch(out.sheet),
+      isTrue,
+    );
+    expect(
+      RegExp(r'<c r="N12" s="1230" t="inlineStr"><is><t>HANGAR 6</t>')
+          .hasMatch(out.sheet),
+      isTrue,
+    );
     // Empty taskId → self-closing L cell (no empty <t></t>)
     expect(
       RegExp(r'<c r="L11"[^>]*/>').hasMatch(out.sheet) ||
@@ -144,33 +160,48 @@ void main() {
     expect(out.workbook, contains("'07.09_11.09'!\$A\$1:\$O\$70"));
   });
 
-  test('N8 LOCALITA/AULA keeps official shared-string wording', () {
+  test('N8 LOCALITA single col + Accountable Manager footer', () {
     final blankBytes =
         File('assets/templates/ps_weekly_blank.xlsx').readAsBytesSync();
     final blank = _SheetZip(blankBytes);
-    // Official 66_PS: <c r="N8" s="1281" t="s"><v>678</v></c>
+    // Official 66_PS: one merge N8:O9 → ss 678 (LOCALITA'……AULA), not dual cols
     expect(
       RegExp(r'<c r="N8"[^>]*t="s"[^>]*>\s*<v>678</v>').hasMatch(blank.sheet) ||
           RegExp(r'<c r="N8"[^>]*>\s*<v>678</v>').hasMatch(blank.sheet),
       isTrue,
-      reason: 'N8 must reference shared string 678 (LOCALITA\'……AULA), not inline LOCALITA\' only',
+      reason: 'N8 must reference shared string 678 (single LOCALITA\'/AULA column)',
     );
+    expect(blank.sheet, contains('<mergeCell ref="N8:O9"/>'));
     expect(blank.sheet, isNot(contains('t="inlineStr"><is><t>LOCALITA\'</t>')));
+    // Lesson rows use style 1230 (not 1278) so N:O borders match official
+    expect(RegExp(r'<c r="N11" s="1230"/>').hasMatch(blank.sheet), isTrue);
+    expect(RegExp(r'<c r="N10" s="1278"/>').hasMatch(blank.sheet), isTrue,
+        reason: 'Disposizione keeps style 1278');
     // PERSONALE INTERESSATO chrome
     expect(blank.sheet, contains('r="B48"'));
     expect(blank.sheet, contains('r="C49"'));
     expect(blank.sheet, contains('r="J49"'));
-    // Accountable Manager footer (66_PS I62/I63 labels; I64 name empty)
+    // Bottom-right AM intestazione (ss 672/673); I64 signature empty
     expect(
-      RegExp(r'<c r="I62"[^>]*t="s"[^>]*>\s*<v>672</v>').hasMatch(blank.sheet),
+      RegExp(r'<c r="I62"[^>]*t="s"[^>]*>\s*<v>672</v>').hasMatch(blank.sheet) ||
+          RegExp(r'<c r="I62"[^>]*>\s*<v>672</v>').hasMatch(blank.sheet),
       isTrue,
       reason: 'I62 must keep IL COMANDANTE (ss 672)',
     );
     expect(
-      RegExp(r'<c r="I63"[^>]*t="s"[^>]*>\s*<v>673</v>').hasMatch(blank.sheet),
+      RegExp(r'<c r="I63"[^>]*t="s"[^>]*>\s*<v>673</v>').hasMatch(blank.sheet) ||
+          RegExp(r'<c r="I63"[^>]*>\s*<v>673</v>').hasMatch(blank.sheet),
       isTrue,
       reason: 'I63 must keep (Accountable Manager) (ss 673)',
     );
+    expect(blank.sheet, contains('<mergeCell ref="I62:N62"/>'));
+    expect(blank.sheet, contains('<mergeCell ref="I63:N63"/>'));
+    expect(blank.sheet, contains('<mergeCell ref="I64:N64"/>'));
+    final i64 = RegExp(r'<c r="I64"[^>]*/>|<c r="I64"[^>]*>.*?</c>',
+            dotAll: true)
+        .firstMatch(blank.sheet)!
+        .group(0)!;
+    expect(i64.contains('<v>'), isFalse, reason: 'I64 name/date stays empty');
   });
 
   test('attendee PS label and Carabinieri split match 66_PS columns', () {
@@ -235,6 +266,21 @@ void main() {
       isFalse,
     );
     expect(ExcelExportService.attendeeDataStartRow, 50);
+  });
+
+  test('localitaLabel teoria AULA n / pratica HANGAR 6', () {
+    expect(
+      ExcelExportService.localitaLabel(isTheory: true, aula: 3),
+      'AULA 3',
+    );
+    expect(
+      ExcelExportService.localitaLabel(isTheory: false, aula: 3),
+      'HANGAR 6',
+    );
+    expect(
+      ExcelExportService.localitaLabel(isTheory: true, aula: null),
+      isNull,
+    );
   });
 }
 

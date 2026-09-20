@@ -162,6 +162,7 @@ class ScheduleService {
     String? instructorId,
     String? instructorId2,
     dynamic taskId,
+    int? aula,
   }) async {
     final schedules = _db.schedules.toList();
     final now = DateTime.now();
@@ -179,6 +180,7 @@ class ScheduleService {
       'instructor_id_2': instructorId2,
       'confirmed': false,
       if (taskId != null) 'task_id': taskId,
+      if (aula != null) 'aula': aula,
       'created_at': now.toIso8601String(),
       'updated_at': now.toIso8601String(),
     };
@@ -261,6 +263,7 @@ class ScheduleService {
     required String courseTypeId,
     required DateTime startDate,
     required CourseTypeInfo typeInfo,
+    int? defaultAula,
   }) async {
     final existing = getLessonsForCourse(courseId);
     if (existing.isNotEmpty) return;
@@ -280,7 +283,10 @@ class ScheduleService {
           if (slotIdx == 0 && i > 0) {
             currentDate = _nextWorkday(_safeNext(currentDate));
           }
-          lessons.add(_lessonMap(courseId, module.number, sub.code, sub.name, 'teoria', currentDate, slot.slot, now));
+          lessons.add(_lessonMap(
+            courseId, module.number, sub.code, sub.name, 'teoria',
+            currentDate, slot.slot, now, aula: defaultAula,
+          ));
           if (slotIdx == slotList.length - 1) {
             currentDate = _nextWorkday(_safeNext(currentDate));
           }
@@ -293,7 +299,10 @@ class ScheduleService {
           if (slotIdx == 0 && i > 0) {
             currentDate = _nextWorkday(_safeNext(currentDate));
           }
-          lessons.add(_lessonMap(courseId, module.number, sub.code, sub.name, 'pratica', currentDate, slot.slot, now));
+          lessons.add(_lessonMap(
+            courseId, module.number, sub.code, sub.name, 'pratica',
+            currentDate, slot.slot, now, aula: defaultAula,
+          ));
           if (slotIdx == slotList.length - 1) {
             currentDate = _nextWorkday(_safeNext(currentDate));
           }
@@ -314,8 +323,9 @@ class ScheduleService {
 
   Map<String, dynamic> _lessonMap(
     String courseId, int moduleNum, String subCode, String topic, String type,
-    DateTime date, int slot, String now,
-  ) => {
+    DateTime date, int slot, String now, {
+    int? aula,
+  }) => {
     'course_id': courseId,
     'module_number': moduleNum,
     'submodule_code': subCode,
@@ -325,6 +335,7 @@ class ScheduleService {
     'time_slot': slot,
     'instructor_id': null,
     'confirmed': false,
+    if (aula != null) 'aula': aula,
     'created_at': now,
     'updated_at': now,
   };
@@ -408,6 +419,7 @@ class ScheduleService {
     required CourseTypeInfo typeInfo,
     required bool hasAttendeesInRecovery,
     List<String> excludedDates = const [],
+    int? defaultAula,
   }) async {
     final allLessons = getLessonsForCourse(courseId);
 
@@ -632,6 +644,7 @@ class ScheduleService {
           'confirmed': false,
           'auto_generated': true,
           if (assignedTaskId != null) 'task_id': assignedTaskId,
+          if (defaultAula != null) 'aula': defaultAula,
           'created_at': now,
           'updated_at': now,
         });
@@ -642,6 +655,20 @@ class ScheduleService {
 
     cleaned.addAll(newLessons);
     await _db.saveSchedules(cleaned);
+  }
+
+  /// Persist aula=default on lessons missing it (e.g. 3° BTC → 3).
+  Future<int> ensureLessonAulas(String courseId, int aula) async {
+    if (aula < 1 || aula > 7) return 0;
+    var changed = 0;
+    final schedules = _db.schedules.map((s) {
+      if (s['course_id'] != courseId) return s;
+      if (s['aula'] != null) return s;
+      changed++;
+      return {...s, 'aula': aula, 'updated_at': DateTime.now().toIso8601String()};
+    }).toList();
+    if (changed > 0) await _db.saveSchedules(schedules);
+    return changed;
   }
 
   /// Se possibile, sposta un blocco di [needed] ore dello stesso sottomodulo

@@ -16,13 +16,15 @@ import 'ps_ooxml_filler.dart';
 ///
 /// Colonne (1-based B..N): DATA | ORARIO | ADDESTRAMENTO | Ore Mod. |
 /// Ore Tot. Mod. | ISTRUTTORE | Sott. Mod. | ID TASK | Ore | LOCALITA'/AULA
+/// (LOCALITA'/AULA = una sola colonna merge N:O, come 66_PS).
 ///
 /// Frequentatori (66_PS PERSONALE INTERESSATO):
 /// - R48 title, R49 headers fixed in blank
-/// - R50+: B/C = ESERCITO (N. + GRADO NOME COGNOME), I/J = CARABINIERI
+/// - R50+: sinistra B/C = ESERCITO, destra I/J = CARABINIERI (forza=CC / titolo CAR.)
 /// - numbering restarts at 1 in each column
+/// - Footer destra I62–I63: IL COMANDANTE / (Accountable Manager); I64 vuoto
 ///
-/// Unknown fields (aula/LOCALITA' data cells, firme, ecc.) restano vuoti.
+/// Unknown fields (firma AM, ecc.) restano vuoti.
 class ExcelExportService {
   static const _templateAsset = 'assets/templates/ps_weekly_blank.xlsx';
 
@@ -34,6 +36,22 @@ class ExcelExportService {
 
   /// Template data slots: rows 50–58 (9), chrome ends at 58.
   static const attendeeMaxRows = 9;
+
+  /// Official 66_PS LOCALITA' labels.
+  static const hangarPratica = 'HANGAR 6';
+
+  /// Teoria → `AULA n`; pratica/task → `HANGAR 6`. Null aula → null (blank cell).
+  static String? localitaLabel({
+    required bool isTheory,
+    int? aula,
+  }) {
+    if (!isTheory) return hangarPratica;
+    if (aula == null || aula < 1 || aula > 7) return null;
+    return 'AULA $aula';
+  }
+
+  static int? resolveAula(ScheduledLesson lesson, Course course) =>
+      lesson.aula ?? course.resolvedDefaultAula;
 
   /// Template label: "GRADO, NOME e COGNOME".
   static String attendeePsLabel(AppUser u) {
@@ -258,6 +276,7 @@ class ExcelExportService {
                 .firstOrNull;
 
         if (lesson != null) {
+          final aula = resolveAula(lesson, course);
           filler.paintLessonRow(
             row1Based: excelRow1,
             moduleNumber: lesson.moduleNumber,
@@ -268,6 +287,7 @@ class ExcelExportService {
             sott: sottMod(lesson),
             taskId: lesson.taskId?.toString(),
             oreSub: subOrdById[lesson.id] ?? 0,
+            localita: localitaLabel(isTheory: lesson.isTheory, aula: aula),
           );
           filledRows.add(excelRow1);
         } else if (note != null && note.text.isNotEmpty) {
@@ -287,6 +307,7 @@ class ExcelExportService {
         if (recIdx >= dayRec.length) break;
         if (filledRows.contains(excelRow1)) continue;
         final rec = dayRec[recIdx++];
+        final aula = resolveAula(rec, course);
         filler.paintLessonRow(
           row1Based: excelRow1,
           moduleNumber: rec.moduleNumber,
@@ -298,6 +319,7 @@ class ExcelExportService {
           sott: sottMod(rec),
           taskId: rec.taskId?.toString(),
           oreSub: subOrdById[rec.id] ?? 0,
+          localita: localitaLabel(isTheory: rec.isTheory, aula: aula),
         );
         filledRows.add(excelRow1);
       }

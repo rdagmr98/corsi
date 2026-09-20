@@ -23,6 +23,8 @@ class ScheduledLesson {
   final bool confirmed;
   // int for base tasks (1-112), String for MIL tasks ("1 m"-"25 m"), null if not set
   final dynamic taskId;
+  /// Aula 1–7 (teoria). Null = usa [Course.defaultAula] / default corso.
+  final int? aula;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -39,6 +41,7 @@ class ScheduledLesson {
     this.instructorId2,
     this.confirmed = false,
     this.taskId,
+    this.aula,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -59,6 +62,7 @@ class ScheduledLesson {
     instructorId2: j['instructor_id_2'] as String?,
     confirmed: j['confirmed'] as bool? ?? false,
     taskId: j['task_id'],
+    aula: _parseAula(j['aula']),
     createdAt: DateTime.parse(
       j['created_at'] as String? ?? DateTime.now().toIso8601String(),
     ),
@@ -66,6 +70,13 @@ class ScheduledLesson {
       j['updated_at'] as String? ?? DateTime.now().toIso8601String(),
     ),
   );
+
+  static int? _parseAula(dynamic v) {
+    if (v == null) return null;
+    final n = v is int ? v : int.tryParse(v.toString());
+    if (n == null || n < 1 || n > 7) return null;
+    return n;
+  }
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -80,6 +91,7 @@ class ScheduledLesson {
     'instructor_id_2': instructorId2,
     'confirmed': confirmed,
     if (taskId != null) 'task_id': taskId,
+    if (aula != null) 'aula': aula,
     'created_at': createdAt.toIso8601String(),
     'updated_at': updatedAt.toIso8601String(),
   };
@@ -95,6 +107,7 @@ class ScheduledLesson {
     Object? instructorId2 = _s,
     bool? confirmed,
     Object? taskId = _s,
+    Object? aula = _s,
   }) => ScheduledLesson(
     id: id,
     courseId: courseId,
@@ -108,6 +121,7 @@ class ScheduledLesson {
     instructorId2: identical(instructorId2, _s) ? this.instructorId2 : instructorId2 as String?,
     confirmed: confirmed ?? this.confirmed,
     taskId: identical(taskId, _s) ? this.taskId : taskId,
+    aula: identical(aula, _s) ? this.aula : aula as int?,
     createdAt: createdAt,
     updatedAt: DateTime.now(),
   );

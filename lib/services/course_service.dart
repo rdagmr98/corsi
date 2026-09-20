@@ -43,20 +43,26 @@ class CourseService {
     final courses = _db.courses.toList();
     final now = DateTime.now();
     final id = now.microsecondsSinceEpoch.toRadixString(16);
+    final draft = Course(
+      id: id,
+      courseTypeId: courseTypeId,
+      mamlCombinationId: mamlCombinationId,
+      title: title,
+      startDate: startDate,
+      status: 'planning',
+      directorIds: directorIds,
+      attendeeIds: attendeeIds,
+      instructorIds: instructorIds,
+      defaultAula: null,
+      createdBy: createdBy,
+      createdAt: now,
+      updatedAt: now,
+    );
     final newCourse = {
-      'id': id,
-      'course_type_id': courseTypeId,
-      if (mamlCombinationId != null) 'maml_combination_id': mamlCombinationId,
-      'title': title,
-      'start_date': startDate?.toIso8601String().split('T').first,
-      'end_date': null,
-      'status': 'planning',
-      'director_ids': directorIds,
-      'attendee_ids': attendeeIds,
-      'instructor_ids': instructorIds,
-      'created_by': createdBy,
-      'created_at': now.toIso8601String(),
-      'updated_at': now.toIso8601String(),
+      ...draft.toJson(),
+      // Persist inferred 3° BTC default so JSON carries it.
+      if (draft.resolvedDefaultAula != null)
+        'default_aula': draft.resolvedDefaultAula,
     };
     courses.add(newCourse);
     await _db.saveCourses(courses);

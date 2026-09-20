@@ -31,6 +31,9 @@ DAY_BLOCKS = [(10, 17), (18, 25), (26, 33), (34, 41), (42, 44)]
 # Mon–Thu 8-row block: row0=Disposizione (fixed), row5=pausa pranzo (yellow).
 DISPO_OFFSET = 0
 LUNCH_OFFSET = 5
+# PERSONALE data rows only (headers 48–49 stay). Do NOT use row>=50:
+# that wiped I62–I64 Accountable Manager chrome on the right.
+ATTENDEE_DATA_ROWS = range(50, 59)  # 50–58 inclusive
 # Official empty-cell styles (from 66_PS EI lesson row) — keep if present.
 EMPTY_BY_COL = {
     "D": 1159,
@@ -43,8 +46,16 @@ EMPTY_BY_COL = {
     "K": 560,
     "L": 546,
     "M": 541,
-    "N": 1278,  # LOCALITA' — always blank (app doesn't know aula)
+    # Lesson/lunch LOCALITA': style 1230 (thin borders, matches O=1231 merge).
+    # Disposizione uses 1278 separately below — do NOT use 1278 here (breaks N:O borders).
+    "N": 1230,
 }
+# Disposizione row LOCALITA' (medium top border), merge slave O=1279.
+DISPO_LOCALITA_STYLE = 1278
+# Desktop 66_PS shared-string indices for AM footer (keep labels, clear name).
+AM_SS_COMANDANTE = 672  # "IL COMANDANTE"
+AM_SS_ACCOUNTABLE = 673  # "(Accountable Manager)"
+AM_STYLE = 1229
 
 MODULE_ORDER = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 16, 17, 50, 51, 53, 54]
 MODULE_PALETTE = [
@@ -136,6 +147,8 @@ def clear_week_data(sheet: str) -> str:
         # Disposizione row: keep C orario + D label; clear aula/data leftovers only.
         # Do NOT touch D/E/F merge that carries the fixed "Disposizione" wording.
         if row in dispo and col in ("G", "H", "I", "J", "K", "L", "M", "N", "O"):
+            if col == "N":
+                return f'<c r="{addr}" s="{DISPO_LOCALITA_STYLE}"/>'
             if col in EMPTY_BY_COL:
                 return f'<c r="{addr}" s="{EMPTY_BY_COL[col]}"/>'
             s_attr = f' s="{s_id}"' if s_id else ""
@@ -146,16 +159,21 @@ def clear_week_data(sheet: str) -> str:
             return f'<c r="{addr}" s="{EMPTY_BY_COL[col]}"/>'
 
         # Lunch (yellow): keep D–M chrome; blank LOCALITA' only.
+        # N: keep source border style (not forced 1230/1278 — those break mid-block lines).
         if row in lunch_rows() and col in ("N", "O"):
-            if col in EMPTY_BY_COL:
-                return f'<c r="{addr}" s="{EMPTY_BY_COL[col]}"/>'
+            if col == "N":
+                sid = s_id or str(EMPTY_BY_COL["N"])
+                return f'<c r="{addr}" s="{sid}"/>'
             s_attr = f' s="{s_id}"' if s_id else ""
             return f'<c r="{addr}"{s_attr}/>'
 
         # Lesson data columns — empty (N/località always blank).
-        # ALWAYS reset to empty chrome styles — never keep source-week fills
-        # (orange leftovers from 66_PS look like garbage on unfilled slots).
+        # ALWAYS reset D–M to empty chrome styles — never keep source-week fills.
+        # N: clear value but KEEP per-row border style from 66_PS (1230/1246/1255…).
         if row in lessons and col in EMPTY_BY_COL:
+            if col == "N":
+                sid = s_id or str(EMPTY_BY_COL["N"])
+                return f'<c r="{addr}" s="{sid}"/>'
             return f'<c r="{addr}" s="{EMPTY_BY_COL[col]}"/>'
 
         # Header placeholders
@@ -174,16 +192,24 @@ def clear_week_data(sheet: str) -> str:
                 f'<c r="{addr}" s="{sid}" t="inlineStr">'
                 f"<is><t>Direttore del corso: </t></is></c>"
             )
-        # Attendee data only (rows 50–58). Do NOT clear I62–I64 AM footer.
-        if 50 <= row <= 58 and col in ("B", "C", "I", "J"):
+        # Attendee data only (rows 50–58). Do NOT clear I62–I63 AM labels.
+        if row in ATTENDEE_DATA_ROWS and col in ("B", "C", "I", "J"):
             s_attr = f' s="{s_id}"' if s_id else ""
             return f'<c r="{addr}"{s_attr}/>'
-        # AM signature name (I64:N64) — blank if unknown; keep I62/I63 labels.
+        # AM footer (destra): restore I62/I63 intestazione; blank I64 name/date.
+        if addr == "I62":
+            return (
+                f'<c r="{addr}" s="{s_id or AM_STYLE}" t="s">'
+                f"<v>{AM_SS_COMANDANTE}</v></c>"
+            )
+        if addr == "I63":
+            return (
+                f'<c r="{addr}" s="{s_id or AM_STYLE}" t="s">'
+                f"<v>{AM_SS_ACCOUNTABLE}</v></c>"
+            )
         if row == 64 and col in ("I", "J", "K", "L", "M", "N"):
-            s_attr = f' s="{s_id}"' if s_id else ""
-            return f'<c r="{addr}"{s_attr}/>'
-        # N8:O9 LOCALITA'/AULA: keep official shared-string 678 (one merge col).
-        # Data cells N stay empty when aula unknown — no dual-column invent.
+            return f'<c r="{addr}" s="{s_id or AM_STYLE}"/>'
+        # N8:O9 = single LOCALITA'/AULA column (ss 678). Not dual headers.
         return full
 
     sheet = re.sub(

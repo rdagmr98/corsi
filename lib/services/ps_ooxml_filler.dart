@@ -149,6 +149,7 @@ class PsOoxmlFiller {
     required String sott,
     String? taskId,
     required int oreSub,
+    String? localita,
   }) {
     final xfL = psModuleXfLeft(moduleNumber);
     final xfC = psModuleXfCenter(moduleNumber);
@@ -169,8 +170,11 @@ class PsOoxmlFiller {
       _upsertCell('L$row1Based', '/>', styleId: xfC);
     }
     setInt('M$row1Based', oreSub, styleId: xfC);
-    // LOCALITA' / aula data: never invent — leave N empty (template style).
-    // Header N8 keeps official shared string LOCALITA'……AULA (merge N8:O9).
+    // LOCALITA'/AULA (merge N:O). Preserve blank per-row border style (1230/1255…).
+    // Do not touch O (merge slave) — keeps right-edge chrome.
+    if (localita != null && localita.isNotEmpty) {
+      setText('N$row1Based', localita); // keep existing s=
+    }
   }
 
   Uint8List encode() {
