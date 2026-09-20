@@ -318,6 +318,58 @@ void main() {
       isNull,
     );
   });
+
+  test('Mon–Thu slot→row skips Disposizione and lunch (Desktop 66_PS)', () {
+    // Lun block rows 10–17: +0 Disposizione, +5 lunch.
+    expect(
+      ExcelExportService.excelRowForSlot(startRow: 10, endRow: 17, timeSlot: 1),
+      11,
+    );
+    expect(
+      ExcelExportService.excelRowForSlot(startRow: 10, endRow: 17, timeSlot: 4),
+      14,
+    );
+    expect(
+      ExcelExportService.excelRowForSlot(startRow: 10, endRow: 17, timeSlot: 5),
+      16,
+    );
+    expect(
+      ExcelExportService.excelRowForSlot(startRow: 10, endRow: 17, timeSlot: 6),
+      17,
+    );
+    expect(
+      ExcelExportService.excelRowForSlot(startRow: 10, endRow: 17, timeSlot: 0),
+      isNull,
+    );
+    expect(
+      ExcelExportService.excelRowForSlot(startRow: 10, endRow: 17, timeSlot: 7),
+      isNull,
+    );
+    // Never maps onto disposizione (10) or lunch (15).
+    for (final s in ExcelExportService.monThuSlotRowOffset.keys) {
+      final r = ExcelExportService.excelRowForSlot(
+        startRow: 10,
+        endRow: 17,
+        timeSlot: s,
+      )!;
+      expect(r, isNot(10));
+      expect(r, isNot(15));
+    }
+    // Mar block starts at 18.
+    expect(
+      ExcelExportService.excelRowForSlot(startRow: 18, endRow: 25, timeSlot: 5),
+      24,
+    );
+    // Friday contiguous.
+    expect(
+      ExcelExportService.excelRowForSlot(startRow: 42, endRow: 44, timeSlot: 1),
+      42,
+    );
+    expect(
+      ExcelExportService.excelRowForSlot(startRow: 42, endRow: 44, timeSlot: 3),
+      44,
+    );
+  });
 }
 
 String archiveFile(List<int> bytes, String name) {

@@ -79,6 +79,35 @@ class ExcelExportService {
   /// Mon–Thu: sixth hour = yellow pausa pranzo (fixed template chrome).
   static const _lunchOffset = 5;
 
+  /// App slot → row offset inside Mon–Thu 8-row block (Desktop 66_PS).
+  /// Skips +0 Disposizione (08:00) and +5 lunch (13:30 yellow).
+  static const monThuSlotRowOffset = <int, int>{
+    1: 1, // 09:00-10:00
+    2: 2, // 10:10-11:10
+    3: 3, // 11:20-12:20
+    4: 4, // 12:30-13:30
+    5: 6, // 14:20-15:20
+    6: 7, // 15:30-16:30
+  };
+
+  /// Excel 1-based row for an app [timeSlot] in a day block, or null.
+  static int? excelRowForSlot({
+    required int startRow,
+    required int endRow,
+    required int timeSlot,
+  }) {
+    final fullDay = endRow - startRow == 7;
+    if (fullDay) {
+      final off = monThuSlotRowOffset[timeSlot];
+      if (off == null) return null;
+      return startRow + off;
+    }
+    // Friday: 3 contiguous rows, slots 1..3.
+    final span = endRow - startRow + 1;
+    if (timeSlot < 1 || timeSlot > span) return null;
+    return startRow + (timeSlot - 1);
+  }
+
   /// Truncate for print; ASCII `...`, prefer break at last space.
   /// Submodule is already in col K — full module title is less critical.
   static String fitAddestramento(String text,
@@ -242,7 +271,7 @@ class ExcelExportService {
       final lunchRow = fullDay ? startRow + _lunchOffset : null;
       final disposizioneRow =
           fullDay ? startRow + _disposizioneOffset : null;
-      // App slots map onto teaching rows only — never Disposizione or lunch.
+      // Teaching rows only — never Disposizione or lunch chrome.
       final lessonRows = [
         for (var r = startRow; r <= endRow; r++)
           if (r != lunchRow && r != disposizioneRow) r,
@@ -253,29 +282,30 @@ class ExcelExportService {
 
       filler.setDate('B$startRow', day);
 
-      for (var i = 0; i < lessonRows.length; i++) {
-        final excelRow1 = lessonRows[i];
-        final slot = i < daySlots.length ? daySlots[i] : null;
+      for (final slot in daySlots) {
+        final excelRow1 = excelRowForSlot(
+          startRow: startRow,
+          endRow: endRow,
+          timeSlot: slot.slot,
+        );
+        if (excelRow1 == null) continue;
+        // Hard guard: never paint fixed template rows.
+        if (excelRow1 == disposizioneRow || excelRow1 == lunchRow) continue;
 
-        ScheduledLesson? lesson;
-        if (slot != null) {
-          lesson = regular
-              .where((l) =>
-                  l.date.year == day.year &&
-                  l.date.month == day.month &&
-                  l.date.day == day.day &&
-                  l.timeSlot == slot.slot)
-              .firstOrNull;
-        }
-        final note = slot == null
-            ? null
-            : weekNotes
-                .where((n) =>
-                    n.date.year == day.year &&
-                    n.date.month == day.month &&
-                    n.date.day == day.day &&
-                    n.timeSlot == slot.slot)
-                .firstOrNull;
+        final lesson = regular
+            .where((l) =>
+                l.date.year == day.year &&
+                l.date.month == day.month &&
+                l.date.day == day.day &&
+                l.timeSlot == slot.slot)
+            .firstOrNull;
+        final note = weekNotes
+            .where((n) =>
+                n.date.year == day.year &&
+                n.date.month == day.month &&
+                n.date.day == day.day &&
+                n.timeSlot == slot.slot)
+            .firstOrNull;
 
         if (lesson != null) {
           final aula = resolveAula(lesson, course);
