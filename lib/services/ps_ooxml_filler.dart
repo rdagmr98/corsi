@@ -169,7 +169,8 @@ class PsOoxmlFiller {
       _upsertCell('L$row1Based', '/>', styleId: xfC);
     }
     setInt('M$row1Based', oreSub, styleId: xfC);
-    // LOCALITA' / aula: never invent — leave N empty (template style).
+    // LOCALITA' / aula data: never invent — leave N empty (template style).
+    // Header N8 keeps official shared string LOCALITA'……AULA (merge N8:O9).
   }
 
   Uint8List encode() {

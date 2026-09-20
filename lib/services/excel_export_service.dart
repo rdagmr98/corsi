@@ -15,14 +15,42 @@ import 'ps_ooxml_filler.dart';
 /// preservati). Colori lezione = `moduleColor` via cellXf pre-registrati.
 ///
 /// Colonne (1-based B..N): DATA | ORARIO | ADDESTRAMENTO | Ore Mod. |
-/// Ore Tot. Mod. | ISTRUTTORE | Sott. Mod. | ID TASK | Ore | LOCALITA'
+/// Ore Tot. Mod. | ISTRUTTORE | Sott. Mod. | ID TASK | Ore | LOCALITA'/AULA
 ///
-/// Unknown fields (aula/LOCALITA', firme, ecc.) restano vuoti.
+/// Frequentatori (66_PS PERSONALE INTERESSATO):
+/// - R48 title, R49 headers fixed in blank
+/// - R50+: B/C = ESERCITO (N. + GRADO NOME COGNOME), I/J = CARABINIERI
+/// - numbering restarts at 1 in each column
+///
+/// Unknown fields (aula/LOCALITA' data cells, firme, ecc.) restano vuoti.
 class ExcelExportService {
   static const _templateAsset = 'assets/templates/ps_weekly_blank.xlsx';
 
   /// Max chars for ADDESTRAMENTO (D:F merge, print 1 page). Submodule is in K.
   static const addestramentoMaxChars = 42;
+
+  /// First data row under PERSONALE INTERESSATO (headers are row 49).
+  static const attendeeDataStartRow = 50;
+
+  /// Template data slots: rows 50–58 (9), chrome ends at 58.
+  static const attendeeMaxRows = 9;
+
+  /// Carabinieri column if grado/titolo looks like CC (else Esercito).
+  static final _carabinieriTitolo = RegExp(
+    r'(?:^|\b)(?:CAR\.?|CC|CARABINIER)',
+    caseSensitive: false,
+  );
+
+  /// Template label: "GRADO, NOME e COGNOME".
+  static String attendeePsLabel(AppUser u) {
+    final grado = (u.titolo ?? '').trim();
+    final nome = u.nome.trim().toUpperCase();
+    final cognome = u.cognome.trim().toUpperCase();
+    return [grado, nome, cognome].where((s) => s.isNotEmpty).join(' ');
+  }
+
+  static bool isCarabinieriAttendee(AppUser u) =>
+      _carabinieriTitolo.hasMatch(u.titolo ?? '');
 
   /// Blocchi giorno nel template (righe Excel 1-based).
   static const _dayBlocks = <(int, int)>[
@@ -297,26 +325,26 @@ class ExcelExportService {
 
     final sortedAtt = [...attendees]
       ..sort((a, b) => a.cognome.compareTo(b.cognome));
-    final mid = (sortedAtt.length + 1) ~/ 2;
-    final left = sortedAtt.take(mid).toList();
-    final right = sortedAtt.skip(mid).toList();
-    final maxRows = left.length > right.length ? left.length : right.length;
-    for (var i = 0; i < maxRows; i++) {
-      final row = 50 + i;
-      if (i < left.length) {
-        filler.setInt('B$row', i + 1);
-        filler.setText(
-          'C$row',
-          '${left[i].titolo ?? ""} ${left[i].fullName}'.trim(),
-        );
-      }
-      if (i < right.length) {
-        filler.setInt('I$row', mid + i + 1);
-        filler.setText(
-          'J$row',
-          '${right[i].titolo ?? ""} ${right[i].fullName}'.trim(),
-        );
-      }
+    final esercito = sortedAtt.where((u) => !isCarabinieriAttendee(u)).toList();
+    final carabinieri =
+        sortedAtt.where(isCarabinieriAttendee).toList();
+    // 66_PS: col sinistra ESERCITO (B=N., C=label), destra CARABINIERI (I/J).
+    // Numerazione indipendente da 1 in ciascuna colonna; non inventare Capo Corso.
+    final nEs = esercito.length < attendeeMaxRows
+        ? esercito.length
+        : attendeeMaxRows;
+    final nCc = carabinieri.length < attendeeMaxRows
+        ? carabinieri.length
+        : attendeeMaxRows;
+    for (var i = 0; i < nEs; i++) {
+      final row = attendeeDataStartRow + i;
+      filler.setInt('B$row', i + 1);
+      filler.setText('C$row', attendeePsLabel(esercito[i]));
+    }
+    for (var i = 0; i < nCc; i++) {
+      final row = attendeeDataStartRow + i;
+      filler.setInt('I$row', i + 1);
+      filler.setText('J$row', attendeePsLabel(carabinieri[i]));
     }
 
     return filler.encode();

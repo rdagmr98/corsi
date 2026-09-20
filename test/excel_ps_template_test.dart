@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:corsi/services/excel_export_service.dart';
 import 'package:corsi/services/ps_module_style_map.dart';
 import 'package:corsi/services/ps_ooxml_filler.dart';
+import 'package:corsi/models/user_models.dart';
 
 void main() {
   test('OOXML fill preserves merges and header cells', () {
@@ -141,6 +142,70 @@ void main() {
         RegExp(r'<sheetPr>.*?</sheetPr>', dotAll: true).firstMatch(out.sheet)!;
     expect(sheetPr.group(0)!.indexOf('tabColor'), lessThan(sheetPr.group(0)!.indexOf('pageSetUpPr')));
     expect(out.workbook, contains("'07.09_11.09'!\$A\$1:\$O\$70"));
+  });
+
+  test('N8 LOCALITA/AULA keeps official shared-string wording', () {
+    final blankBytes =
+        File('assets/templates/ps_weekly_blank.xlsx').readAsBytesSync();
+    final blank = _SheetZip(blankBytes);
+    // Official 66_PS: <c r="N8" s="1281" t="s"><v>678</v></c>
+    expect(
+      RegExp(r'<c r="N8"[^>]*t="s"[^>]*>\s*<v>678</v>').hasMatch(blank.sheet) ||
+          RegExp(r'<c r="N8"[^>]*>\s*<v>678</v>').hasMatch(blank.sheet),
+      isTrue,
+      reason: 'N8 must reference shared string 678 (LOCALITA\'……AULA), not inline LOCALITA\' only',
+    );
+    expect(blank.sheet, isNot(contains('t="inlineStr"><is><t>LOCALITA\'</t>')));
+    // PERSONALE INTERESSATO chrome
+    expect(blank.sheet, contains('r="B48"'));
+    expect(blank.sheet, contains('r="C49"'));
+    expect(blank.sheet, contains('r="J49"'));
+  });
+
+  test('attendee PS label and Carabinieri split match 66_PS columns', () {
+    expect(
+      ExcelExportService.attendeePsLabel(
+        AppUser(
+          id: '1',
+          nome: 'Lorenzo',
+          cognome: 'Codina',
+          role: 'attendee',
+          titolo: 'GRD',
+          createdAt: DateTime(2026),
+          updatedAt: DateTime(2026),
+        ),
+      ),
+      'GRD LORENZO CODINA',
+    );
+    expect(
+      ExcelExportService.isCarabinieriAttendee(
+        AppUser(
+          id: '2',
+          nome: 'Christian',
+          cognome: 'Laraspata',
+          role: 'attendee',
+          titolo: 'CAR. SC',
+          createdAt: DateTime(2026),
+          updatedAt: DateTime(2026),
+        ),
+      ),
+      isTrue,
+    );
+    expect(
+      ExcelExportService.isCarabinieriAttendee(
+        AppUser(
+          id: '3',
+          nome: 'Giuseppe',
+          cognome: 'Berni',
+          role: 'attendee',
+          titolo: 'GRD',
+          createdAt: DateTime(2026),
+          updatedAt: DateTime(2026),
+        ),
+      ),
+      isFalse,
+    );
+    expect(ExcelExportService.attendeeDataStartRow, 50);
   });
 }
 

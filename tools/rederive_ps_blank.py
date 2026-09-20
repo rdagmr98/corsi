@@ -174,17 +174,12 @@ def clear_week_data(sheet: str) -> str:
                 f'<c r="{addr}" s="{sid}" t="inlineStr">'
                 f"<is><t>Direttore del corso: </t></is></c>"
             )
-        # Attendee list area
+        # Attendee list area (headers B48/B49/C49/I49/J49 stay — PERSONALE + GRADO…)
         if row >= 50 and col in ("B", "C", "I", "J"):
             s_attr = f' s="{s_id}"' if s_id else ""
             return f'<c r="{addr}"{s_attr}/>'
-        # Clean bloated LOCALITA'/AULA header from official shared string
-        if addr == "N8":
-            sid = s_id or "1265"
-            return (
-                f'<c r="{addr}" s="{sid}" t="inlineStr">'
-                f"<is><t>LOCALITA'</t></is></c>"
-            )
+        # N8 LOCALITA'/AULA: keep official shared-string cell (t="s" v=678).
+        # Do NOT rewrite to short "LOCALITA'" — padding places both labels in N8:O9.
         return full
 
     sheet = re.sub(
