@@ -33,7 +33,10 @@ class ExcelExportService {
     (42, 44), // Ven
   ];
 
-  /// Offset pausa pranzo (giallo) nei blocchi da 8 righe Lun–Gio.
+  /// Mon–Thu: first hour = Disposizione (fixed template label).
+  static const _disposizioneOffset = 0;
+
+  /// Mon–Thu: sixth hour = yellow pausa pranzo (fixed template chrome).
   static const _lunchOffset = 5;
 
   /// Truncate for print; ASCII `...`, prefer break at last space.
@@ -193,10 +196,14 @@ class ExcelExportService {
     for (var dayIdx = 0; dayIdx < 5; dayIdx++) {
       final day = weekStart.add(Duration(days: dayIdx));
       final (startRow, endRow) = _dayBlocks[dayIdx];
-      final lunchRow = (endRow - startRow == 7) ? startRow + _lunchOffset : null;
+      final fullDay = endRow - startRow == 7; // Lun–Gio: 8 rows
+      final lunchRow = fullDay ? startRow + _lunchOffset : null;
+      final disposizioneRow =
+          fullDay ? startRow + _disposizioneOffset : null;
+      // App slots map onto teaching rows only — never Disposizione or lunch.
       final lessonRows = [
         for (var r = startRow; r <= endRow; r++)
-          if (r != lunchRow) r,
+          if (r != lunchRow && r != disposizioneRow) r,
       ];
 
       final daySlots =

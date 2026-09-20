@@ -20,6 +20,7 @@ void main() {
     filler.renameSheet('07.09_11.09');
     filler.setText('B5', '3° Corso BTC Cat.B1 2025');
     filler.setDate('B10', DateTime(2026, 9, 7));
+    // First teaching hour is row 11 — row 10 stays Disposizione.
     filler.paintLessonRow(
       row1Based: 11,
       moduleNumber: 15,
@@ -30,7 +31,7 @@ void main() {
       sott: 'T15.9',
       oreSub: 4,
     );
-    // Light fill module — must use dark text xf (contrast)
+    // Module fill must keep BLACK text (never white), even on darker fills.
     filler.paintLessonRow(
       row1Based: 12,
       moduleNumber: 6,
@@ -98,6 +99,37 @@ void main() {
     expect(out.sheet, contains('r="B2"'));
     expect(out.sheet, contains('r="B6"'));
     expect(out.sheet, contains('r="D15"'));
+    // Disposizione (first hour) kept as shared-string cell; lunch D15 empty yellow style
+    expect(
+      RegExp(r'<c r="D10"[^>]*t="s"[^>]*>\s*<v>141</v>').hasMatch(blank.sheet),
+      isTrue,
+    );
+    expect(RegExp(r'<c r="D15" s="653"/>').hasMatch(blank.sheet), isTrue);
+    // Lesson paint must not land on disposizione / lunch rows in this smoke sample
+    expect(RegExp(r'<c r="D10"[^>]*/>|<c r="D10"[^>]*>.*?</c>', dotAll: true)
+            .firstMatch(out.sheet)!
+            .group(0)!,
+        isNot(contains('GAS TURBINE')));
+    expect(RegExp(r'<c r="D15"[^>]*/>|<c r="D15"[^>]*>.*?</c>', dotAll: true)
+            .firstMatch(out.sheet)!
+            .group(0)!,
+        isNot(contains('GAS TURBINE')));
+    expect(out.sheet, contains('<c r="D11"'));
+    expect(RegExp(r'<c r="D11"[^>]*>.*?</c>', dotAll: true)
+            .firstMatch(out.sheet)!
+            .group(0)!,
+        contains('GAS TURBINE'));
+    // Module fonts are black only (corsi-dark = FF000000; no corsi-white)
+    final stylesFile = archiveFile(outBytes, 'xl/styles.xml');
+    expect(stylesFile, contains('<!-- corsi-dark -->'));
+    expect(
+      RegExp(
+        r'<!-- corsi-dark -->.*?<color rgb="FF000000"/>',
+        dotAll: true,
+      ).hasMatch(stylesFile),
+      isTrue,
+    );
+    expect(stylesFile, isNot(contains('corsi-white')));
     // Print: landscape fit 1×1
     expect(out.sheet, contains('orientation="landscape"'));
     expect(out.sheet, contains('fitToWidth="1"'));
@@ -110,6 +142,16 @@ void main() {
     expect(sheetPr.group(0)!.indexOf('tabColor'), lessThan(sheetPr.group(0)!.indexOf('pageSetUpPr')));
     expect(out.workbook, contains("'07.09_11.09'!\$A\$1:\$O\$70"));
   });
+}
+
+String archiveFile(List<int> bytes, String name) {
+  final archive = ZipDecoder().decodeBytes(bytes);
+  for (final f in archive.files) {
+    if (f.isFile && f.name == name) {
+      return utf8.decode(f.content as List<int>);
+    }
+  }
+  throw StateError('missing $name');
 }
 
 class _SheetZip {

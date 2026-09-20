@@ -19,6 +19,7 @@ OUT = ROOT / "assets/templates/ps_weekly_blank.xlsx"
 MAP_OUT = ROOT / "lib/services/ps_module_style_map.dart"
 
 SRC_CANDIDATES = [
+    Path(r"C:\Users\Gianmarco\Desktop\66_PS 3° BTC B1 2025 EI+ CC - 2026.09.07.xlsx"),
     Path(r"F:\66_PS 3° BTC B1 2025 EI+ CC - 2026.09.07.xlsx"),
     Path(r"F:\65_PS 3° BTC B1 2025 EI+ CC - 2026.07.27.xlsx"),
 ]
@@ -27,6 +28,8 @@ SRC_CANDIDATES = [
 PREFERRED_SHEET_HINTS = ("sheet44.xml", "76S", "09giugno", "giugno")
 
 DAY_BLOCKS = [(10, 17), (18, 25), (26, 33), (34, 41), (42, 44)]
+# Mon–Thu 8-row block: row0=Disposizione (fixed), row5=pausa pranzo (yellow).
+DISPO_OFFSET = 0
 LUNCH_OFFSET = 5
 # Official empty-cell styles (from 66_PS EI lesson row) — keep if present.
 EMPTY_BY_COL = {
@@ -72,27 +75,28 @@ def argb(c: int) -> str:
     return f"{c:08X}"
 
 
-def _luminance(argb_hex: str) -> float:
-    r = int(argb_hex[2:4], 16) / 255
-    g = int(argb_hex[4:6], 16) / 255
-    b = int(argb_hex[6:8], 16) / 255
-
-    def lin(c: float) -> float:
-        return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
-
-    return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+def disposizione_rows() -> set[int]:
+    """First hour of each Mon–Thu block — keep template 'Disposizione' label."""
+    return {start for start, end in DAY_BLOCKS if (end - start) == 7}
 
 
-def text_font_for_fill(fill_argb: str, white_id: int, dark_id: int) -> int:
-    return dark_id if _luminance(fill_argb) >= 0.35 else white_id
+def lunch_rows() -> set[int]:
+    """Sixth hour (yellow pausa) — keep template chrome, never fill lessons."""
+    return {
+        start + LUNCH_OFFSET
+        for start, end in DAY_BLOCKS
+        if (end - start) == 7
+    }
 
 
 def lesson_rows() -> set[int]:
+    """Data rows only: skip disposizione + lunch on Mon–Thu; all Fri rows."""
     rows: set[int] = set()
+    dispo = disposizione_rows()
+    lunch = lunch_rows()
     for start, end in DAY_BLOCKS:
-        lunch = start + LUNCH_OFFSET if (end - start) == 7 else None
         for r in range(start, end + 1):
-            if r != lunch:
+            if r not in dispo and r not in lunch:
                 rows.add(r)
     return rows
 
@@ -110,8 +114,9 @@ def style_of(cell_xml: str) -> str | None:
 
 
 def clear_week_data(sheet: str) -> str:
-    """Clear only week-specific content; keep orari (C), lunch chrome, merges/styles."""
+    """Clear only week-specific content; keep orari (C), Disposizione, lunch chrome."""
     lessons = lesson_rows()
+    dispo = disposizione_rows()
     day_starts = {s for s, _ in DAY_BLOCKS}
 
     def repl_cell(m: re.Match) -> str:
@@ -125,6 +130,25 @@ def clear_week_data(sheet: str) -> str:
 
         # Day date cells — empty, keep style
         if col == "B" and row in day_starts:
+            s_attr = f' s="{s_id}"' if s_id else ""
+            return f'<c r="{addr}"{s_attr}/>'
+
+        # Disposizione row: keep C orario + D label; clear aula/data leftovers only.
+        # Do NOT touch D/E/F merge that carries the fixed "Disposizione" wording.
+        if row in dispo and col in ("G", "H", "I", "J", "K", "L", "M", "N", "O"):
+            if col in EMPTY_BY_COL:
+                return f'<c r="{addr}" s="{EMPTY_BY_COL[col]}"/>'
+            s_attr = f' s="{s_id}"' if s_id else ""
+            return f'<c r="{addr}"{s_attr}/>'
+        # Merge slaves E/F on disposizione may hold leftover "AULA …" — blank them
+        # but keep style so D:F fill/chrome stays; D itself is never rewritten.
+        if row in dispo and col in ("E", "F"):
+            return f'<c r="{addr}" s="{EMPTY_BY_COL[col]}"/>'
+
+        # Lunch (yellow): keep D–M chrome; blank LOCALITA' only.
+        if row in lunch_rows() and col in ("N", "O"):
+            if col in EMPTY_BY_COL:
+                return f'<c r="{addr}" s="{EMPTY_BY_COL[col]}"/>'
             s_attr = f' s="{s_id}"' if s_id else ""
             return f'<c r="{addr}"{s_attr}/>'
 
@@ -287,18 +311,14 @@ def inject_module_styles(styles_xml: str) -> tuple[str, dict[str, dict[int, int]
     # Reuse official lesson-row border (style 1159 uses borderId 20).
     border_id = 20
 
-    white_font = (
-        '<font><!-- corsi-white --><b/><sz val="9"/>'
-        '<color rgb="FFFFFFFF"/><name val="Arial"/><family val="2"/></font>'
-    )
+    # Always BLACK text on module fills (never white), even on dark colors.
     dark_font = (
         '<font><!-- corsi-dark --><b/><sz val="9"/>'
-        '<color rgb="FF111827"/><name val="Arial"/><family val="2"/></font>'
+        '<color rgb="FF000000"/><name val="Arial"/><family val="2"/></font>'
     )
-    styles_xml = styles_xml.replace("</fonts>", white_font + dark_font + "</fonts>", 1)
-    styles_xml = _set_count(styles_xml, "fonts", font_count + 2)
-    white_font_id = font_count
-    dark_font_id = font_count + 1
+    styles_xml = styles_xml.replace("</fonts>", dark_font + "</fonts>", 1)
+    styles_xml = _set_count(styles_xml, "fonts", font_count + 1)
+    dark_font_id = font_count
 
     colors = list(MODULE_PALETTE) + [FALLBACK]
     new_fills = []
@@ -325,7 +345,7 @@ def inject_module_styles(styles_xml: str) -> tuple[str, dict[str, dict[int, int]
     cursor = xf_count
     for i, key in enumerate(keys):
         fid = fill_ids[key]
-        font_id = text_font_for_fill(argb(colors[i]), white_font_id, dark_font_id)
+        font_id = dark_font_id
         xf_left[key] = cursor
         new_xfs.append(
             f'<xf numFmtId="0" fontId="{font_id}" fillId="{fid}" '
