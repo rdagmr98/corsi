@@ -220,6 +220,12 @@ def clear_week_data(sheet: str) -> str:
     )
     # Excel open killer on our single-sheet package
     sheet = re.sub(r'\s*view="pageBreakPreview"', "", sheet)
+    sheet = re.sub(
+        r"<conditionalFormatting\b.*?</conditionalFormatting>",
+        "",
+        sheet,
+        flags=re.DOTALL,
+    )
     # sheetPr order: tabColor?, outlinePr?, pageSetUpPr?
     m = re.search(r"<sheetPr>(.*?)</sheetPr>", sheet, flags=re.DOTALL)
     if m:
@@ -471,40 +477,25 @@ def resolve_ei_sheet(zin: zipfile.ZipFile) -> tuple[str, str]:
 
 def pack_from_official(src: Path) -> None:
     with zipfile.ZipFile(src, "r") as zin:
-        sheet_path, printer_path = resolve_ei_sheet(zin)
+        sheet_path, _printer_path = resolve_ei_sheet(zin)
         sheet = zin.read(sheet_path).decode("utf-8")
         styles = zin.read("xl/styles.xml").decode("utf-8")
         theme = zin.read("xl/theme/theme1.xml")
         shared = zin.read("xl/sharedStrings.xml")
         core = zin.read("docProps/core.xml")
-        printer = zin.read(printer_path) if printer_path else b""
 
     sheet = re.sub(r"<drawing[^/]*/>", "", sheet)
     sheet = re.sub(r"<legacyDrawing[^/]*/>", "", sheet)
-    # Drop printer r:id if we omit printer binary
-    if not printer:
-        sheet = re.sub(r'\s+r:id="[^"]+"', "", sheet)
+    # Never keep Desktop printer r:id — DEVMODE vs fit XML crashes Print Preview.
+    sheet = re.sub(r'\s+r:id="[^"]+"', "", sheet)
     sheet = clear_week_data(sheet)
     styles, xf_map = inject_module_styles(styles)
     write_dart_map(xf_map)
-
-    rels = (
-        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
-        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
-    )
-    if printer:
-        rels += (
-            '<Relationship Id="rId1" '
-            'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/printerSettings" '
-            'Target="../printerSettings/printerSettings1.bin"/>'
-        )
-    rels += "</Relationships>"
 
     content_types = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
   <Default Extension="xml" ContentType="application/xml"/>
-  <Default Extension="bin" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.printerSettings"/>
   <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
   <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
   <Override PartName="/xl/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>
@@ -517,12 +508,17 @@ def pack_from_official(src: Path) -> None:
     workbook = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
  xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <workbookPr/>
+  <bookViews>
+    <workbookView windowWidth="20000" windowHeight="10000"/>
+  </bookViews>
   <sheets>
     <sheet name="Settimana" sheetId="1" r:id="rId1"/>
   </sheets>
   <definedNames>
-    <definedName name="_xlnm.Print_Area" localSheetId="0">'Settimana'!$A$1:$O$70</definedName>
+    <definedName name="_xlnm.Print_Area" localSheetId="0">Settimana!$A$1:$O$70</definedName>
   </definedNames>
+  <calcPr calcId="0"/>
 </workbook>
 """
     wb_rels = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -546,16 +542,36 @@ def pack_from_official(src: Path) -> None:
 </Properties>
 """
 
-    # Ensure pageSetup fit 1x1 landscape without breaking printer rid
-    has_printer = bool(printer)
+    # Landscape fit 1×1 — no printerSettings.bin (portrait/scale DEVMODE crash).
     page_setup = (
         '<pageSetup paperSize="9" fitToWidth="1" fitToHeight="1" '
-        'orientation="landscape"'
-        + (' r:id="rId1"' if has_printer else "")
-        + "/>"
+        'orientation="landscape"/>'
     )
     if re.search(r"<pageSetup\b", sheet):
         sheet = re.sub(r"<pageSetup\b[^/]*/>", page_setup, sheet, count=1)
+    sheet = re.sub(
+        r"<pageMargins\b[^/]*/>",
+        '<pageMargins left="0.25" right="0.25" top="0.3" bottom="0.3" '
+        'header="0.2" footer="0.2"/>',
+        sheet,
+        count=1,
+    )
+    sheet = re.sub(r"<colBreaks\b.*?</colBreaks>", "", sheet, count=1, flags=re.DOTALL)
+    sheet = re.sub(r"<rowBreaks\b.*?</rowBreaks>", "", sheet, count=1, flags=re.DOTALL)
+    sheet = re.sub(
+        r"<conditionalFormatting\b.*?</conditionalFormatting>",
+        "",
+        sheet,
+        flags=re.DOTALL,
+    )
+    sheet = re.sub(
+        r"<sheetViews>.*?</sheetViews>",
+        '<sheetViews><sheetView tabSelected="1" workbookViewId="0"/>'
+        "</sheetViews>",
+        sheet,
+        count=1,
+        flags=re.DOTALL,
+    )
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
     tmp = OUT.with_suffix(".tmp.xlsx")
@@ -576,9 +592,6 @@ def pack_from_official(src: Path) -> None:
         w("xl/theme/theme1.xml", theme)
         w("xl/sharedStrings.xml", shared)
         w("xl/worksheets/sheet1.xml", sheet)
-        if printer:
-            w("xl/worksheets/_rels/sheet1.xml.rels", rels)
-            w("xl/printerSettings/printerSettings1.bin", printer)
     shutil.move(tmp, OUT)
     print("wrote from official", src.name, "->", OUT, "size", OUT.stat().st_size)
 

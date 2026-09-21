@@ -189,6 +189,18 @@ void main() {
     expect(out.sheet, contains('fitToHeight="1"'));
     expect(out.sheet, contains('fitToPage="1"'));
     expect(out.sheet, isNot(contains('pageBreakPreview')));
+    expect(out.sheet, isNot(contains('colBreaks')));
+    expect(out.sheet, isNot(contains('r:id="')));
+    expect(out.sheet, isNot(contains('conditionalFormatting')));
+    expect(out.sheet, isNot(contains('1048576')));
+    expect(out.sheet, contains('ref="A1:AG65"'));
+    expect(
+      ZipDecoder()
+          .decodeBytes(outBytes)
+          .files
+          .any((f) => f.name.contains('printerSettings')),
+      isFalse,
+    );
     // sheetPr children: tabColor before pageSetUpPr (OOXML order)
     final sheetPr =
         RegExp(r'<sheetPr>.*?</sheetPr>', dotAll: true).firstMatch(out.sheet)!;

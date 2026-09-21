@@ -47,6 +47,9 @@ class PsOoxmlFiller {
   /// OOXML `sheetPr` child order is strict: tabColor?, outlinePr?, pageSetUpPr?.
   /// Inserting pageSetUpPr before tabColor makes Excel refuse to open the file.
   /// `view="pageBreakPreview"` on sheetView also makes Excel refuse this package.
+  /// Printer DEVMODE (`r:id` → printerSettings.bin) from Desktop portrait/scale
+  /// must not be kept — mismatches landscape fit and crashes Print Preview.
+  /// Manual `colBreaks` also fight fitToPage and can multi-page / crash.
   void ensurePrintSetup() {
     _sheet = _sheet.replaceFirst(
       RegExp(r'\s*view="pageBreakPreview"'),
@@ -77,13 +80,17 @@ class PsOoxmlFiller {
       );
     }
 
-    // Preserve printerSettings r:id when present on the template.
-    final hasPrinterRid =
-        RegExp(r'<pageSetup\b[^>]*\br:id="').hasMatch(_sheet);
-    final pageSetup =
+    // Drop pageBreakPreview leftovers + selection far outside the form.
+    _sheet = _sheet.replaceFirst(
+      RegExp(r'<sheetViews>.*?</sheetViews>', dotAll: true),
+      '<sheetViews><sheetView tabSelected="1" workbookViewId="0"/>'
+      '</sheetViews>',
+    );
+
+    // Never keep printerSettings r:id — DEVMODE vs XML mismatch crashes print.
+    const pageSetup =
         '<pageSetup paperSize="9" fitToWidth="1" fitToHeight="1" '
-        'orientation="landscape"'
-        '${hasPrinterRid ? ' r:id="rId1"' : ''}/>';
+        'orientation="landscape"/>';
     if (RegExp(r'<pageSetup\b').hasMatch(_sheet)) {
       _sheet = _sheet.replaceFirst(RegExp(r'<pageSetup\b[^/]*/>'), pageSetup);
     } else if (_sheet.contains('<pageMargins')) {
@@ -97,13 +104,32 @@ class PsOoxmlFiller {
         'header="0.2" footer="0.2"/>';
     _sheet = _sheet.replaceFirst(RegExp(r'<pageMargins\b[^/]*/>'), margins);
 
+    _sheet = _sheet.replaceFirst(
+      RegExp(r'<colBreaks\b.*?</colBreaks>', dotAll: true),
+      '',
+    );
+    _sheet = _sheet.replaceFirst(
+      RegExp(r'<rowBreaks\b.*?</rowBreaks>', dotAll: true),
+      '',
+    );
+    // Million-row CF (B69:B1048576) from Desktop → Print Preview crash.
+    _sheet = _sheet.replaceAll(
+      RegExp(r'<conditionalFormatting\b.*?</conditionalFormatting>', dotAll: true),
+      '',
+    );
+    // Keep real <dimension> (chrome to ~AG); Print_Area alone limits print.
+
     final sheetName =
         RegExp(r'name="([^"]+)"').firstMatch(_workbook)?.group(1) ??
             'Settimana';
-    final safe = sheetName.replaceAll("'", "''");
+    // Quote sheet name only when needed (space / punctuation).
+    final needsQuote = RegExp(r'[^A-Za-z0-9_]').hasMatch(sheetName);
+    final ref = needsQuote
+        ? "'${sheetName.replaceAll("'", "''")}'!"
+        : '$sheetName!';
     final dn =
         '<definedName name="_xlnm.Print_Area" localSheetId="0">'
-        "'$safe'!\$A\$1:\$O\$70</definedName>";
+        '${ref}\$A\$1:\$O\$70</definedName>';
     if (_workbook.contains('_xlnm.Print_Area')) {
       _workbook = _workbook.replaceFirst(
         RegExp(
@@ -119,6 +145,14 @@ class PsOoxmlFiller {
       _workbook = _workbook.replaceFirst(
         '</workbook>',
         '<definedNames>$dn</definedNames></workbook>',
+      );
+    }
+    // Ensure bookViews so Excel binds page setup cleanly.
+    if (!_workbook.contains('<bookViews>')) {
+      _workbook = _workbook.replaceFirst(
+        '<sheets>',
+        '<workbookPr/><bookViews><workbookView windowWidth="20000" '
+        'windowHeight="10000"/></bookViews><sheets>',
       );
     }
   }
@@ -191,6 +225,27 @@ class PsOoxmlFiller {
       wbBytes.length,
       wbBytes,
     );
+    // Drop Desktop printerSettings — orphan + mismatched DEVMODE crashes print.
+    _files.removeWhere(
+      (k, _) =>
+          k.contains('printerSettings') ||
+          k == 'xl/worksheets/_rels/sheet1.xml.rels',
+    );
+    // Strip printer content-types (Override + Default bin).
+    final ctKey = '[Content_Types].xml';
+    if (_files.containsKey(ctKey)) {
+      var ct = utf8.decode(_files[ctKey]!.content as List<int>);
+      ct = ct.replaceAll(
+        RegExp(r'<Override[^>]*printerSettings[^>]*/>\s*'),
+        '',
+      );
+      ct = ct.replaceAll(
+        RegExp(r'<Default Extension="bin"[^/]*/>\s*'),
+        '',
+      );
+      final ctBytes = utf8.encode(ct);
+      _files[ctKey] = ArchiveFile(ctKey, ctBytes.length, ctBytes);
+    }
 
     final out = Archive();
     // Stable order helps Excel; Content_Types first.

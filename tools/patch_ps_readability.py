@@ -158,13 +158,11 @@ def patch_sheet(sheet: str) -> str:
             1,
         )
 
-    # Keep existing printerSettings r:id if present; otherwise plain pageSetup.
-    has_printer_rid = bool(re.search(r'<pageSetup\b[^>]*\br:id="', sheet))
+    # Never keep printerSettings r:id — Desktop DEVMODE (portrait/scale) vs
+    # landscape fit XML crashes Excel Print Preview on the stripped package.
     page_setup = (
         '<pageSetup paperSize="9" fitToWidth="1" fitToHeight="1" '
-        'orientation="landscape"'
-        + (' r:id="rId1"' if has_printer_rid else "")
-        + "/>"
+        'orientation="landscape"/>'
     )
     sheet = re.sub(r"<pageSetup\b[^/]*/>", page_setup, sheet, count=1)
     sheet = re.sub(
@@ -173,6 +171,22 @@ def patch_sheet(sheet: str) -> str:
         'header="0.2" footer="0.2"/>',
         sheet,
         count=1,
+    )
+    sheet = re.sub(r"<colBreaks\b.*?</colBreaks>", "", sheet, count=1, flags=re.DOTALL)
+    sheet = re.sub(r"<rowBreaks\b.*?</rowBreaks>", "", sheet, count=1, flags=re.DOTALL)
+    sheet = re.sub(
+        r"<conditionalFormatting\b.*?</conditionalFormatting>",
+        "",
+        sheet,
+        flags=re.DOTALL,
+    )
+    sheet = re.sub(
+        r"<sheetViews>.*?</sheetViews>",
+        '<sheetViews><sheetView tabSelected="1" workbookViewId="0"/>'
+        "</sheetViews>",
+        sheet,
+        count=1,
+        flags=re.DOTALL,
     )
     return sheet
 
