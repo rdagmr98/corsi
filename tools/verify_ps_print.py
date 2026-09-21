@@ -65,7 +65,7 @@ def excel_print_check(path: Path) -> str:
             AddToMru=False,
         )
         ws = wb.Sheets(1)
-        orient = ws.PageSetup.Orientation  # 2 = xlLandscape
+        orient = ws.PageSetup.Orientation  # 1 = xlPortrait, 2 = xlLandscape
         fit_w = ws.PageSetup.FitToPagesWide
         fit_h = ws.PageSetup.FitToPagesTall
         zoom = ws.PageSetup.Zoom  # False when fit-to-page

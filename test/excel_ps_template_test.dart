@@ -183,8 +183,8 @@ void main() {
       isTrue,
     );
     expect(stylesFile, isNot(contains('corsi-white')));
-    // Print: landscape fit 1×1
-    expect(out.sheet, contains('orientation="landscape"'));
+    // Print: portrait fit 1×1
+    expect(out.sheet, contains('orientation="portrait"'));
     expect(out.sheet, contains('fitToWidth="1"'));
     expect(out.sheet, contains('fitToHeight="1"'));
     expect(out.sheet, contains('fitToPage="1"'));

@@ -100,11 +100,11 @@ def build_sheet(chunks: dict[str, str], *, with_cf: bool, with_breaks: bool, wit
     fmt = chunks["sheetFormatPr"] or '<sheetFormatPr defaultRowHeight="15"/>'
     margins = (
         chunks["pageMargins"]
-        or '<pageMargins left="0.25" right="0.25" top="0.3" bottom="0.3" header="0.2" footer="0.2"/>'
+        or '<pageMargins left="0.2" right="0.2" top="0.25" bottom="0.25" header="0.15" footer="0.15"/>'
     )
     setup = (
         '<pageSetup paperSize="9" fitToWidth="1" fitToHeight="1" '
-        'orientation="landscape"/>'
+        'orientation="portrait"/>'
     )
     after = chunks["mergeCells"]
     if with_cf:

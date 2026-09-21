@@ -42,13 +42,12 @@ class PsOoxmlFiller {
     }
   }
 
-  /// Landscape, fit 1×1 page — applied at encode so every export prints usable.
+  /// Portrait, fit 1×1 page — applied at encode so every export prints usable.
   ///
   /// OOXML `sheetPr` child order is strict: tabColor?, outlinePr?, pageSetUpPr?.
   /// Inserting pageSetUpPr before tabColor makes Excel refuse to open the file.
   /// `view="pageBreakPreview"` on sheetView also makes Excel refuse this package.
-  /// Printer DEVMODE (`r:id` → printerSettings.bin) from Desktop portrait/scale
-  /// must not be kept — mismatches landscape fit and crashes Print Preview.
+  /// Never keep printerSettings.bin (`r:id`) — DEVMODE mismatch crashes Print Preview.
   /// Manual `colBreaks` also fight fitToPage and can multi-page / crash.
   void ensurePrintSetup() {
     _sheet = _sheet.replaceFirst(
@@ -90,7 +89,7 @@ class PsOoxmlFiller {
     // Never keep printerSettings r:id — DEVMODE vs XML mismatch crashes print.
     const pageSetup =
         '<pageSetup paperSize="9" fitToWidth="1" fitToHeight="1" '
-        'orientation="landscape"/>';
+        'orientation="portrait"/>';
     if (RegExp(r'<pageSetup\b').hasMatch(_sheet)) {
       _sheet = _sheet.replaceFirst(RegExp(r'<pageSetup\b[^/]*/>'), pageSetup);
     } else if (_sheet.contains('<pageMargins')) {
@@ -99,9 +98,10 @@ class PsOoxmlFiller {
       _sheet = _sheet.replaceFirst('</worksheet>', '$pageSetup</worksheet>');
     }
 
+    // Tight margins so A1:O70 still fits 1 portrait page under fitToPage.
     const margins =
-        '<pageMargins left="0.25" right="0.25" top="0.3" bottom="0.3" '
-        'header="0.2" footer="0.2"/>';
+        '<pageMargins left="0.2" right="0.2" top="0.25" bottom="0.25" '
+        'header="0.15" footer="0.15"/>';
     _sheet = _sheet.replaceFirst(RegExp(r'<pageMargins\b[^/]*/>'), margins);
 
     _sheet = _sheet.replaceFirst(

@@ -10,8 +10,8 @@ Root cause of Print / Print Preview crash:
 - sheetView still carried pageBreakPreview zoom leftovers.
 
 Safe print profile (keeps form chrome A1:O):
-- landscape, fitToWidth=1, fitToHeight=1, fitToPage
-- margins 0.25/0.3, Print_Area A1:O70, dimension A1:AG65 (real)
+- portrait, fitToWidth=1, fitToHeight=1, fitToPage
+- margins 0.2/0.25, Print_Area A1:O70, dimension A1:AG65 (real)
 - NO printerSettings part / r:id
 - NO colBreaks / rowBreaks / conditionalFormatting
 - normal sheetView
@@ -81,12 +81,12 @@ def patch_sheet(sheet: str) -> str:
         )
 
     margins = (
-        '<pageMargins left="0.25" right="0.25" top="0.3" bottom="0.3" '
-        'header="0.2" footer="0.2"/>'
+        '<pageMargins left="0.2" right="0.2" top="0.25" bottom="0.25" '
+        'header="0.15" footer="0.15"/>'
     )
     setup = (
         '<pageSetup paperSize="9" fitToWidth="1" fitToHeight="1" '
-        'orientation="landscape"/>'
+        'orientation="portrait"/>'
     )
     if re.search(r"<pageMargins\b", sheet):
         sheet = re.sub(r"<pageMargins\b[^/]*/>", margins, sheet, count=1)
@@ -191,7 +191,7 @@ def main() -> None:
         assert "pageBreakPreview" not in s
         assert "1048576" not in s
         assert "conditionalFormatting" not in s
-        assert 'fitToWidth="1"' in s and 'orientation="landscape"' in s
+        assert 'fitToWidth="1"' in s and 'orientation="portrait"' in s
         assert not any("printerSettings" in n for n in z.namelist())
         print("pageSetup", re.search(r"<pageSetup[^/]*/>", s).group(0))
         print("margins", re.search(r"<pageMargins[^/]*/>", s).group(0))

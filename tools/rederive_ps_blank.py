@@ -542,17 +542,17 @@ def pack_from_official(src: Path) -> None:
 </Properties>
 """
 
-    # Landscape fit 1×1 — no printerSettings.bin (portrait/scale DEVMODE crash).
+    # Portrait fit 1×1 — no printerSettings.bin (DEVMODE mismatch crash).
     page_setup = (
         '<pageSetup paperSize="9" fitToWidth="1" fitToHeight="1" '
-        'orientation="landscape"/>'
+        'orientation="portrait"/>'
     )
     if re.search(r"<pageSetup\b", sheet):
         sheet = re.sub(r"<pageSetup\b[^/]*/>", page_setup, sheet, count=1)
     sheet = re.sub(
         r"<pageMargins\b[^/]*/>",
-        '<pageMargins left="0.25" right="0.25" top="0.3" bottom="0.3" '
-        'header="0.2" footer="0.2"/>',
+        '<pageMargins left="0.2" right="0.2" top="0.25" bottom="0.25" '
+        'header="0.15" footer="0.15"/>',
         sheet,
         count=1,
     )
