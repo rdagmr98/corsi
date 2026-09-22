@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'providers/auth_provider.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/master/master_shell.dart';
 import 'screens/director/director_shell.dart';
@@ -12,6 +13,12 @@ import 'theme.dart';
 
 final _router = GoRouter(
   initialLocation: '/login',
+  // Reload su una shell senza utente in memoria: torna al login, che ripristina la sessione.
+  redirect: (context, state) =>
+      state.matchedLocation != '/login' &&
+              !ProviderScope.containerOf(context).read(authProvider).isLoggedIn
+          ? '/login'
+          : null,
   routes: [
     GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
     GoRoute(path: '/master', builder: (_, __) => const MasterShell()),

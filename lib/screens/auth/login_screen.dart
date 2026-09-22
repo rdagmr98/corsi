@@ -21,6 +21,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _userService = UserService();
   final _courseService = CourseService();
   bool _obscure = true;
+  bool _restoring = true;
+
+  @override
+  void initState() {
+    super.initState();
+    ref.read(authProvider).restore().then((ok) {
+      if (!mounted) return;
+      if (ok) {
+        _goHome(ref.read(authProvider).currentUser!);
+      } else {
+        setState(() => _restoring = false);
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -33,7 +47,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final auth = ref.read(authProvider);
     final ok = await auth.login(_usernameCtrl.text.trim(), _passwordCtrl.text);
     if (!ok || !mounted) return;
-    final user = auth.currentUser!;
+    _goHome(auth.currentUser!);
+  }
+
+  void _goHome(AppUser user) {
     switch (user.userRole) {
       case UserRole.adminMaster:
         context.go('/master');
@@ -243,6 +260,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final auth = ref.watch(authProvider);
+    if (_restoring) {
+      return const Scaffold(
+        backgroundColor: kBg,
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
     return Scaffold(
       backgroundColor: kBg,
       body: Center(
