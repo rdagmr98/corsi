@@ -42,6 +42,8 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
   CourseTypeInfo? _typeInfo;
   List<ScheduledLesson> _allCourseLessons = [];
 
+  // Aritmetica a calendario (non Duration): con l'ora legale +7*24h da
+  // lunedì 00:00 finiva a domenica 23:00 e la settimana partiva di domenica.
   static DateTime _mondayOf(DateTime d) {
     final diff = d.weekday - DateTime.monday;
     return DateTime(d.year, d.month, d.day - diff);
@@ -358,14 +360,14 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
 
   void _prevWeek() {
     setState(() {
-      _weekStart = _weekStart.subtract(const Duration(days: 7));
+      _weekStart = _mondayOf(DateTime(_weekStart.year, _weekStart.month, _weekStart.day - 7));
       _refreshWeek();
     });
   }
 
   void _nextWeek() {
     setState(() {
-      _weekStart = _weekStart.add(const Duration(days: 7));
+      _weekStart = _mondayOf(DateTime(_weekStart.year, _weekStart.month, _weekStart.day + 7));
       _refreshWeek();
     });
   }
@@ -1691,7 +1693,8 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
       return const Center(child: Text('Nessun corso assegnato', style: TextStyle(color: kTextDim)));
     }
 
-    final weekDays = List.generate(7, (i) => _weekStart.add(Duration(days: i)));
+    final weekDays = List.generate(
+        7, (i) => DateTime(_weekStart.year, _weekStart.month, _weekStart.day + i));
     final allSlots = _typeInfo?.schedule.mondayThursday ?? [];
     final recoveryLessons = _weekLessons.where((l) => l.timeSlot == 0).toList();
     final regularLessons = _weekLessons.where((l) => l.timeSlot > 0).toList();
