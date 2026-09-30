@@ -223,6 +223,65 @@ class ScheduleService {
     if (changed) await _db.saveSchedules(schedules);
   }
 
+  // Venerdì ore 4ª-6ª + intero sabato/domenica: fuori dall'orario regolare,
+  // disponibili solo per i recuperi.
+  static bool isRegularSlot(DateTime d, int slot) =>
+      d.weekday <= DateTime.friday && (d.weekday != DateTime.friday || slot <= 3);
+
+  /// Drag & drop del planner: su posizione libera sposta solo [dragged]; su
+  /// posizione occupata la inserisce lì e fa scalare di una posizione le
+  /// lezioni non confermate comprese tra origine e destinazione, riempiendo
+  /// il buco lasciato. Confermate (presenze registrate) e buchi già esistenti
+  /// restano fermi. Ritorna id → (data, ora) solo per le lezioni che cambiano.
+  static Map<String, (DateTime, int)> planDrop(
+      List<ScheduledLesson> courseLessons,
+      ScheduledLesson dragged,
+      DateTime day,
+      int slot) {
+    int key(DateTime d, int s) => ((d.year * 100 + d.month) * 100 + d.day) * 100 + s;
+    final src = key(dragged.date, dragged.timeSlot);
+    final dst = key(day, slot);
+    if (!courseLessons.any((l) => key(l.date, l.timeSlot) == dst)) {
+      return {dragged.id: (DateTime(day.year, day.month, day.day), slot)};
+    }
+    final lo = src < dst ? src : dst;
+    final hi = src < dst ? dst : src;
+    final chain = courseLessons.where((l) {
+      final k = key(l.date, l.timeSlot);
+      return !l.confirmed && k >= lo && k <= hi && isRegularSlot(l.date, l.timeSlot);
+    }).toList()
+      ..sort((a, b) => key(a.date, a.timeSlot).compareTo(key(b.date, b.timeSlot)));
+    final order = chain.where((l) => l.id != dragged.id).toList();
+    if (order.length != chain.length - 1) return {};
+    if (src < dst) {
+      order.add(dragged);
+    } else {
+      order.insert(0, dragged);
+    }
+    return {
+      for (var i = 0; i < chain.length; i++)
+        if (order[i].id != chain[i].id) order[i].id: (chain[i].date, chain[i].timeSlot),
+    };
+  }
+
+  /// Sposta più lezioni (id → data, ora) in un solo salvataggio (drag & drop
+  /// del planner con scalamento delle lezioni successive).
+  Future<void> moveLessons(Map<String, (DateTime, int)> moves) async {
+    if (moves.isEmpty) return;
+    final nowIso = DateTime.now().toIso8601String();
+    final schedules = _db.schedules.map((s) {
+      final m = moves[s['id']];
+      if (m == null) return s;
+      return {
+        ...s,
+        'date': m.$1.toIso8601String().split('T').first,
+        'time_slot': m.$2,
+        'updated_at': nowIso,
+      };
+    }).toList();
+    await _db.saveSchedules(schedules);
+  }
+
   Future<void> deleteLesson(String lessonId) async {
     final schedules = _db.schedules.where((s) => s['id'] != lessonId).toList();
     await _db.saveSchedules(schedules);

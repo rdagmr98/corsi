@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -41,6 +42,8 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
   List<SlotNote> _weekNotes = [];
   CourseTypeInfo? _typeInfo;
   List<ScheduledLesson> _allCourseLessons = [];
+  // Cambio settimana durante il trascinamento sui bordi laterali.
+  Timer? _edgeTimer;
 
   // Aritmetica a calendario (non Duration): con l'ora legale +7*24h da
   // lunedì 00:00 finiva a domenica 23:00 e la settimana partiva di domenica.
@@ -53,6 +56,12 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _edgeTimer?.cancel();
+    super.dispose();
   }
 
   void _load() {
@@ -852,6 +861,80 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
     }
     return null;
   }
+
+  Future<void> _dropLesson(ScheduledLesson dragged, DateTime day, int slot) async {
+    final moves = ScheduleService.planDrop(_allCourseLessons, dragged, day, slot);
+    if (moves.isEmpty) return;
+
+    // Istruttore già impegnato in un altro corso nella nuova ora: chiedi.
+    final byId = {for (final l in _allCourseLessons) l.id: l};
+    final conflicts = <String>[];
+    for (final e in moves.entries) {
+      final l = byId[e.key] ?? dragged;
+      final (d, s) = e.value;
+      for (final instr in [l.instructorId, l.instructorId2].whereType<String>()) {
+        if (_scheduleService
+            .lessonsForInstructorAt(instr, d, s)
+            .any((o) => !moves.containsKey(o.id))) {
+          conflicts.add('${DateFormat('EEE dd/MM', 'it').format(d)} $sª – '
+              '${_normSubCode(l.submoduleCode)}');
+        }
+      }
+    }
+    if (conflicts.isNotEmpty) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: kCard,
+          title: const Text('Istruttore già impegnato',
+              style: TextStyle(color: kText, fontSize: 14)),
+          content: Text(
+            'In queste ore l\'istruttore ha già lezione in un altro corso:\n'
+            '${conflicts.take(10).join('\n')}'
+            '${conflicts.length > 10 ? '\n… e altre ${conflicts.length - 10}' : ''}',
+            style: const TextStyle(color: kTextDim, fontSize: 12),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Annulla')),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Sposta comunque')),
+          ],
+        ),
+      );
+      if (ok != true) return;
+    }
+
+    await _scheduleService.moveLessons(moves);
+    _refreshWeek();
+    if (mounted && moves.length > 1) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Lezione spostata, ${moves.length - 1} lezioni scalate')));
+    }
+  }
+
+  /// Striscia laterale: tenendo una lezione trascinata sopra, cambia
+  /// settimana ogni 700 ms.
+  Widget _weekEdge({required bool next}) => DragTarget<ScheduledLesson>(
+        onWillAcceptWithDetails: (_) {
+          _edgeTimer?.cancel();
+          _edgeTimer = Timer.periodic(const Duration(milliseconds: 700),
+              (_) => next ? _nextWeek() : _prevWeek());
+          return true;
+        },
+        onLeave: (_) => _edgeTimer?.cancel(),
+        onAcceptWithDetails: (_) => _edgeTimer?.cancel(),
+        builder: (context, candidates, _) => candidates.isEmpty
+            ? const SizedBox.expand()
+            : Container(
+                color: kPrimary.withOpacity(0.25),
+                alignment: Alignment.center,
+                child: Icon(next ? Icons.chevron_right : Icons.chevron_left,
+                    color: kPrimary),
+              ),
+      );
 
   Future<void> _showExcludedDates() async {
     if (_selected == null) return;
@@ -1850,7 +1933,10 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
           ),
         ),
         Expanded(
-          child: SingleChildScrollView(
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+          SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: SingleChildScrollView(
               child: Padding(
@@ -1930,13 +2016,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                             ),
                           ),
                           ...weekDays.map((day) {
-                            final isWeekend = day.weekday == DateTime.saturday ||
-                                day.weekday == DateTime.sunday;
-                            // Venerdì ore 4ª-6ª + intero sabato/domenica: fuori
-                            // dall'orario regolare, disponibili solo per i recuperi.
-                            final isExtraSlot = isWeekend ||
-                                (day.weekday == DateTime.friday && slot.slot > 3);
-                            if (isExtraSlot) {
+                            if (!ScheduleService.isRegularSlot(day, slot.slot)) {
                               return TableCell(
                                 child: InkWell(
                                   onTap: () => _addRecovery(day),
@@ -1960,8 +2040,23 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                             final slotNote = _weekNotes
                                 .where((n) => _sameDay(n.date, day) && n.timeSlot == slot.slot)
                                 .firstOrNull;
+                            final dayStr = DateFormat('yyyy-MM-dd').format(day);
                             return TableCell(
-                              child: lesson == null
+                              child: DragTarget<ScheduledLesson>(
+                                onWillAcceptWithDetails: (d) =>
+                                    d.data.id != lesson?.id &&
+                                    lesson?.confirmed != true &&
+                                    !(_selected?.excludedDates.contains(dayStr) ?? false),
+                                onAcceptWithDetails: (d) =>
+                                    _dropLesson(d.data, day, slot.slot),
+                                builder: (context, candidates, _) => Container(
+                                  foregroundDecoration: candidates.isEmpty
+                                      ? null
+                                      : BoxDecoration(
+                                          border: Border.all(color: kPrimary, width: 2),
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                  child: lesson == null
                                   ? InkWell(
                                       onTap: () => _addLesson(day, slot.slot),
                                       onSecondaryTap: () => _editNote(day, slot.slot, slotNote),
@@ -1990,6 +2085,8 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                                       ordinals: lessonOrdinals,
                                       planT: subPlanT, planP: subPlanP,
                                       taskOrdinals: taskOrdinals, taskPlanMap: taskPlanMap),
+                                ),
+                              ),
                             );
                           }),
                         ],
@@ -1999,6 +2096,12 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                 ),
               ),
             ),
+          ),
+              Positioned(left: 0, top: 0, bottom: 0, width: 28,
+                  child: _weekEdge(next: false)),
+              Positioned(right: 0, top: 0, bottom: 0, width: 28,
+                  child: _weekEdge(next: true)),
+            ],
           ),
         ),
       ],
@@ -2331,7 +2434,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
       hoursStr,
     ].join('\n');
 
-    return GestureDetector(
+    final cell = GestureDetector(
       onTap: () => _editLessonInstructor(lesson),
       onSecondaryTap: () => _deleteLesson(lesson),
       child: Tooltip(
@@ -2423,6 +2526,30 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
         ),
       ),
     ));
+    // Confermate = presenze già registrate su quella data/ora: non si spostano.
+    if (lesson.confirmed) return cell;
+    return Draggable<ScheduledLesson>(
+      data: lesson,
+      feedback: Material(
+        color: Colors.transparent,
+        child: Container(
+          width: 156,
+          height: 60,
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: kSurface,
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(color: base, width: 1.5),
+          ),
+          child: Text(displayTopic,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: Colors.white, fontSize: 10)),
+        ),
+      ),
+      childWhenDragging: Opacity(opacity: 0.3, child: cell),
+      child: cell,
+    );
   }
 
   bool _sameDay(DateTime a, DateTime b) =>
