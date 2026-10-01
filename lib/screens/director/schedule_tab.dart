@@ -44,6 +44,12 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
   List<ScheduledLesson> _allCourseLessons = [];
   // Cambio settimana durante il trascinamento sui bordi laterali.
   Timer? _edgeTimer;
+  // Anteprima del riordino durante il trascinamento (id → data, ora), come
+  // la ReorderableListView di gym_app. _shownPreview = quella dell'ultimo
+  // build: le lezioni scivolano da lì alla nuova posizione.
+  Map<String, (DateTime, int)> _preview = {};
+  Map<String, (DateTime, int)> _shownPreview = {};
+  String? _dragId;
 
   // Aritmetica a calendario (non Duration): con l'ora legale +7*24h da
   // lunedì 00:00 finiva a domenica 23:00 e la settimana partiva di domenica.
@@ -271,6 +277,9 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
       _allCourseLessons = _scheduleService.getLessonsForCourse(_selected!.id)
           .where((l) => l.timeSlot > 0).toList();
       _typeInfo = _refService.getEffectiveCourseType(_selected!.courseTypeId, _selected!.extensionTypeId, _selected!.mamlCombinationId);
+      // Cambio settimana o salvataggio: i DragTarget vecchi spariscono senza onLeave.
+      _preview = {};
+      _dragId = null;
     });
   }
 
@@ -904,15 +913,34 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
           ],
         ),
       );
-      if (ok != true) return;
+      if (ok != true) {
+        _clearPreview();
+        return;
+      }
     }
 
+    // L'anteprima resta a schermo fino al _refreshWeek: niente salto indietro.
     await _scheduleService.moveLessons(moves);
     _refreshWeek();
     if (mounted && moves.length > 1) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text('Lezione spostata, ${moves.length - 1} lezioni scalate')));
     }
+  }
+
+  void _setPreview(ScheduledLesson dragged, DateTime day, int slot) {
+    setState(() {
+      _preview = ScheduleService.planDrop(_allCourseLessons, dragged, day, slot);
+      _dragId = dragged.id;
+    });
+  }
+
+  void _clearPreview() {
+    if (_dragId == null || !mounted) return;
+    setState(() {
+      _preview = {};
+      _dragId = null;
+    });
   }
 
   /// Striscia laterale: tenendo una lezione trascinata sopra, cambia
@@ -1781,6 +1809,8 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
     final allSlots = _typeInfo?.schedule.mondayThursday ?? [];
     final recoveryLessons = _weekLessons.where((l) => l.timeSlot == 0).toList();
     final regularLessons = _weekLessons.where((l) => l.timeSlot > 0).toList();
+    final shownBefore = _shownPreview;
+    _shownPreview = _preview;
     final subNameMap = <String, String>{
       for (final m in _typeInfo?.modules ?? [])
         for (final s in m.submodules) s.code: s.name,
@@ -2037,16 +2067,29 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                             final lesson = regularLessons
                                 .where((l) => _sameDay(l.date, day) && l.timeSlot == slot.slot)
                                 .firstOrNull;
+                            // In anteprima: chi arriva qui, altrimenti chi c'è se non se ne va.
+                            final shown = _preview.isEmpty
+                                ? lesson
+                                : _allCourseLessons.where((l) {
+                                      final p = _preview[l.id];
+                                      return p != null && _sameDay(p.$1, day) && p.$2 == slot.slot;
+                                    }).firstOrNull ??
+                                    (_preview.containsKey(lesson?.id) ? null : lesson);
                             final slotNote = _weekNotes
                                 .where((n) => _sameDay(n.date, day) && n.timeSlot == slot.slot)
                                 .firstOrNull;
                             final dayStr = DateFormat('yyyy-MM-dd').format(day);
                             return TableCell(
                               child: DragTarget<ScheduledLesson>(
-                                onWillAcceptWithDetails: (d) =>
-                                    d.data.id != lesson?.id &&
-                                    lesson?.confirmed != true &&
-                                    !(_selected?.excludedDates.contains(dayStr) ?? false),
+                                onWillAcceptWithDetails: (d) {
+                                  final ok = d.data.id != lesson?.id &&
+                                      lesson?.confirmed != true &&
+                                      !(_selected?.excludedDates.contains(dayStr) ?? false);
+                                  if (ok) _setPreview(d.data, day, slot.slot);
+                                  return ok;
+                                },
+                                // Leave e enter arrivano nello stesso evento: un solo build.
+                                onLeave: (_) => _clearPreview(),
                                 onAcceptWithDetails: (d) =>
                                     _dropLesson(d.data, day, slot.slot),
                                 builder: (context, candidates, _) => Container(
@@ -2056,7 +2099,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                                           border: Border.all(color: kPrimary, width: 2),
                                           borderRadius: BorderRadius.circular(4),
                                         ),
-                                  child: lesson == null
+                                  child: shown == null
                                   ? InkWell(
                                       onTap: () => _addLesson(day, slot.slot),
                                       onSecondaryTap: () => _editNote(day, slot.slot, slotNote),
@@ -2081,10 +2124,11 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                                             : const Icon(Icons.add, color: kBorder, size: 16),
                                       ),
                                     )
-                                  : _lessonCell(lesson, subNameMap, instrNames,
-                                      ordinals: lessonOrdinals,
-                                      planT: subPlanT, planP: subPlanP,
-                                      taskOrdinals: taskOrdinals, taskPlanMap: taskPlanMap),
+                                  : _slide(shown, day, slot.slot, shownBefore,
+                                      _lessonCell(shown, subNameMap, instrNames,
+                                          ordinals: lessonOrdinals,
+                                          planT: subPlanT, planP: subPlanP,
+                                          taskOrdinals: taskOrdinals, taskPlanMap: taskPlanMap)),
                                 ),
                               ),
                             );
@@ -2375,6 +2419,25 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
     await _scheduleService.confirmLessons(
         pending.map((l) => l.id).toList(), user?.id ?? '');
     _refreshWeek();
+  }
+
+  /// Fa scivolare la lezione dalla cella in cui era mostrata al build
+  /// precedente; la trascinata resta in trasparenza dove cadrà.
+  Widget _slide(ScheduledLesson l, DateTime day, int slot,
+      Map<String, (DateTime, int)> before, Widget child) {
+    if (l.id == _dragId) return Opacity(opacity: 0.3, child: child);
+    final (fromDay, fromSlot) = before[l.id] ?? (l.date, l.timeSlot);
+    // Ore/24 arrotondate: col cambio d'ora un giorno può durare 23 o 25 h.
+    final dx = (fromDay.difference(day).inHours / 24).round().clamp(-7, 7);
+    final dy = (fromSlot - slot).clamp(-6, 6);
+    return TweenAnimationBuilder<Offset>(
+      key: ValueKey(l.id),
+      tween: Tween(begin: Offset(dx.toDouble(), dy.toDouble()), end: Offset.zero),
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeInOut,
+      builder: (_, o, c) => FractionalTranslation(translation: o, child: c),
+      child: child,
+    );
   }
 
   Widget _lessonCell(
