@@ -1966,7 +1966,10 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-          SingleChildScrollView(
+          // StackFit.expand allargherebbe la griglia a tutto schermo: centrata come prima.
+          Align(
+            alignment: Alignment.topCenter,
+            child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: SingleChildScrollView(
               child: Padding(
@@ -2140,6 +2143,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                 ),
               ),
             ),
+          ),
           ),
               Positioned(left: 0, top: 0, bottom: 0, width: 28,
                   child: _weekEdge(next: false)),
