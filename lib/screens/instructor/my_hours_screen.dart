@@ -63,8 +63,6 @@ class _InstructorHoursScreenState extends ConsumerState<InstructorHoursScreen> {
               6,
               teachOk,
               Icons.school,
-              detail:
-                  '${lessonH.toStringAsFixed(0)}h da lezioni confermate · ${manualH.toStringAsFixed(0)}h da registrazioni manuali',
             ),
             const SizedBox(height: 12),
             _currencyCard(
@@ -374,8 +372,7 @@ class _InstructorHoursScreenState extends ConsumerState<InstructorHoursScreen> {
     );
   }
 
-  Widget _currencyCard(String label, double current, double required, bool ok, IconData icon,
-      {String? detail}) {
+  Widget _currencyCard(String label, double current, double required, bool ok, IconData icon) {
     final color = ok ? kAccent : kError;
     final pct = (current / required).clamp(0.0, 1.0);
     return Card(
@@ -422,10 +419,6 @@ class _InstructorHoursScreenState extends ConsumerState<InstructorHoursScreen> {
                 ),
               ],
             ),
-            if (detail != null) ...[
-              const SizedBox(height: 4),
-              Text(detail, style: const TextStyle(color: kTextDim, fontSize: 11)),
-            ],
             const SizedBox(height: 8),
             LinearProgressIndicator(
               value: pct,

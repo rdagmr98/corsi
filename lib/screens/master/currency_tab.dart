@@ -928,8 +928,7 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
                       // ── Ore insegnamento 2 anni ──────────────────────────
                       _sectionTitle(
                           'Ore insegnamento ultimi 2 anni: '
-                          '${teachHours2y.toStringAsFixed(0)}h '
-                          '(lezioni confermate + registrazioni)'),
+                          '${teachHours2y.toStringAsFixed(0)}h'),
                       const SizedBox(height: 8),
                       _sectionTitle('Storico ore insegnamento per anno'),
                       const SizedBox(height: 8),
