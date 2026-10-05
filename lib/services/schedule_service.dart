@@ -228,27 +228,38 @@ class ScheduleService {
   static bool isRegularSlot(DateTime d, int slot) =>
       d.weekday <= DateTime.friday && (d.weekday != DateTime.friday || slot <= 3);
 
+  /// Lezione che il drag & drop non deve mai far scalare: validata, oppure già
+  /// passata (giorno precedente a oggi, anche se il direttore non l'ha ancora
+  /// validata). Per sbloccarla il direttore la cancella e torna nel bacino.
+  static bool isFrozen(ScheduledLesson l, [DateTime? today]) {
+    final t = today ?? DateTime.now();
+    return l.confirmed || l.date.isBefore(DateTime(t.year, t.month, t.day));
+  }
+
   /// Drag & drop del planner: su posizione libera sposta solo [dragged]; su
   /// posizione occupata la inserisce lì e fa scalare di una posizione le
-  /// lezioni non confermate comprese tra origine e destinazione, riempiendo
-  /// il buco lasciato. Confermate (presenze registrate) e buchi già esistenti
-  /// restano fermi. Ritorna id → (data, ora) solo per le lezioni che cambiano.
+  /// lezioni comprese tra origine e destinazione, riempiendo il buco
+  /// lasciato. Lezioni bloccate ([isFrozen]) e buchi già esistenti restano
+  /// fermi. Ritorna id → (data, ora) solo per le lezioni che cambiano.
   static Map<String, (DateTime, int)> planDrop(
       List<ScheduledLesson> courseLessons,
       ScheduledLesson dragged,
       DateTime day,
-      int slot) {
+      int slot,
+      {DateTime? today}) {
     int key(DateTime d, int s) => ((d.year * 100 + d.month) * 100 + d.day) * 100 + s;
     final src = key(dragged.date, dragged.timeSlot);
     final dst = key(day, slot);
-    if (!courseLessons.any((l) => key(l.date, l.timeSlot) == dst)) {
+    final atDst = courseLessons.where((l) => key(l.date, l.timeSlot) == dst);
+    if (atDst.isEmpty) {
       return {dragged.id: (DateTime(day.year, day.month, day.day), slot)};
     }
+    if (atDst.any((l) => isFrozen(l, today))) return {};
     final lo = src < dst ? src : dst;
     final hi = src < dst ? dst : src;
     final chain = courseLessons.where((l) {
       final k = key(l.date, l.timeSlot);
-      return !l.confirmed && k >= lo && k <= hi && isRegularSlot(l.date, l.timeSlot);
+      return !isFrozen(l, today) && k >= lo && k <= hi && isRegularSlot(l.date, l.timeSlot);
     }).toList()
       ..sort((a, b) => key(a.date, a.timeSlot).compareTo(key(b.date, b.timeSlot)));
     final order = chain.where((l) => l.id != dragged.id).toList();

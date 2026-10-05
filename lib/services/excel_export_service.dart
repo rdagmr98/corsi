@@ -12,7 +12,7 @@ import 'ps_ooxml_filler.dart';
 
 /// Export programma settimanale .xlsx clonando il template ufficiale PS
 /// (`66_PS` foglio EI). Patch OOXML in-place (merges/bordi/font/pausa
-/// preservati). Colori lezione = `moduleColor` via cellXf pre-registrati.
+/// preservati). Colori lezione = `moduleColor` schiarito (pastello, leggibile in stampa B/N) via cellXf pre-registrati.
 ///
 /// Colonne (1-based B..N): DATA | ORARIO | ADDESTRAMENTO | Ore Mod. |
 /// Ore Tot. Mod. | ISTRUTTORE | Sott. Mod. | ID TASK | Ore | LOCALITA'/AULA

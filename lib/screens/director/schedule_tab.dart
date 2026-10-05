@@ -44,6 +44,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
   List<ScheduledLesson> _allCourseLessons = [];
   // Cambio settimana durante il trascinamento sui bordi laterali.
   Timer? _edgeTimer;
+  Timer? _previewTimer;
   // Anteprima del riordino durante il trascinamento (id → data, ora), come
   // la ReorderableListView di gym_app. _shownPreview = quella dell'ultimo
   // build: le lezioni scivolano da lì alla nuova posizione.
@@ -67,6 +68,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
   @override
   void dispose() {
     _edgeTimer?.cancel();
+    _previewTimer?.cancel();
     super.dispose();
   }
 
@@ -271,6 +273,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
 
   void _refreshWeek() {
     if (_selected == null) return;
+    _previewTimer?.cancel();
     setState(() {
       _weekLessons = _scheduleService.getLessonsForWeek(_selected!.id, _weekStart);
       _weekNotes = _scheduleService.getNotesForWeek(_selected!.id, _weekStart);
@@ -872,6 +875,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
   }
 
   Future<void> _dropLesson(ScheduledLesson dragged, DateTime day, int slot) async {
+    _previewTimer?.cancel();
     final moves = ScheduleService.planDrop(_allCourseLessons, dragged, day, slot);
     if (moves.isEmpty) return;
 
@@ -928,14 +932,21 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
     }
   }
 
+  /// L'anteprima (con le altre lezioni che scalano) parte solo dopo una breve
+  /// sosta sulla stessa cella: passando di corsa non si muove nulla.
   void _setPreview(ScheduledLesson dragged, DateTime day, int slot) {
-    setState(() {
-      _preview = ScheduleService.planDrop(_allCourseLessons, dragged, day, slot);
-      _dragId = dragged.id;
+    _previewTimer?.cancel();
+    _previewTimer = Timer(const Duration(milliseconds: 500), () {
+      if (!mounted) return;
+      setState(() {
+        _preview = ScheduleService.planDrop(_allCourseLessons, dragged, day, slot);
+        _dragId = dragged.id;
+      });
     });
   }
 
   void _clearPreview() {
+    _previewTimer?.cancel();
     if (_dragId == null || !mounted) return;
     setState(() {
       _preview = {};
@@ -944,12 +955,18 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
   }
 
   /// Striscia laterale: tenendo una lezione trascinata sopra, cambia
-  /// settimana ogni 700 ms.
+  /// settimana dopo una pausa e poi ogni 1,4 s. Indietro non supera la
+  /// settimana corrente (prima ci sono solo lezioni passate, bloccate).
   Widget _weekEdge({required bool next}) => DragTarget<ScheduledLesson>(
         onWillAcceptWithDetails: (_) {
           _edgeTimer?.cancel();
-          _edgeTimer = Timer.periodic(const Duration(milliseconds: 700),
-              (_) => next ? _nextWeek() : _prevWeek());
+          _edgeTimer = Timer.periodic(const Duration(milliseconds: 1400), (_) {
+            if (next) {
+              _nextWeek();
+            } else if (_weekStart.isAfter(_mondayOf(DateTime.now()))) {
+              _prevWeek();
+            }
+          });
           return true;
         },
         onLeave: (_) => _edgeTimer?.cancel(),
@@ -2086,7 +2103,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                               child: DragTarget<ScheduledLesson>(
                                 onWillAcceptWithDetails: (d) {
                                   final ok = d.data.id != lesson?.id &&
-                                      lesson?.confirmed != true &&
+                                      (lesson == null || !ScheduleService.isFrozen(lesson)) &&
                                       !(_selected?.excludedDates.contains(dayStr) ?? false);
                                   if (ok) _setPreview(d.data, day, slot.slot);
                                   return ok;

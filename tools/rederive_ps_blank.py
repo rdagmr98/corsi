@@ -58,7 +58,9 @@ AM_SS_ACCOUNTABLE = 673  # "(Accountable Manager)"
 AM_STYLE = 1229
 
 MODULE_ORDER = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 16, 17, 50, 51, 53, 54]
-MODULE_PALETTE = [
+# Colori saturi = moduleColor() della UI app (theme.dart). Nell'Excel si usa la
+# versione schiarita (TINT verso il bianco): leggibile in stampa, anche in B/N.
+SATURATED_PALETTE = [
     0xFF6366F1,
     0xFF3B82F6,
     0xFF06B6D4,
@@ -79,7 +81,18 @@ MODULE_PALETTE = [
     0xFF854D0E,
     0xFF166534,
 ]
-FALLBACK = 0xFF6B7280
+SATURATED_FALLBACK = 0xFF6B7280
+TINT = 0.82  # quota di bianco miscelata al colore saturo
+
+
+def tint(c: int) -> int:
+    ch = [(c >> s) & 0xFF for s in (16, 8, 0)]
+    r, g, b = (round(v + (255 - v) * TINT) for v in ch)
+    return 0xFF000000 | (r << 16) | (g << 8) | b
+
+
+MODULE_PALETTE = [tint(c) for c in SATURATED_PALETTE]
+FALLBACK = tint(SATURATED_FALLBACK)
 
 
 def argb(c: int) -> str:
@@ -270,7 +283,14 @@ def strip_previous_module_styles(styles_xml: str) -> str:
         styles_xml,
         flags=re.DOTALL,
     )
-    palette = {argb(c) for c in MODULE_PALETTE} | {argb(FALLBACK)}
+    palette = {
+        argb(c)
+        for c in (
+            MODULE_PALETTE
+            + SATURATED_PALETTE
+            + [FALLBACK, SATURATED_FALLBACK]
+        )
+    }
 
     def drop_fill(m: re.Match) -> str:
         block = m.group(0)
@@ -333,6 +353,7 @@ def inject_module_styles(styles_xml: str) -> tuple[str, dict[str, dict[int, int]
         or "corsi-white" in styles_xml
         or "corsi-dark" in styles_xml
         or argb(MODULE_PALETTE[0]) in styles_xml
+        or argb(SATURATED_PALETTE[0]) in styles_xml
     ):
         styles_xml = strip_previous_module_styles(styles_xml)
 
