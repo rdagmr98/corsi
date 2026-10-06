@@ -42,6 +42,8 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
   List<SlotNote> _weekNotes = [];
   CourseTypeInfo? _typeInfo;
   List<ScheduledLesson> _allCourseLessons = [];
+  // Cognomi degli assenti per lezione della settimana (id lezione → cognomi).
+  Map<String, List<String>> _weekAbsent = {};
   // Cambio settimana durante il trascinamento sui bordi laterali.
   Timer? _edgeTimer;
   Timer? _previewTimer;
@@ -280,6 +282,13 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
       _allCourseLessons = _scheduleService.getLessonsForCourse(_selected!.id)
           .where((l) => l.timeSlot > 0).toList();
       _typeInfo = _refService.getEffectiveCourseType(_selected!.courseTypeId, _selected!.extensionTypeId, _selected!.mamlCombinationId);
+      final weekIds = {for (final l in _weekLessons) l.id};
+      _weekAbsent = {};
+      for (final r in _attendanceService.getAllRecords()) {
+        if (r.present || !weekIds.contains(r.scheduleId)) continue;
+        (_weekAbsent[r.scheduleId] ??= [])
+            .add(_userService.findById(r.attendeeId)?.cognome ?? '?');
+      }
       // Cambio settimana o salvataggio: i DragTarget vecchi spariscono senza onLeave.
       _preview = {};
       _dragId = null;
@@ -391,6 +400,25 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
       _weekStart = _mondayOf(DateTime(_weekStart.year, _weekStart.month, _weekStart.day + 7));
       _refreshWeek();
     });
+  }
+
+  // Salto diretto a una settimana qualsiasi (le frecce restano per il passo singolo).
+  Future<void> _pickWeek() async {
+    final d = await showDatePicker(
+      context: context,
+      initialDate: _weekStart,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2035),
+      helpText: 'Vai alla settimana del…',
+    );
+    if (d == null) return;
+    _weekStart = _mondayOf(d);
+    _refreshWeek();
+  }
+
+  void _goToday() {
+    _weekStart = _mondayOf(DateTime.now());
+    _refreshWeek();
   }
 
   Future<void> _generateRemaining() async {
@@ -1114,233 +1142,275 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
 
   Future<void> _addRecovery(DateTime day) async {
     if (_selected == null) return;
+    final typeInfo = _typeInfo;
+    if (typeInfo == null) return;
     final attendees = _userService.getAllUsers()
         .where((u) => _selected!.attendeeIds.contains(u.id))
         .toList();
     if (attendees.isEmpty) return;
 
-    final typeInfo = _typeInfo;
-    if (typeInfo == null) return;
-
-    // Suggerimenti: SOLO i frequentatori oltre il 10% di assenze non
-    // recuperate rispetto alle ore confermate del corso (quelli che devono
-    // recuperare per rientrare) — pre-compilano materia e presenti,
-    // restano modificabili. La pratica va recuperata al 100% quindi viene
-    // suggerita per prima.
+    // Bisogno reale per frequentatore/modulo (fonte canonica del corso):
+    // teoria = ore oltre il 10% del modulo al netto dei recuperi, pratica =
+    // 100% delle assenze non recuperate. Esce solo chi ha ore da recuperare.
     final allLessons = _scheduleService.getLessonsForCourse(_selected!.id);
-    final overLimit = _attendanceService.attendeesOverRecoveryLimit(
-        _selected!.id, _selected!.attendeeIds, allLessons,
-        modules: _typeInfo?.modules);
-    final unrecByAttendee = <String, Map<int, int>>{};
-    final unrecPByAttendee = <String, Map<int, int>>{};
-    final unrecByModule = <int, int>{};
-    final unrecPByModule = <int, int>{};
+    final moduleNumbers = {for (final m in typeInfo.modules) m.number};
+    final need = <String, Map<int, ({int t, int p})>>{};
     for (final a in attendees) {
-      if (!overLimit.contains(a.id)) continue;
       final stats = _attendanceService.computePerModuleStats(
           _selected!.id, a.id, allLessons, modules: typeInfo.modules);
       stats.forEach((mod, s) {
-        final u = s['unrecovered'] ?? 0;
-        final uP = s['unrecoveredP'] ?? 0;
-        if (u > 0) {
-          (unrecByAttendee[a.id] ??= {})[mod] = u;
-          unrecByModule[mod] = (unrecByModule[mod] ?? 0) + u;
-        }
-        if (uP > 0) {
-          (unrecPByAttendee[a.id] ??= {})[mod] = uP;
-          unrecPByModule[mod] = (unrecPByModule[mod] ?? 0) + uP;
+        final t = s['toRecoverT'] ?? 0;
+        final p = s['toRecoverP'] ?? 0;
+        if (moduleNumbers.contains(mod) && (t > 0 || p > 0)) {
+          (need[a.id] ??= {})[mod] = (t: t, p: p);
         }
       });
     }
-    Set<String> suggestedFor(int? mod) => {
-          for (final a in attendees)
-            if (mod != null && (unrecByAttendee[a.id]?[mod] ?? 0) > 0) a.id,
-        };
+    if (need.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Nessun frequentatore ha ore da recuperare')),
+      );
+      return;
+    }
 
-    int? selectedModule =
-        typeInfo.modules.isNotEmpty ? typeInfo.modules.first.number : null;
-    // Moduli con pratica non recuperata vengono suggeriti per primi
-    final candidates = unrecByModule.entries
-        .where((e) => typeInfo.modules.any((m) => m.number == e.key))
-        .toList()
-      ..sort((a, b) {
-        final pA = unrecPByModule[a.key] ?? 0;
-        final pB = unrecPByModule[b.key] ?? 0;
-        if (pA != pB) return pB.compareTo(pA); // pratica prima
-        return b.value.compareTo(a.value);
+    // Ore da recuperare di un frequentatore; mod/type null = tutti.
+    int hoursOf(String id, {int? mod, String? type}) {
+      var h = 0;
+      need[id]?.forEach((m, n) {
+        if (mod != null && m != mod) return;
+        if (type != 'pratica') h += n.t;
+        if (type != 'teoria') h += n.p;
       });
-    if (candidates.isNotEmpty) selectedModule = candidates.first.key;
-    final selectedAttendees = <String>{...suggestedFor(selectedModule)};
+      return h;
+    }
+
+    int? module;
+    String? type;
+    final sel = <String>{};
+
+    // Chi è nello scope: i selezionati, altrimenti tutti quelli che devono recuperare.
+    List<String> scope() => sel.isNotEmpty ? sel.toList() : need.keys.toList();
+    int scopeHours(int mod, String tp) =>
+        scope().fold(0, (s, id) => s + hoursOf(id, mod: mod, type: tp));
+    List<int> modulesInScope() => [
+          for (final m in typeInfo.modules)
+            if (scope().any((id) => hoursOf(id, mod: m.number) > 0)) m.number,
+        ];
+    List<String> typesInScope() => [
+          for (final tp in const ['pratica', 'teoria'])
+            if (scope().any((id) => hoursOf(id, mod: module, type: tp) > 0)) tp,
+        ];
+
+    // Tiene coerenti modulo, tipo e selezione: mostra solo ciò che è da recuperare.
+    void normalize() {
+      final mods = modulesInScope();
+      if (!mods.contains(module)) module = null;
+      if (module == null && mods.length == 1) module = mods.first;
+      if (module == null) {
+        type = null;
+        return;
+      }
+      sel.removeWhere((id) => hoursOf(id, mod: module) == 0);
+      final types = typesInScope();
+      if (!types.contains(type)) type = types.isEmpty ? null : types.first;
+      sel.removeWhere((id) => hoursOf(id, mod: module, type: type) == 0);
+    }
+
+    normalize();
     final user = ref.read(authProvider).currentUser;
+
+    Widget badge(String txt, Color c, bool selected) => Container(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+          decoration: BoxDecoration(
+            color: c.withOpacity(selected ? 0.3 : 0.15),
+            borderRadius: BorderRadius.circular(3),
+          ),
+          child: Text(txt,
+              style: TextStyle(
+                  color: selected ? Colors.white : c,
+                  fontSize: 9,
+                  fontWeight: FontWeight.bold)),
+        );
 
     await showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDlg) => AlertDialog(
-          backgroundColor: kCard,
-          title: Text(
-            'Recupero – ${DateFormat('dd/MM/yyyy').format(day)}',
-            style: const TextStyle(color: kText, fontSize: 14),
-          ),
-          content: SizedBox(
-            width: 400,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Modulo recuperato:', style: TextStyle(color: kTextDim, fontSize: 12)),
-                  const SizedBox(height: 6),
-                  DropdownButtonFormField<int>(
-                    value: selectedModule,
-                    isExpanded: true,
-                    dropdownColor: kSurface,
-                    style: const TextStyle(color: kText),
-                    decoration: const InputDecoration(isDense: true),
-                    items: typeInfo.modules.map((m) {
-                      final u = unrecByModule[m.number] ?? 0;
-                      final uP = unrecPByModule[m.number] ?? 0;
-                      return DropdownMenuItem(
-                        value: m.number,
-                        child: Row(
-                          children: [
-                            if (uP > 0) ...[
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                                decoration: BoxDecoration(
-                                  color: kError.withOpacity(0.15),
-                                  borderRadius: BorderRadius.circular(3),
-                                ),
-                                child: Text('${uP}P',
-                                    style: const TextStyle(
-                                        color: kError, fontSize: 9, fontWeight: FontWeight.bold)),
-                              ),
-                              const SizedBox(width: 4),
-                            ] else if (u > 0) ...[
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                                decoration: BoxDecoration(
-                                  color: kWarning.withOpacity(0.15),
-                                  borderRadius: BorderRadius.circular(3),
-                                ),
-                                child: Text('${u}T',
-                                    style: const TextStyle(
-                                        color: kWarning, fontSize: 9, fontWeight: FontWeight.bold)),
-                              ),
-                              const SizedBox(width: 4),
-                            ],
-                            Flexible(
-                              child: Text('M${m.displayCode} – ${m.name}',
-                                  overflow: TextOverflow.ellipsis),
-                            ),
-                          ],
-                        ),
-                      );
-                    }).toList(),
-                    onChanged: (v) => setDlg(() {
-                      selectedModule = v;
-                      selectedAttendees
-                        ..clear()
-                        ..addAll(suggestedFor(v));
-                    }),
-                  ),
-                  if (unrecByModule.isNotEmpty) ...[
+        builder: (ctx, setDlg) {
+          final types = module == null ? <String>[] : typesInScope();
+          final shown = attendees
+              .where((a) => hoursOf(a.id, mod: module, type: type) > 0)
+              .toList()
+            ..sort((a, b) {
+              final pA = hoursOf(a.id, mod: module, type: 'pratica') > 0 ? 0 : 1;
+              final pB = hoursOf(b.id, mod: module, type: 'pratica') > 0 ? 0 : 1;
+              if (pA != pB) return pA - pB;
+              return hoursOf(b.id, mod: module, type: type)
+                  .compareTo(hoursOf(a.id, mod: module, type: type));
+            });
+          return AlertDialog(
+            backgroundColor: kCard,
+            title: Text(
+              'Recupero – ${DateFormat('dd/MM/yyyy').format(day)}',
+              style: const TextStyle(color: kText, fontSize: 14),
+            ),
+            content: SizedBox(
+              width: 400,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Modulo recuperato:', style: TextStyle(color: kTextDim, fontSize: 12)),
                     const SizedBox(height: 6),
+                    DropdownButton<int>(
+                      value: module,
+                      isExpanded: true,
+                      dropdownColor: kSurface,
+                      style: const TextStyle(color: kText),
+                      hint: const Text('Scegli il modulo', style: TextStyle(color: kTextDim)),
+                      items: [
+                        for (final m in typeInfo.modules)
+                          if (modulesInScope().contains(m.number))
+                            DropdownMenuItem(
+                              value: m.number,
+                              child: Row(
+                                children: [
+                                  if (scopeHours(m.number, 'pratica') > 0) ...[
+                                    badge('P ${scopeHours(m.number, 'pratica')}h', kError, false),
+                                    const SizedBox(width: 4),
+                                  ],
+                                  if (scopeHours(m.number, 'teoria') > 0) ...[
+                                    badge('T ${scopeHours(m.number, 'teoria')}h', kWarning, false),
+                                    const SizedBox(width: 4),
+                                  ],
+                                  Flexible(
+                                    child: Text('M${m.displayCode} – ${m.name}',
+                                        overflow: TextOverflow.ellipsis),
+                                  ),
+                                ],
+                              ),
+                            ),
+                      ],
+                      onChanged: (v) => setDlg(() {
+                        module = v;
+                        normalize();
+                      }),
+                    ),
+                    if (module != null) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        types.length > 1
+                            ? 'Teoria e pratica da recuperare: scegli cosa si recupera'
+                            : 'Si recupera:',
+                        style: const TextStyle(color: kTextDim, fontSize: 12),
+                      ),
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 8,
+                        children: [
+                          for (final tp in types)
+                            ChoiceChip(
+                              label: Text(
+                                '${tp == 'pratica' ? 'Pratica' : 'Teoria'} · ${scopeHours(module!, tp)}h',
+                                style: TextStyle(
+                                    color: type == tp ? Colors.white : kText, fontSize: 11),
+                              ),
+                              selected: type == tp,
+                              selectedColor: kAccent.withOpacity(0.8),
+                              backgroundColor: kSurface,
+                              onSelected: (_) => setDlg(() {
+                                type = tp;
+                                normalize();
+                              }),
+                            ),
+                        ],
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    const Text('Frequentatori che devono recuperare:',
+                        style: TextStyle(color: kTextDim, fontSize: 12)),
+                    const SizedBox(height: 2),
                     const Text(
-                      'Suggeriti i frequentatori oltre il limite. Badge P = pratica da recuperare al 100% (priorità). Badge T = teoria oltre il 10%.',
+                      'Solo chi ha ore da recuperare (teoria oltre il 10%, pratica 100%). Scegliendo prima il frequentatore restano solo le sue materie.',
                       style: TextStyle(color: kTextDim, fontSize: 10, fontStyle: FontStyle.italic),
                     ),
-                  ],
-                  const SizedBox(height: 12),
-                  const Text('Frequentatori presenti al recupero:', style: TextStyle(color: kTextDim, fontSize: 12)),
-                  const SizedBox(height: 6),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 4,
-                    children: (() {
-                      // Frequentatori con pratica da recuperare vengono mostrati per primi
-                      final sorted = List<AppUser>.from(attendees)
-                        ..sort((a, b) {
-                          final pA = (unrecPByAttendee[a.id]?[selectedModule] ?? 0) > 0 ? 0 : 1;
-                          final pB = (unrecPByAttendee[b.id]?[selectedModule] ?? 0) > 0 ? 0 : 1;
-                          if (pA != pB) return pA - pB;
-                          final uA = unrecByAttendee[a.id]?[selectedModule] ?? 0;
-                          final uB = unrecByAttendee[b.id]?[selectedModule] ?? 0;
-                          return uB.compareTo(uA);
-                        });
-                      return sorted.map((a) {
-                        final sel = selectedAttendees.contains(a.id);
-                        final u = unrecByAttendee[a.id]?[selectedModule] ?? 0;
-                        final uP = unrecPByAttendee[a.id]?[selectedModule] ?? 0;
-                        return FilterChip(
-                          label: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (uP > 0) ...[
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
-                                  decoration: BoxDecoration(
-                                    color: kError.withOpacity(sel ? 0.3 : 0.15),
-                                    borderRadius: BorderRadius.circular(3),
-                                  ),
-                                  child: Text('P',
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      children: [
+                        for (final a in shown)
+                          () {
+                            final selected = sel.contains(a.id);
+                            final p = hoursOf(a.id, mod: module, type: 'pratica');
+                            final t = hoursOf(a.id, mod: module, type: 'teoria');
+                            return FilterChip(
+                              label: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (p > 0 && type != 'teoria') ...[
+                                    badge('P ${p}h', kError, selected),
+                                    const SizedBox(width: 4),
+                                  ],
+                                  if (t > 0 && type != 'pratica') ...[
+                                    badge('T ${t}h', kWarning, selected),
+                                    const SizedBox(width: 4),
+                                  ],
+                                  Text(a.fullName,
                                       style: TextStyle(
-                                          color: sel ? Colors.white : kError,
-                                          fontSize: 9,
-                                          fontWeight: FontWeight.bold)),
-                                ),
-                                const SizedBox(width: 4),
-                              ],
-                              Text(
-                                u > 0 ? '${a.fullName} · ${u}h' : a.fullName,
-                                style: TextStyle(
-                                    color: sel ? Colors.white : (u > 0 ? kWarning : kTextDim),
-                                    fontSize: 11),
+                                          color: selected ? Colors.white : kText,
+                                          fontSize: 11)),
+                                ],
                               ),
-                            ],
-                          ),
-                          selected: sel,
-                          selectedColor: kAccent.withOpacity(0.8),
-                          backgroundColor: kSurface,
-                          side: u > 0 && !sel
-                              ? BorderSide(color: uP > 0 ? kError : kWarning)
-                              : null,
-                          onSelected: (v) => setDlg(() {
-                            if (v) selectedAttendees.add(a.id); else selectedAttendees.remove(a.id);
-                          }),
-                        );
-                      }).toList();
-                    })(),
-                  ),
-                ],
+                              selected: selected,
+                              selectedColor: kAccent.withOpacity(0.8),
+                              backgroundColor: kSurface,
+                              side: selected
+                                  ? null
+                                  : BorderSide(color: p > 0 ? kError : kWarning),
+                              onSelected: (v) => setDlg(() {
+                                if (v) {
+                                  sel.add(a.id);
+                                } else {
+                                  sel.remove(a.id);
+                                }
+                                normalize();
+                              }),
+                            );
+                          }(),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Annulla', style: TextStyle(color: kTextDim)),
-            ),
-            ElevatedButton(
-              onPressed: selectedAttendees.isEmpty || selectedModule == null
-                  ? null
-                  : () async {
-                      Navigator.pop(ctx);
-                      for (final id in selectedAttendees) {
-                        await _attendanceService.saveRecovery(
-                          courseId: _selected!.id,
-                          attendeeId: id,
-                          confirmedBy: user?.id ?? '',
-                          recoveredModule: selectedModule!,
-                          recoveryDate: day,
-                        );
-                      }
-                      _refreshWeek();
-                    },
-              child: const Text('Salva recuperi'),
-            ),
-          ],
-        ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Annulla', style: TextStyle(color: kTextDim)),
+              ),
+              ElevatedButton(
+                onPressed: sel.isEmpty || module == null || type == null
+                    ? null
+                    : () async {
+                        Navigator.pop(ctx);
+                        for (final id in sel) {
+                          await _attendanceService.saveRecovery(
+                            courseId: _selected!.id,
+                            attendeeId: id,
+                            confirmedBy: user?.id ?? '',
+                            recoveredModule: module!,
+                            recoveryDate: day,
+                            recoveredType: type,
+                          );
+                        }
+                        _refreshWeek();
+                      },
+                child: const Text('Salva recuperi'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -1909,11 +1979,28 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                 Text(_selected?.title ?? '', style: Theme.of(context).textTheme.titleLarge),
               const Spacer(),
               IconButton(icon: const Icon(Icons.chevron_left), onPressed: _prevWeek, color: kText),
-              Text(
-                '${DateFormat('dd/MM').format(_weekStart)} – ${DateFormat('dd/MM/yyyy').format(_weekStart.add(const Duration(days: 6)))}',
-                style: const TextStyle(color: kText, fontSize: 13),
+              InkWell(
+                onTap: _pickWeek,
+                borderRadius: BorderRadius.circular(4),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    const Icon(Icons.calendar_month, size: 16, color: kAccent),
+                    const SizedBox(width: 6),
+                    Text(
+                      '${DateFormat('dd/MM').format(_weekStart)} – ${DateFormat('dd/MM/yyyy').format(DateTime(_weekStart.year, _weekStart.month, _weekStart.day + 6))}',
+                      style: const TextStyle(color: kText, fontSize: 13),
+                    ),
+                  ]),
+                ),
               ),
               IconButton(icon: const Icon(Icons.chevron_right), onPressed: _nextWeek, color: kText),
+              IconButton(
+                icon: const Icon(Icons.today, size: 18),
+                tooltip: 'Settimana corrente',
+                onPressed: _goToday,
+                color: kTextDim,
+              ),
               const SizedBox(width: 8),
               if (_selected != null) ...[
                 OutlinedButton.icon(
@@ -2511,10 +2598,12 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
     ].join(' · ');
 
     final task = lesson.taskId != null ? _refService.findTask(_typeInfo, lesson.taskId) : null;
+    final absentNames = _weekAbsent[lesson.id] ?? const <String>[];
     final tooltipMsg = [
       displayTopic,
       if (task != null && task.name.isNotEmpty) '🔧 Task ${task.programTaskId}: ${task.name}',
       if (instrLabel.isNotEmpty) '👤 $instrLabel',
+      if (absentNames.isNotEmpty) 'Assenti (${absentNames.length}): ${absentNames.join(', ')}',
       hoursStr,
     ].join('\n');
 
@@ -2551,6 +2640,23 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
               Text('M${_refService.moduleLabel(lesson.moduleNumber)}',
                   style: const TextStyle(color: Colors.white70, fontSize: 9)),
               const Spacer(),
+              if (absentNames.isNotEmpty) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: kWarning.withOpacity(0.25),
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    const Icon(Icons.person_off, color: kWarning, size: 10),
+                    const SizedBox(width: 2),
+                    Text('${absentNames.length}',
+                        style: const TextStyle(
+                            color: kWarning, fontSize: 9, fontWeight: FontWeight.bold)),
+                  ]),
+                ),
+                const SizedBox(width: 3),
+              ],
               if (lesson.confirmed)
                 const Icon(Icons.check_circle, color: kAccent, size: 10),
               GestureDetector(
