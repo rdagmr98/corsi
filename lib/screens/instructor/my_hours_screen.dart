@@ -3,11 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../models/user_models.dart';
 import '../../providers/auth_provider.dart';
-import '../../services/course_service.dart';
 import '../../services/grade_service.dart';
 import '../../services/notification_service.dart';
 import '../../services/user_service.dart';
 import '../../theme.dart';
+import '../../widgets/instructor_lessons_by_course.dart';
 
 class InstructorHoursScreen extends ConsumerStatefulWidget {
   final String userId;
@@ -20,7 +20,6 @@ class InstructorHoursScreen extends ConsumerStatefulWidget {
 class _InstructorHoursScreenState extends ConsumerState<InstructorHoursScreen> {
   final _gradeService   = GradeService();
   final _userService    = UserService();
-  final _courseService  = CourseService();
   final _notifService   = NotificationService();
 
   @override
@@ -38,8 +37,8 @@ class _InstructorHoursScreenState extends ConsumerState<InstructorHoursScreen> {
     final lessonH = _gradeService.getConfirmedLessonHoursRollingYear(widget.userId);
     final manualH = _gradeService.getManualTeachingHoursRollingYear(widget.userId);
     final teachH  = lessonH + manualH;
-    final lessonsByCourse = _gradeService.getConfirmedLessonHoursByCourse(widget.userId);
-    final profH   = _gradeService.getProfessionalUpdateHoursLast2Years(widget.userId);
+    final hasLessons = _gradeService.getConfirmedLessonsByCourse(widget.userId).isNotEmpty;
+    final profH  = _gradeService.getProfessionalUpdateHoursLast2Years(widget.userId);
     final updates = _gradeService.getUpdatesForInstructor(widget.userId);
     final me      = _userService.findById(widget.userId);
     final daaExpiry = me?.daaExpiry;
@@ -82,34 +81,15 @@ class _InstructorHoursScreenState extends ConsumerState<InstructorHoursScreen> {
               const SizedBox(height: 12),
               _serviceStatusCard(me!),
             ],
-            if (lessonsByCourse.isNotEmpty) ...[
+            if (hasLessons) ...[
               const SizedBox(height: 24),
-              const Row(
-                children: [
-                  Text('Lezioni confermate per corso',
-                      style: TextStyle(color: kText, fontWeight: FontWeight.w600)),
-                ],
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text('Ore per corso (tocca per il dettaglio)',
+                    style: TextStyle(color: kText, fontWeight: FontWeight.w600)),
               ),
               const SizedBox(height: 8),
-              ...lessonsByCourse.entries.map((e) {
-                final course = _courseService.findById(e.key);
-                return Card(
-                  color: kCard,
-                  margin: const EdgeInsets.only(bottom: 6),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                  child: ListTile(
-                    leading: const Icon(Icons.menu_book, color: kPrimary, size: 20),
-                    title: Text(course?.title ?? 'Corso',
-                        style: const TextStyle(color: kText, fontSize: 13)),
-                    subtitle: const Text('Ore validate ai fini currency',
-                        style: TextStyle(color: kTextDim, fontSize: 11)),
-                    trailing: Text(
-                      '${e.value.toStringAsFixed(0)}h',
-                      style: const TextStyle(color: kText, fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                );
-              }),
+              InstructorLessonsByCourse(instructorId: widget.userId),
             ],
             const SizedBox(height: 24),
             Row(

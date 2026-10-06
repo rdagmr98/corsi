@@ -142,14 +142,34 @@ class GradeService {
   Map<String, double> getConfirmedLessonHoursByCourse(String instructorId) {
     final cutoff = DateTime.now().subtract(const Duration(days: 365));
     final map = <String, double>{};
+    getConfirmedLessonsByCourse(instructorId).forEach((courseId, lessons) {
+      final n = lessons.where((l) => l.date.isAfter(cutoff)).length;
+      if (n > 0) map[courseId] = n.toDouble();
+    });
+    return map;
+  }
+
+  /// Tutte le lezioni confermate (1h ciascuna) dell'istruttore, per corso,
+  /// dalla più recente. Stessi criteri di [getConfirmedLessonHoursByCourse]
+  /// ma senza limite di 365 giorni: la UI separa quelle dentro/fuori finestra.
+  Map<String, List<({DateTime date, String code, String topic, String type})>>
+      getConfirmedLessonsByCourse(String instructorId) {
+    final map = <String, List<({DateTime date, String code, String topic, String type})>>{};
     for (final raw in _db.schedules) {
       if (raw['instructor_id'] != instructorId) continue;
       if (raw['confirmed'] != true) continue;
       if (((raw['time_slot'] as num?)?.toInt() ?? 0) <= 0) continue;
       final d = DateTime.tryParse(raw['date'] as String? ?? '');
-      if (d == null || !d.isAfter(cutoff)) continue;
-      final courseId = raw['course_id'] as String? ?? '';
-      map[courseId] = (map[courseId] ?? 0) + 1;
+      if (d == null) continue;
+      (map[raw['course_id'] as String? ?? ''] ??= []).add((
+        date: d,
+        code: raw['submodule_code'] as String? ?? '${raw['module_number'] ?? ''}',
+        topic: raw['topic'] as String? ?? '',
+        type: raw['type'] as String? ?? '',
+      ));
+    }
+    for (final l in map.values) {
+      l.sort((a, b) => b.date.compareTo(a.date));
     }
     return map;
   }

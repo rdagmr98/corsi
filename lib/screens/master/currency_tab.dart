@@ -11,6 +11,7 @@ import '../../services/reference_service.dart';
 import '../../services/user_service.dart';
 import '../../theme.dart';
 import '../../utils/snackbar.dart';
+import '../../widgets/instructor_lessons_by_course.dart';
 
 class CurrencyTab extends ConsumerStatefulWidget {
   const CurrencyTab({super.key});
@@ -846,6 +847,10 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
                       ]),
                       const SizedBox(height: 8),
                       _daaCard(instr, goDaa),
+                      const SizedBox(height: 12),
+                      _sectionTitle('Ore lezione per corso (tocca per il dettaglio)'),
+                      const SizedBox(height: 8),
+                      InstructorLessonsByCourse(instructorId: instr.id),
                       const SizedBox(height: 4),
                       // Override toggle
                       OutlinedButton.icon(
