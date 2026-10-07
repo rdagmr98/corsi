@@ -440,7 +440,7 @@ class _CoursesTabState extends ConsumerState<CoursesTab> {
       final lessons = _scheduleService.getLessonsForCourse(c.id);
       final allUsers = _userService.getAllUsers();
       final attendees = allUsers.where((u) => c.attendeeIds.contains(u.id)).toList();
-      final instructors = allUsers.where((u) => c.instructorIds.contains(u.id)).toList();
+      final instructors = _userService.getInstructors();
 
       try {
         await PdfExportService.downloadCourseReport(
@@ -599,7 +599,7 @@ class _CoursesTabState extends ConsumerState<CoursesTab> {
                             )),
                             const SizedBox(width: 8),
                             Text(
-                              '${c.attendeeIds.length} freq. · ${c.instructorIds.length} istr.',
+                              '${c.attendeeIds.length} freq. · ${_userService.getInstructors().length} istr.',
                               style: const TextStyle(color: kTextDim, fontSize: 12),
                             ),
                           ],

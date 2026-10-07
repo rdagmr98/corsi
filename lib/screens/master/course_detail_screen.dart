@@ -58,7 +58,7 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
     final allUsers = _userService.getAllUsers();
     _attendees = allUsers.where((u) => _course.attendeeIds.contains(u.id)).toList()
       ..sort((a, b) => a.cognome.compareTo(b.cognome));
-    _instructors = allUsers.where((u) => _course.instructorIds.contains(u.id)).toList()
+    _instructors = _userService.getInstructors()
       ..sort((a, b) => a.cognome.compareTo(b.cognome));
   }
 

@@ -48,16 +48,24 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
     await _autoDecayOjt();
   }
 
-  // OJT (GO manuale) decade da solo quando l'istruttore matura entrambi i
-  // requisiti orari (senza bisogno dell'override): torna a GO reale.
+  // L'OJT (GO manuale) finisce da solo quando l'istruttore raggiunge le 6 ore
+  // di lezione annuali: fine OJT datata al giorno della 6ª ora e registrata
+  // nello stato di servizio.
   Future<void> _autoDecayOjt() async {
     final decaying = _instructors.where((i) =>
-        i.goOverride &&
-        _gradeService.getTeachingHoursRollingYear(i.id) >= 6 &&
-        _gradeService.getProfessionalUpdateHoursLast2Years(i.id) >= 35).toList();
+        i.goOverride && _gradeService.getTeachingHoursRollingYear(i.id) >= 6).toList();
     if (decaying.isEmpty) return;
     for (final i in decaying) {
-      await _userService.setGoOverride(i.id, false);
+      var end = _gradeService.dateTeachingHoursReached(i.id, 6) ?? DateTime.now();
+      if (i.ojtAt != null && end.isBefore(i.ojtAt!)) end = i.ojtAt!;
+      await _userService.setGoOverride(i.id, false, ojtEndAt: end);
+      await _gradeService.addUpdate(
+        instructorId: i.id,
+        type: 'ojt',
+        hours: 0,
+        description: 'Fine OJT (6 ore di lezione annuali raggiunte)',
+        date: end,
+      );
     }
     _load();
   }
@@ -420,10 +428,10 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
         context: context,
         builder: (ctx) => AlertDialog(
           backgroundColor: kCard,
-          title: const Text('Rimuovi GO manuale',
+          title: const Text('Chiudi OJT',
               style: TextStyle(color: kText)),
           content: Text(
-            'Rimuovere il GO manuale per ${instr.cognome}? '
+            'Chiudere l\'OJT di ${instr.cognome} con data di fine oggi? '
             'La valutazione tornerà automatica (resta lo storico OJT).',
             style: const TextStyle(color: kTextDim),
           ),
@@ -435,7 +443,7 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: kError),
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Rimuovi'),
+              child: const Text('Chiudi OJT'),
             ),
           ],
         ),
@@ -443,6 +451,12 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
       if (confirm != true) return;
       try {
         await _userService.setGoOverride(instr.id, false);
+        await _gradeService.addUpdate(
+          instructorId: instr.id,
+          type: 'ojt',
+          hours: 0,
+          description: 'Fine OJT (chiuso manualmente)',
+        );
       } catch (_) {
         showAppError('Salvataggio GO manuale non riuscito. Riprova.');
       } finally {
@@ -451,85 +465,147 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
       return;
     }
 
+    await _editOjt(instr, fresh: true);
+  }
+
+  // ── Stato di servizio OJT: tipo, inizio, fine, note ───────────────────────
+  // fresh = nuovo OJT (inizio oggi, fine vuota); altrimenti modifica dei dati
+  // registrati. Fine vuota = OJT in corso (GO attivo), fine valorizzata = chiuso.
+  Future<void> _editOjt(AppUser instr, {bool fresh = false}) async {
     String kind = instr.ojtKind == 'ripristino' ? 'ripristino' : 'iniziale';
-    DateTime ojtDate = instr.ojtAt ?? DateTime.now();
+    DateTime start = fresh ? DateTime.now() : (instr.ojtAt ?? DateTime.now());
+    DateTime? end = fresh || instr.goOverride ? null : instr.ojtEndAt;
+    final noteCtrl = TextEditingController(text: fresh ? '' : (instr.ojtNote ?? ''));
+    final isNew = fresh || instr.ojtAt == null;
+
+    Future<DateTime?> pick(BuildContext ctx, DateTime initial) => showDatePicker(
+          context: ctx,
+          initialDate: initial,
+          firstDate: DateTime(2015),
+          lastDate: DateTime.now().add(const Duration(days: 30)),
+        );
+
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDlg) => AlertDialog(
-          backgroundColor: kCard,
-          title: const Text('OJT capacità didattiche',
-              style: TextStyle(color: kText)),
-          content: Column(mainAxisSize: MainAxisSize.min, children: [
-            Text(
-              '${instr.cognome} sarà marcato GO (override) fino al '
-              'raggiungimento naturale dei requisiti orari.',
-              style: const TextStyle(color: kTextDim, fontSize: 12),
-            ),
-            const SizedBox(height: 16),
-            DropdownButtonFormField<String>(
-              value: kind,
-              dropdownColor: kSurface,
-              style: const TextStyle(color: kText, fontSize: 13),
-              decoration: const InputDecoration(
-                labelText: 'Tipo OJT',
-                labelStyle: TextStyle(color: kTextDim),
+        builder: (ctx, setDlg) {
+          final invalid = end != null && end!.isBefore(start);
+          return AlertDialog(
+            backgroundColor: kCard,
+            title: Text('OJT – ${instr.cognome}',
+                style: const TextStyle(color: kText)),
+            content: SizedBox(
+              width: 400,
+              child: SingleChildScrollView(
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  const Text(
+                    "Con fine vuota l'istruttore è abilitato (GO) e l'OJT si chiude "
+                    'da solo alle 6 ore di lezione annuali.',
+                    style: TextStyle(color: kTextDim, fontSize: 12),
+                  ),
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<String>(
+                    value: kind,
+                    dropdownColor: kSurface,
+                    style: const TextStyle(color: kText, fontSize: 13),
+                    decoration: const InputDecoration(
+                      labelText: 'Tipo OJT',
+                      labelStyle: TextStyle(color: kTextDim),
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: 'iniziale', child: Text('OJT iniziali')),
+                      DropdownMenuItem(
+                          value: 'ripristino', child: Text('OJT di ripristino')),
+                    ],
+                    onChanged: (v) => setDlg(() => kind = v!),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(children: [
+                    Expanded(
+                      child: Text('Inizio: ${DateFormat('dd/MM/yyyy').format(start)}',
+                          style: const TextStyle(color: kText, fontSize: 13)),
+                    ),
+                    TextButton(
+                      onPressed: () async {
+                        final d = await pick(ctx, start);
+                        if (d != null) setDlg(() => start = d);
+                      },
+                      child: const Text('Cambia'),
+                    ),
+                  ]),
+                  Row(children: [
+                    Expanded(
+                      child: Text(
+                        end == null
+                            ? 'Fine: in corso'
+                            : 'Fine: ${DateFormat('dd/MM/yyyy').format(end!)}',
+                        style: TextStyle(
+                            color: invalid ? kError : kText, fontSize: 13),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () async {
+                        final d = await pick(ctx, end ?? DateTime.now());
+                        if (d != null) setDlg(() => end = d);
+                      },
+                      child: Text(end == null ? 'Imposta' : 'Cambia'),
+                    ),
+                    if (end != null)
+                      TextButton(
+                        onPressed: () => setDlg(() => end = null),
+                        child: const Text('Rimuovi',
+                            style: TextStyle(color: kError)),
+                      ),
+                  ]),
+                  if (invalid)
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text('La fine non può precedere l\'inizio',
+                          style: TextStyle(color: kError, fontSize: 11)),
+                    ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: noteCtrl,
+                    minLines: 2,
+                    maxLines: 4,
+                    style: const TextStyle(color: kText, fontSize: 13),
+                    decoration: const InputDecoration(
+                      labelText: 'Note',
+                      labelStyle: TextStyle(color: kTextDim),
+                    ),
+                  ),
+                ]),
               ),
-              items: const [
-                DropdownMenuItem(
-                    value: 'iniziale', child: Text('OJT iniziali')),
-                DropdownMenuItem(
-                    value: 'ripristino',
-                    child: Text('OJT di ripristino')),
-              ],
-              onChanged: (v) => setDlg(() => kind = v!),
             ),
-            const SizedBox(height: 12),
-            Row(children: [
-              Expanded(
-                child: Text(
-                  'Data: ${DateFormat('dd/MM/yyyy').format(ojtDate)}',
-                  style: const TextStyle(color: kText, fontSize: 13),
-                ),
-              ),
+            actions: [
               TextButton(
-                onPressed: () async {
-                  final d = await showDatePicker(
-                    context: ctx,
-                    initialDate: ojtDate,
-                    firstDate: DateTime(2015),
-                    lastDate: DateTime.now().add(const Duration(days: 30)),
-                  );
-                  if (d != null) setDlg(() => ojtDate = d);
-                },
-                child: const Text('Cambia'),
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Annulla', style: TextStyle(color: kTextDim)),
               ),
-            ]),
-          ]),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Annulla', style: TextStyle(color: kTextDim)),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Imposta GO'),
-            ),
-          ],
-        ),
+              ElevatedButton(
+                onPressed: invalid ? null : () => Navigator.pop(ctx, true),
+                child: const Text('Salva'),
+              ),
+            ],
+          );
+        },
       ),
     );
+    final note = noteCtrl.text;
+    noteCtrl.dispose();
     if (confirm != true) return;
     try {
-      await _userService.setGoOverride(instr.id, true,
-          ojtKind: kind, ojtAt: ojtDate);
-      await _gradeService.addUpdate(
-        instructorId: instr.id,
-        type: 'ojt',
-        hours: 0,
-        description: AppUser.ojtKindLabel(kind) ?? 'OJT',
-        date: ojtDate,
-      );
+      await _userService.setOjt(instr.id,
+          kind: kind, startAt: start, endAt: end, note: note);
+      if (isNew) {
+        await _gradeService.addUpdate(
+          instructorId: instr.id,
+          type: 'ojt',
+          hours: 0,
+          description: AppUser.ojtKindLabel(kind) ?? 'OJT',
+          date: start,
+        );
+      }
     } catch (_) {
       showAppError('Salvataggio OJT non riuscito. Riprova.');
     } finally {
@@ -751,12 +827,6 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
                       _kvRow('Username', instr.username ?? '—'),
                       _kvRow('Attivo', instr.isActive ? 'Sì' : 'No'),
                       _kvRow('Stato GO/NO-GO', go ? 'GO' : 'NO-GO'),
-                      if (instr.goOverride)
-                        _kvRow(
-                          'Override',
-                          '${AppUser.ojtKindLabel(instr.ojtKind) ?? 'OJT'}'
-                          '${instr.ojtAt != null ? ' · ${DateFormat('dd/MM/yyyy').format(instr.ojtAt!)}' : ''}',
-                        ),
                       _kvRow(
                         'Perdita currency',
                         instr.currencyLostAt != null
@@ -764,13 +834,9 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
                                 .format(instr.currencyLostAt!)
                             : '—',
                       ),
-                      if (!instr.goOverride &&
-                          (instr.ojtKind != null || instr.ojtAt != null))
-                        _kvRow(
-                          'Ultimo OJT',
-                          '${AppUser.ojtKindLabel(instr.ojtKind) ?? 'OJT'}'
-                          '${instr.ojtAt != null ? ' · ${DateFormat('dd/MM/yyyy').format(instr.ojtAt!)}' : ''}',
-                        ),
+                      _kvRow('OJT', instr.ojtSummary ?? '—'),
+                      if (instr.ojtNote?.trim().isNotEmpty == true)
+                        _kvRow('Note OJT', instr.ojtNote!),
                       const SizedBox(height: 8),
                       OutlinedButton.icon(
                         onPressed: () {
@@ -852,32 +918,50 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
                       const SizedBox(height: 8),
                       InstructorLessonsByCourse(instructorId: instr.id),
                       const SizedBox(height: 4),
-                      // Override toggle
-                      OutlinedButton.icon(
-                        onPressed: () async {
-                          Navigator.pop(context);
-                          await _toggleGoOverride(instr);
-                        },
-                        icon: Icon(
-                          instr.goOverride ? Icons.lock_open : Icons.how_to_reg,
-                          size: 16,
-                          color: instr.goOverride ? kError : kWarning,
+                      // OJT: nuovo / modifica / chiusura
+                      Wrap(spacing: 8, runSpacing: 8, children: [
+                        OutlinedButton.icon(
+                          onPressed: () async {
+                            Navigator.pop(context);
+                            await _editOjt(instr, fresh: true);
+                          },
+                          icon: const Icon(Icons.how_to_reg, size: 16, color: kWarning),
+                          label: const Text('Registra nuovo OJT',
+                              style: TextStyle(color: kWarning, fontSize: 12)),
+                          style: OutlinedButton.styleFrom(
+                              side: const BorderSide(color: kWarning),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 6)),
                         ),
-                        label: Text(
-                          instr.goOverride
-                              ? 'Rimuovi GO manuale (OJT)'
-                              : 'Registra OJT iniziali / di ripristino',
-                          style: TextStyle(
-                              color: instr.goOverride ? kError : kWarning,
-                              fontSize: 12),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          side: BorderSide(
-                              color: instr.goOverride ? kError : kWarning),
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 6),
-                        ),
-                      ),
+                        if (instr.ojtAt != null)
+                          OutlinedButton.icon(
+                            onPressed: () async {
+                              Navigator.pop(context);
+                              await _editOjt(instr);
+                            },
+                            icon: const Icon(Icons.edit, size: 16, color: kPrimary),
+                            label: const Text('Modifica OJT',
+                                style: TextStyle(color: kPrimary, fontSize: 12)),
+                            style: OutlinedButton.styleFrom(
+                                side: const BorderSide(color: kPrimary),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 6)),
+                          ),
+                        if (instr.goOverride)
+                          OutlinedButton.icon(
+                            onPressed: () async {
+                              Navigator.pop(context);
+                              await _toggleGoOverride(instr);
+                            },
+                            icon: const Icon(Icons.lock_open, size: 16, color: kError),
+                            label: const Text('Chiudi OJT',
+                                style: TextStyle(color: kError, fontSize: 12)),
+                            style: OutlinedButton.styleFrom(
+                                side: const BorderSide(color: kError),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 6)),
+                          ),
+                      ]),
                       const SizedBox(height: 20),
 
                       // ── Storico perdita / OJT ────────────────────────────
@@ -1040,36 +1124,6 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
                           ],
                         )),
                       ]),
-                      const SizedBox(height: 16),
-                      Builder(builder: (_) {
-                        final courses = GhDbService()
-                            .courses
-                            .where((c) =>
-                                (c['instructor_ids'] as List? ?? [])
-                                    .contains(instr.id))
-                            .map((c) => c['title'] as String? ?? c['id'] as String)
-                            .toList();
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _sectionTitle(
-                                'Corsi assegnati (${courses.length})'),
-                            const SizedBox(height: 6),
-                            if (courses.isEmpty)
-                              const Text('Nessun corso',
-                                  style: TextStyle(
-                                      color: kTextDim, fontSize: 11))
-                            else
-                              ...courses.map((t) => Padding(
-                                    padding: const EdgeInsets.only(bottom: 3),
-                                    child: Text(t,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                            color: kText, fontSize: 12)),
-                                  )),
-                          ],
-                        );
-                      }),
                     ],
                   ),
                 ),

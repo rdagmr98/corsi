@@ -41,6 +41,9 @@ class AppUser {
   // OJT capacità didattiche: 'iniziale' | 'ripristino' (+ data).
   final String? ojtKind;
   final DateTime? ojtAt;
+  // Fine OJT (null = in corso o mai concluso) e note libere dell'admin.
+  final DateTime? ojtEndAt;
+  final String? ojtNote;
   // Qualifiche AMC (id da reference.amcRules.qualifications); null = mai compilate.
   final List<String>? qualifications;
   // Grado / titolo (frequentatori: es. GRD, CAR. SC; istruttori: abilitazione).
@@ -64,6 +67,8 @@ class AppUser {
     this.currencyLostAt,
     this.ojtKind,
     this.ojtAt,
+    this.ojtEndAt,
+    this.ojtNote,
     this.qualifications,
     this.titolo,
     this.licenza,
@@ -77,6 +82,19 @@ class AppUser {
     'ripristino' => 'OJT di ripristino',
     _ => null,
   };
+
+  static String _dmy(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+
+  /// "OJT di ripristino: 10/03/2026 → 02/05/2026" (fine omessa se in corso);
+  /// null se nessun OJT è mai stato registrato.
+  String? get ojtSummary {
+    if (ojtKind == null && ojtAt == null) return null;
+    final label = ojtKindLabel(ojtKind) ?? 'OJT';
+    if (ojtAt == null) return label;
+    final end = ojtEndAt != null ? ' → ${_dmy(ojtEndAt!)}' : (goOverride ? ' → in corso' : '');
+    return '$label: ${_dmy(ojtAt!)}$end';
+  }
 
   UserRole get userRole => UserRoleExt.fromString(role);
   String get fullName => '$cognome $nome'.trim();
@@ -102,6 +120,10 @@ class AppUser {
     ojtAt: j['ojt_at'] != null
         ? DateTime.tryParse(j['ojt_at'] as String)
         : null,
+    ojtEndAt: j['ojt_end_at'] != null
+        ? DateTime.tryParse(j['ojt_end_at'] as String)
+        : null,
+    ojtNote: j['ojt_note'] as String?,
     qualifications: j['qualifications'] != null
         ? List<String>.from(j['qualifications'] as List)
         : null,
@@ -130,6 +152,8 @@ class AppUser {
       'currency_lost_at': currencyLostAt!.toIso8601String().substring(0, 10),
     if (ojtKind != null) 'ojt_kind': ojtKind,
     if (ojtAt != null) 'ojt_at': ojtAt!.toIso8601String().substring(0, 10),
+    if (ojtEndAt != null) 'ojt_end_at': ojtEndAt!.toIso8601String().substring(0, 10),
+    if (ojtNote != null) 'ojt_note': ojtNote,
     if (qualifications != null) 'qualifications': qualifications,
     if (titolo != null) 'titolo': titolo,
     if (licenza != null) 'licenza': licenza,
@@ -152,6 +176,8 @@ class AppUser {
     Object? currencyLostAt = _s,
     Object? ojtKind = _s,
     Object? ojtAt = _s,
+    Object? ojtEndAt = _s,
+    Object? ojtNote = _s,
     Object? qualifications = _s,
     Object? titolo = _s,
     Object? licenza = _s,
@@ -171,6 +197,8 @@ class AppUser {
         : currencyLostAt as DateTime?,
     ojtKind: identical(ojtKind, _s) ? this.ojtKind : ojtKind as String?,
     ojtAt: identical(ojtAt, _s) ? this.ojtAt : ojtAt as DateTime?,
+    ojtEndAt: identical(ojtEndAt, _s) ? this.ojtEndAt : ojtEndAt as DateTime?,
+    ojtNote: identical(ojtNote, _s) ? this.ojtNote : ojtNote as String?,
     qualifications: identical(qualifications, _s)
         ? this.qualifications
         : qualifications as List<String>?,

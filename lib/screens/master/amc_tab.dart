@@ -75,13 +75,11 @@ class _AmcTabState extends ConsumerState<AmcTab>
   Map<String, AppUser> _uidToUser() =>
       {for (final u in _userService.getAllUsers()) u.id: u};
 
-  Set<String> _courseInstructors() {
-    if (_selectedCourseId == null) return {};
-    final c = _courseService.getAllCourses()
-        .where((c) => c.id == _selectedCourseId)
-        .firstOrNull;
-    return c?.instructorIds.toSet() ?? {};
-  }
+  // Gli istruttori sono assegnati a tutti i corsi.
+  Set<String> _courseInstructors() =>
+      _selectedCourseId == null
+          ? {}
+          : {for (final u in _userService.getInstructors()) u.id};
 
   // ── Sorting numerico corretto: 1.1 < 1.2 < ... < 3.1 < 3.11 < 11A.1 < 11B.1 < 12.1 ──
   int _compareCode(String a, String b) {

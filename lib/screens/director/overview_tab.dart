@@ -6,6 +6,7 @@ import '../../providers/auth_provider.dart';
 import '../../services/course_service.dart';
 import '../../services/reference_service.dart';
 import '../../services/schedule_service.dart';
+import '../../services/user_service.dart';
 import '../../theme.dart';
 
 class DirectorOverviewTab extends ConsumerStatefulWidget {
@@ -20,6 +21,7 @@ class _DirectorOverviewTabState extends ConsumerState<DirectorOverviewTab> {
   final _courseService = CourseService();
   final _refService = ReferenceService();
   final _scheduleService = ScheduleService();
+  final _userService = UserService();
   List<Course> _courses = [];
   Course? _selected;
 
@@ -210,7 +212,7 @@ class _DirectorOverviewTabState extends ConsumerState<DirectorOverviewTab> {
             children: [
               _statCard('Frequentatori', '${course.attendeeIds.length}', Icons.people),
               const SizedBox(width: 12),
-              _statCard('Istruttori', '${course.instructorIds.length}', Icons.school),
+              _statCard('Istruttori', '${_userService.getInstructors().length}', Icons.school),
               const SizedBox(width: 12),
               _statCard('Ore teoria', '$totalTheory', Icons.menu_book),
               const SizedBox(width: 12),

@@ -423,6 +423,30 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
 
   Future<void> _generateRemaining() async {
     if (_selected == null || _typeInfo == null) return;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: kCard,
+        title: const Text('Genera lezioni rimanenti',
+            style: TextStyle(color: kText, fontSize: 14)),
+        content: const Text(
+          'Verranno rigenerate le lezioni non ancora confermate di questo corso. '
+          'Le lezioni confermate e quelle inserite a mano restano invariate.\n\nProcedere?',
+          style: TextStyle(color: kText, fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annulla', style: TextStyle(color: kTextDim)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Genera'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
     final hasRecovery = _attendanceService.courseHasAttendeesInRecovery(
       _selected!.id,
       _selected!.attendeeIds,
@@ -448,9 +472,8 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
     String? presetInstructor,
   }) async {
     if (_selected == null || _typeInfo == null) return;
-    final instructors = _userService.getInstructors()
-        .where((u) => _selected!.instructorIds.contains(u.id))
-        .toList();
+    // Gli istruttori sono assegnati a tutti i corsi: nessun filtro per corso.
+    final instructors = _userService.getInstructors();
 
     // Count all scheduled hours (confirmed + unconfirmed) per submodule and module
     final doneLessons = _allCourseLessons;
@@ -1470,9 +1493,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
 
   Future<void> _editLessonInstructor(ScheduledLesson lesson) async {
     if (_selected == null || _typeInfo == null) return;
-    final instructors = _userService.getInstructors()
-        .where((u) => _selected!.instructorIds.contains(u.id))
-        .toList();
+    final instructors = _userService.getInstructors();
 
     final isTheory = lesson.isTheory;
 
@@ -2002,45 +2023,39 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                 color: kTextDim,
               ),
               const SizedBox(width: 8),
-              if (_selected != null) ...[
-                OutlinedButton.icon(
-                  onPressed: _showPsHeaderSettings,
-                  icon: const Icon(Icons.edit_calendar, size: 16),
-                  label: const Text('Dati corso PS', style: TextStyle(fontSize: 12)),
+              if (_selected != null)
+                PopupMenuButton<String>(
+                  tooltip: 'Impostazioni planner',
+                  icon: const Icon(Icons.settings, size: 20, color: kTextDim),
+                  color: kCard,
+                  onSelected: (v) {
+                    switch (v) {
+                      case 'ps':
+                        _showPsHeaderSettings();
+                      case 'excluded':
+                        _showExcludedDates();
+                      case 'generate':
+                        _generateRemaining();
+                      case 'delete':
+                        _deleteUnconfirmedLessons();
+                      case 'excel':
+                        _exportWeeklyExcel();
+                    }
+                  },
+                  itemBuilder: (_) {
+                    final n = _selected!.excludedDates.length;
+                    return [
+                      _menuItem('ps', Icons.edit_calendar, 'Dati corso PS'),
+                      _menuItem('excluded', Icons.event_busy,
+                          'Giorni esclusi${n > 0 ? ' ($n)' : ''}'),
+                      _menuItem('excel', Icons.table_view, 'Excel PS'),
+                      const PopupMenuDivider(),
+                      _menuItem('generate', Icons.auto_fix_high, 'Genera lezioni rimanenti'),
+                      _menuItem('delete', Icons.delete_sweep, 'Cancella non svolte',
+                          color: kError),
+                    ];
+                  },
                 ),
-                const SizedBox(width: 8),
-                OutlinedButton.icon(
-                  onPressed: _showExcludedDates,
-                  icon: Icon(Icons.event_busy, size: 16,
-                      color: _selected!.excludedDates.isNotEmpty ? kWarning : kTextDim),
-                  label: Text(
-                    'Giorni esclusi${_selected!.excludedDates.isNotEmpty ? ' (${_selected!.excludedDates.length})' : ''}',
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                OutlinedButton.icon(
-                  onPressed: _generateRemaining,
-                  icon: const Icon(Icons.auto_fix_high, size: 16),
-                  label: const Text('Genera lezioni rimanenti', style: TextStyle(fontSize: 12)),
-                ),
-                const SizedBox(width: 8),
-                OutlinedButton.icon(
-                  onPressed: _deleteUnconfirmedLessons,
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: kError),
-                    foregroundColor: kError,
-                  ),
-                  icon: const Icon(Icons.delete_sweep, size: 16),
-                  label: const Text('Cancella non svolte', style: TextStyle(fontSize: 12)),
-                ),
-                const SizedBox(width: 8),
-                OutlinedButton.icon(
-                  onPressed: _exportWeeklyExcel,
-                  icon: const Icon(Icons.table_view, size: 16),
-                  label: const Text('Excel PS', style: TextStyle(fontSize: 12)),
-                ),
-              ],
               IconButton(icon: const Icon(Icons.refresh, color: kTextDim), onPressed: _reload),
               ValueListenableBuilder<int>(
                 valueListenable: GhDbService.pendingSaves,
@@ -2070,8 +2085,13 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-          // StackFit.expand allargherebbe la griglia a tutto schermo: centrata come prima.
-          Align(
+          // Griglia adattiva: colonne e righe riempiono lo spazio disponibile;
+          // sotto i minimi restano gli scroll (finestre molto piccole).
+          LayoutBuilder(builder: (context, box) {
+            final dayW = ((box.maxWidth - 48 - 80) / 7).clamp(110.0, 400.0);
+            // 120 = intestazione giorni + riga recuperi.
+            final rowH = ((box.maxHeight - 120) / allSlots.length).clamp(84.0, 240.0);
+            return Align(
             alignment: Alignment.topCenter,
             child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
@@ -2080,7 +2100,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: Table(
                   border: TableBorder.all(color: kBorder, width: 0.5),
-                  defaultColumnWidth: const FixedColumnWidth(160),
+                  defaultColumnWidth: FixedColumnWidth(dayW),
                   columnWidths: const {0: FixedColumnWidth(80)},
                   children: [
                     TableRow(
@@ -2161,7 +2181,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                                     message: 'Fuori orario regolare — disponibile per recuperi',
                                     waitDuration: const Duration(milliseconds: 500),
                                     child: Container(
-                                      height: 120,
+                                      height: rowH,
                                       color: kWarning.withOpacity(0.05),
                                       child: const Center(
                                         child: Icon(Icons.restore, color: kWarning, size: 14),
@@ -2211,31 +2231,48 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                                       onTap: () => _addLesson(day, slot.slot),
                                       onSecondaryTap: () => _editNote(day, slot.slot, slotNote),
                                       onLongPress: () => _editNote(day, slot.slot, slotNote),
-                                      child: Container(
-                                        height: 120,
-                                        alignment: slotNote != null ? Alignment.topLeft : Alignment.center,
-                                        padding: slotNote != null ? const EdgeInsets.all(6) : EdgeInsets.zero,
-                                        child: slotNote != null
-                                            ? Column(
-                                                crossAxisAlignment: CrossAxisAlignment.start,
-                                                children: [
-                                                  Row(children: [
-                                                    const Icon(Icons.sticky_note_2_outlined, size: 10, color: kWarning),
-                                                    const SizedBox(width: 3),
-                                                    Expanded(child: Text(slotNote.text,
+                                      child: SizedBox(
+                                        height: rowH,
+                                        child: Stack(children: [
+                                          Align(
+                                            alignment: slotNote != null ? Alignment.topLeft : Alignment.center,
+                                            child: slotNote != null
+                                                ? Padding(
+                                                    padding: const EdgeInsets.fromLTRB(6, 6, 24, 6),
+                                                    child: Text(slotNote.text,
                                                         style: const TextStyle(fontSize: 10, color: kWarning),
-                                                        maxLines: 5, overflow: TextOverflow.ellipsis)),
-                                                  ]),
-                                                ],
-                                              )
-                                            : const Icon(Icons.add, color: kBorder, size: 16),
+                                                        maxLines: ((rowH - 12) / 13).floor().clamp(1, 14),
+                                                        overflow: TextOverflow.ellipsis),
+                                                  )
+                                                : const Icon(Icons.add, color: kBorder, size: 16),
+                                          ),
+                                          Positioned(
+                                            top: 2,
+                                            right: 2,
+                                            child: GestureDetector(
+                                              onTap: () => _editNote(day, slot.slot, slotNote),
+                                              child: Padding(
+                                                padding: const EdgeInsets.all(3),
+                                                child: Icon(
+                                                    slotNote != null
+                                                        ? Icons.sticky_note_2
+                                                        : Icons.sticky_note_2_outlined,
+                                                    size: 12,
+                                                    color: slotNote != null ? kWarning : kBorder),
+                                              ),
+                                            ),
+                                          ),
+                                        ]),
                                       ),
                                     )
                                   : _slide(shown, day, slot.slot, shownBefore,
                                       _lessonCell(shown, subNameMap, instrNames,
                                           ordinals: lessonOrdinals,
                                           planT: subPlanT, planP: subPlanP,
-                                          taskOrdinals: taskOrdinals, taskPlanMap: taskPlanMap)),
+                                          taskOrdinals: taskOrdinals, taskPlanMap: taskPlanMap,
+                                          height: rowH,
+                                          note: slotNote,
+                                          onNote: () => _editNote(day, slot.slot, slotNote))),
                                 ),
                               ),
                             );
@@ -2248,7 +2285,8 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
               ),
             ),
           ),
-          ),
+          );
+          }),
               Positioned(left: 0, top: 0, bottom: 0, width: 28,
                   child: _weekEdge(next: false)),
               Positioned(right: 0, top: 0, bottom: 0, width: 28,
@@ -2259,6 +2297,17 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
       ],
     );
   }
+
+  PopupMenuItem<String> _menuItem(String value, IconData icon, String label,
+          {Color color = kText}) =>
+      PopupMenuItem<String>(
+        value: value,
+        child: Row(children: [
+          Icon(icon, size: 16, color: color),
+          const SizedBox(width: 10),
+          Text(label, style: TextStyle(color: color, fontSize: 13)),
+        ]),
+      );
 
   Widget _headerCell(String text, {bool highlight = false}) => Container(
     padding: const EdgeInsets.all(8),
@@ -2557,6 +2606,9 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
     required Map<String, int> planP,
     required Map<String, int> taskOrdinals,
     required Map<int, double> taskPlanMap,
+    required double height,
+    required SlotNote? note,
+    required VoidCallback onNote,
   }) {
     final isTheory = lesson.type != 'pratica';
     final nc = _normSubCode(lesson.submoduleCode);
@@ -2604,8 +2656,12 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
       if (task != null && task.name.isNotEmpty) '🔧 Task ${task.programTaskId}: ${task.name}',
       if (instrLabel.isNotEmpty) '👤 $instrLabel',
       if (absentNames.isNotEmpty) 'Assenti (${absentNames.length}): ${absentNames.join(', ')}',
+      if (note != null) 'Nota: ${note.text}',
       hoursStr,
     ].join('\n');
+    // Righe disponibili al titolo: cresce con la cella, cede spazio alla nota.
+    final topicLines =
+        ((height - 56 - (note != null ? 26 : 0)) / 13).floor().clamp(1, 9);
 
     final cell = GestureDetector(
       onTap: () => _editLessonInstructor(lesson),
@@ -2614,7 +2670,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
         message: tooltipMsg,
         waitDuration: const Duration(milliseconds: 500),
         child: Container(
-        height: 120,
+        height: height,
         margin: const EdgeInsets.all(2),
         padding: const EdgeInsets.all(6),
         decoration: BoxDecoration(
@@ -2660,6 +2716,18 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
               if (lesson.confirmed)
                 const Icon(Icons.check_circle, color: kAccent, size: 10),
               GestureDetector(
+                onTap: onNote,
+                child: Padding(
+                  padding: const EdgeInsets.all(3),
+                  child: Icon(
+                      note != null
+                          ? Icons.sticky_note_2
+                          : Icons.sticky_note_2_outlined,
+                      color: note != null ? kWarning : Colors.white38,
+                      size: 12),
+                ),
+              ),
+              GestureDetector(
                 onTap: () => _deleteLesson(lesson),
                 child: Padding(
                   padding: const EdgeInsets.all(3),
@@ -2671,9 +2739,17 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
             Expanded(
               child: Text(displayTopic,
                   style: const TextStyle(color: Colors.white, fontSize: 10),
-                  maxLines: 4,
+                  maxLines: topicLines,
                   overflow: TextOverflow.ellipsis),
             ),
+            if (note != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 2),
+                child: Text(note.text,
+                    style: const TextStyle(color: kWarning, fontSize: 9),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis),
+              ),
             Row(children: [
               Expanded(
                 child: Text(hoursStr,

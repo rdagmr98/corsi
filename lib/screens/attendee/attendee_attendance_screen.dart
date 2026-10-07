@@ -99,10 +99,7 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
     final totalConfirmed = modStats.values.fold(0, (s, m) => s + (m['confirmed'] ?? 0));
     final totalAbsent    = modStats.values.fold(0, (s, m) => s + (m['absent'] ?? 0));
     final totalRecovered = modStats.values.fold(0, (s, m) => s + (m['recovered'] ?? 0));
-    final totalUnrec     = modStats.values.fold(0, (s, m) => s + (m['unrecovered'] ?? 0));
     final totalPlanned   = typeInfo?.modules.fold<int>(0, (s, m) => s + m.totalHours) ?? totalConfirmed;
-    final globalPct      = totalPlanned > 0 ? (totalPlanned - totalUnrec) / totalPlanned : 1.0;
-    final globalAbsPct   = totalPlanned > 0 ? totalAbsent / totalPlanned : 0.0;
     // Ore totali ancora da recuperare: pratica 100% + teoria oltre il 10%.
     final totalToRecover  = modStats.values.fold(0, (s, m) => s + (m['toRecover'] ?? 0));
     final totalToRecoverT = modStats.values.fold(0, (s, m) => s + (m['toRecoverT'] ?? 0));
@@ -244,32 +241,37 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
 
                   // Recovery window alert
                   if (recoveryWindow.isNotEmpty) ...[
+                    // Titolo sempre visibile; regola e dettaglio per modulo al tocco.
                     Container(
-                      padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
                         color: kError.withValues(alpha: 0.08),
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(color: kError.withValues(alpha: 0.35)),
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      child: ExpansionTile(
+                        shape: const Border(),
+                        collapsedShape: const Border(),
+                        iconColor: kError,
+                        collapsedIconColor: kError,
+                        tilePadding: const EdgeInsets.symmetric(horizontal: 12),
+                        childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+                        expandedCrossAxisAlignment: CrossAxisAlignment.start,
+                        title: Row(children: [
+                          const Icon(Icons.warning_amber, color: kError, size: 16),
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text(
+                                'Ore da recuperare: ${totalToRecover}h'
+                                '${totalToRecoverP > 0 ? ' · ${totalToRecoverP}h pratica' : ''}'
+                                '${totalToRecoverT > 0 ? ' · ${totalToRecoverT}h teoria' : ''}',
+                                style: const TextStyle(color: kError, fontSize: 12, fontWeight: FontWeight.w600)),
+                          ),
+                        ]),
                         children: [
-                          Row(children: [
-                            const Icon(Icons.warning_amber, color: kError, size: 16),
-                            const SizedBox(width: 6),
-                            Flexible(
-                              child: Text(
-                                  'Ore da recuperare: ${totalToRecover}h'
-                                  '${totalToRecoverP > 0 ? ' · ${totalToRecoverP}h pratica' : ''}'
-                                  '${totalToRecoverT > 0 ? ' · ${totalToRecoverT}h teoria' : ''}',
-                                  style: const TextStyle(color: kError, fontSize: 12, fontWeight: FontWeight.w600)),
-                            ),
-                          ]),
-                          const SizedBox(height: 2),
                           const Text(
                               'Pratica: 100% delle assenze · Teoria: solo le ore oltre il 10%',
                               style: TextStyle(color: kError, fontSize: 10)),
-                          const SizedBox(height: 6),
+                          const SizedBox(height: 2),
                           ...recoveryWindow.entries.map((e) {
                             final tT = modStats[e.key]?['toRecoverT'] ?? 0;
                             final tP = modStats[e.key]?['toRecoverP'] ?? 0;
@@ -545,9 +547,14 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
           borderRadius: BorderRadius.circular(8),
           side: BorderSide(color: warn ? kError.withValues(alpha: 0.4) : kBorder),
         ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: Row(
+        // Riga pulita (modulo + nome + %); statistiche dettagliate al tocco.
+        child: ExpansionTile(
+          shape: const Border(),
+          collapsedShape: const Border(),
+          tilePadding: const EdgeInsets.symmetric(horizontal: 12),
+          childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+          expandedCrossAxisAlignment: CrossAxisAlignment.start,
+          title: Row(
             children: [
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
@@ -561,38 +568,10 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (modNames[mod] != null)
-                      Text(modNames[mod]!,
-                          style: const TextStyle(color: kText, fontSize: 11),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis),
-                    Text(
-                      !hasActivity
-                          ? 'Pres. 100% · Ass. 0% — nessuna assenza su $plan ore prev.'
-                          : 'Pres. $presPct% · Ass. $absPct% — $absent ass. · $rec rec. · $unrec non rec. / $plan ore prev.',
-                      style: TextStyle(color: warn ? kError : kTextDim, fontSize: 10),
-                    ),
-                    if (breakdown.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 2),
-                        child: Text(
-                          breakdown,
-                          style: TextStyle(
-                              color: warn ? kError : kTextDim, fontSize: 10),
-                        ),
-                      ),
-                    if (warn)
-                      Text(
-                          'DA RECUPERARE: ${toRec}h'
-                          '${toRecP > 0 ? ' · ${toRecP}h pratica' : ''}'
-                          '${toRecT > 0 ? ' · ${toRecT}h teoria' : ''}',
-                          style: const TextStyle(
-                              color: kError, fontSize: 10, fontWeight: FontWeight.bold)),
-                  ],
-                ),
+                child: Text(modNames[mod] ?? '',
+                    style: const TextStyle(color: kText, fontSize: 11),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis),
               ),
               const SizedBox(width: 8),
               Text(
@@ -602,6 +581,29 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
               ),
             ],
           ),
+          children: [
+            Text(
+              !hasActivity
+                  ? 'Pres. 100% · Ass. 0% — nessuna assenza su $plan ore prev.'
+                  : 'Pres. $presPct% · Ass. $absPct% — $absent ass. · $rec rec. · $unrec non rec. / $plan ore prev.',
+              style: TextStyle(color: warn ? kError : kTextDim, fontSize: 10),
+            ),
+            if (breakdown.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(
+                  breakdown,
+                  style: TextStyle(color: warn ? kError : kTextDim, fontSize: 10),
+                ),
+              ),
+            if (warn)
+              Text(
+                  'DA RECUPERARE: ${toRec}h'
+                  '${toRecP > 0 ? ' · ${toRecP}h pratica' : ''}'
+                  '${toRecT > 0 ? ' · ${toRecT}h teoria' : ''}',
+                  style: const TextStyle(
+                      color: kError, fontSize: 10, fontWeight: FontWeight.bold)),
+          ],
         ),
       );
     }).toList();

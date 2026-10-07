@@ -273,7 +273,7 @@ class _InstructorHoursScreenState extends ConsumerState<InstructorHoursScreen> {
   }
 
   Widget _serviceStatusCard(AppUser me) {
-    final ojtLabel = AppUser.ojtKindLabel(me.ojtKind);
+    final ojt = me.ojtSummary;
     return Card(
       color: kCard,
       shape: RoundedRectangleBorder(
@@ -295,15 +295,15 @@ class _InstructorHoursScreenState extends ConsumerState<InstructorHoursScreen> {
                 'Perdita currency: ${DateFormat('dd/MM/yyyy').format(me.currencyLostAt!)}',
                 style: const TextStyle(color: kError, fontSize: 12),
               ),
-            if (ojtLabel != null || me.ojtAt != null) ...[
+            if (ojt != null) ...[
               if (me.currencyLostAt != null) const SizedBox(height: 4),
               Text(
-                '${ojtLabel ?? 'OJT'}'
-                '${me.ojtAt != null ? ': ${DateFormat('dd/MM/yyyy').format(me.ojtAt!)}' : ''}'
-                '${me.goOverride ? ' (GO attivo)' : ''}',
-                overflow: TextOverflow.ellipsis,
+                '$ojt${me.goOverride ? ' (GO attivo)' : ''}',
                 style: const TextStyle(color: kWarning, fontSize: 12),
               ),
+              if (me.ojtNote?.trim().isNotEmpty == true)
+                Text(me.ojtNote!,
+                    style: const TextStyle(color: kTextDim, fontSize: 11)),
             ],
           ],
         ),

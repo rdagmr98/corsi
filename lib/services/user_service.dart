@@ -119,8 +119,13 @@ class UserService {
     await _db.saveUsers(users);
   }
 
+  static String _ymd(DateTime d) => d.toIso8601String().substring(0, 10);
+
+  /// Attiva/chiude l'OJT. Attivando si azzera la data di fine; chiudendo la
+  /// si registra ([ojtEndAt] o oggi) se non c'è già. Tipo, inizio e note
+  /// restano nello stato di servizio.
   Future<void> setGoOverride(String userId, bool value,
-      {String? ojtKind, DateTime? ojtAt}) async {
+      {String? ojtKind, DateTime? ojtAt, DateTime? ojtEndAt}) async {
     final users = _db.users.toList();
     final idx = users.indexWhere((u) => u['id'] == userId);
     if (idx < 0) return;
@@ -128,11 +133,33 @@ class UserService {
     updated['go_override'] = value;
     if (value) {
       if (ojtKind != null) updated['ojt_kind'] = ojtKind;
-      if (ojtAt != null) {
-        updated['ojt_at'] = ojtAt.toIso8601String().substring(0, 10);
-      }
+      if (ojtAt != null) updated['ojt_at'] = _ymd(ojtAt);
+      updated.remove('ojt_end_at');
+    } else if (updated['ojt_at'] != null) {
+      updated['ojt_end_at'] ??= _ymd(ojtEndAt ?? DateTime.now());
     }
-    // ponytail: keep last ojt_kind/ojt_at after decay for stato di servizio
+    updated['updated_at'] = DateTime.now().toIso8601String();
+    users[idx] = updated;
+    await _db.saveUsers(users);
+  }
+
+  /// Modifica manuale dello stato di servizio OJT (admin): tipo, inizio, fine
+  /// e note. Con fine vuota l'OJT è in corso (GO attivo), con fine l'OJT è chiuso.
+  Future<void> setOjt(String userId,
+      {required String kind,
+      required DateTime startAt,
+      DateTime? endAt,
+      String? note}) async {
+    final users = _db.users.toList();
+    final idx = users.indexWhere((u) => u['id'] == userId);
+    if (idx < 0) return;
+    final updated = Map<String, dynamic>.from(users[idx] as Map<String, dynamic>);
+    updated['ojt_kind'] = kind;
+    updated['ojt_at'] = _ymd(startAt);
+    endAt == null ? updated.remove('ojt_end_at') : updated['ojt_end_at'] = _ymd(endAt);
+    final n = note?.trim() ?? '';
+    n.isEmpty ? updated.remove('ojt_note') : updated['ojt_note'] = n;
+    updated['go_override'] = endAt == null;
     updated['updated_at'] = DateTime.now().toIso8601String();
     users[idx] = updated;
     await _db.saveUsers(users);

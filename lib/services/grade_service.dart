@@ -185,6 +185,25 @@ class GradeService {
       getConfirmedLessonHoursRollingYear(instructorId) +
       getManualTeachingHoursRollingYear(instructorId);
 
+  /// Giorno in cui le ore di lezione degli ultimi 365 giorni raggiungono
+  /// [target] (null se non raggiunte): data di fine OJT.
+  DateTime? dateTeachingHoursReached(String instructorId, double target) {
+    final cutoff = DateTime.now().subtract(const Duration(days: 365));
+    final items = <(DateTime, double)>[
+      for (final ls in getConfirmedLessonsByCourse(instructorId).values)
+        for (final l in ls)
+          if (l.date.isAfter(cutoff)) (l.date, 1.0),
+      for (final u in getUpdatesForInstructor(instructorId))
+        if (u.isTeaching && u.isApproved && u.date.isAfter(cutoff)) (u.date, u.hours),
+    ]..sort((a, b) => a.$1.compareTo(b.$1));
+    var sum = 0.0;
+    for (final (d, h) in items) {
+      sum += h;
+      if (sum >= target) return d;
+    }
+    return null;
+  }
+
   double getProfessionalUpdateHoursLast2Years(String instructorId) {
     final cutoff = DateTime.now().subtract(const Duration(days: 730));
     return getUpdatesForInstructor(instructorId)
@@ -196,8 +215,9 @@ class GradeService {
   /// incide solo sul modulo 10: la scadenza NAM non deve rendere NOGO
   /// un istruttore per gli altri moduli.
   bool isGo(AppUser u, {DateTime? now, int? moduleNumber}) {
-    if (u.goOverride) return true;
     final teachOk = getTeachingHoursRollingYear(u.id) >= 6;
+    // L'OJT abilita fino alle 6 ore annuali di lezione, poi decade da solo.
+    if (u.goOverride && !teachOk) return true;
     final profOk = getProfessionalUpdateHoursLast2Years(u.id) >= 35;
     if (moduleNumber != 10) return teachOk && profOk;
     final n = now ?? DateTime.now();
