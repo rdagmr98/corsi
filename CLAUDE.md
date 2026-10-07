@@ -69,7 +69,21 @@ GitHub Actions (`.github/workflows/deploy.yml`) deploya automaticamente su push 
 
 ---
 
-## STATO SESSIONE — aggiornato 2026-10-06 (sessione 32)
+## STATO SESSIONE — aggiornato 2026-10-08 (sessione 34)
+
+### Ultime modifiche (2026-10-07) — sessione 34 — planner adattivo, note per ora, menu impostazioni, OJT, istruttori in tutti i corsi (commit `81b4db2`)
+Richiesta utente (verbatim, troncata): "Quei sottotitoli tipo pratica 100% assenze oppure pres 100% ecc mostrano un sacco di testo [...] mostrale magari se si preme sopra [...] i tasti sopra al planner genera, dati e cancella mettili che appaiono premendo qualcosa simile a menu [...] prima di generare o eliminare le lezioni chiedi conferma [...] adatta anche il planner settimanale alla larghezza della finestra [...] inserisci un campo note per ogni ora [...] gli istruttori sono assegnati a tutti i corsi [...] l'ojt [...] riabilita l'istruttore e deve togliersi da solo quando l'istruttore ha raggiunto le 6 ore di lezione annuali".
+1. **Presenze frequentatore** (`attendee_attendance_screen.dart`): dettagli in `ExpansionTile`, solo al tocco.
+2. **Planner** (`schedule_tab.dart`): tasti Genera/Dati/Cancella nel `PopupMenuButton` "Impostazioni planner"; conferma in `_generateRemaining`; griglia in `LayoutBuilder` (`dayW`/`rowH` con clamp 110-400 e 84-240, sotto i minimi restano gli scroll).
+3. **Note per ora**: icona nota anche sulle celle vuote. L'Excel (`excel_export_service.dart` ~302-328) mostrava già le note degli slot senza lezione.
+4. **Istruttori in tutti i corsi**: ogni selettore usa `UserService.getInstructors()`; `Course.instructorIds` non filtra più (campo ancora salvato da `courses_tab`). Tolto "Corsi assegnati" da `currency_tab`.
+5. **OJT**: `AppUser.ojtKind`/`ojtAt`/`ojtEndAt`/`ojtNote`, `UserService.setOjt`; `GradeService.isGo` fa decadere l'override a 6 h annuali; `currency_tab._autoDecayOjt` registra la fine (record `type == 'ojt'`); admin inserisce inizio/fine/note. Vault: [[AVES Corsi/Planner adattivo note OJT istruttori 2026-10-07]].
+6. Verifica: `flutter analyze` 0 errori, `flutter test` 13/13, build web ok. Hard refresh (Ctrl+Shift+R) per vedere la versione nuova.
+
+### Ultime modifiche (2026-10-07) — sessione 33 — dettaglio lezioni espandibile per corso (commit `d52224a`)
+Widget `lib/widgets/instructor_lessons_by_course.dart` in Le mie ore e Stato di servizio (già descritto al punto 5 della sessione 32).
+
+## STATO SESSIONE — sessione 32 (2026-10-06)
 
 ### Ultime modifiche (2026-10-06) — sessione 32 — planner: recuperi per bisogno reale + teoria/pratica, calendario settimane, indicatore assenti (commit `7d3811c`; più `644a3e6` ore senza etichette)
 Richiesta utente (verbatim, troncata): "nel planner Per i recuperi fai uscire direttamente chi deve recuperare e le materie che devono recuperare [...] muoversi nel plannere settimana per settimana diventa difficoltoso [...] implementa qualcosa tipo un calendario [...] Quando c'è qualcuno assente nel programma fai uscire a di fianco alla validazione [...] quando inserisco il recupero devo capire se c'è da recuperato teoria o pratica e devo poterla segliere se ci sono entrambe." Precedente (`644a3e6`): tolte le scritte "lezioni confermate"/"registrazioni manuali" da Le mie ore e Stati di servizio, resta solo il numero di ore.
