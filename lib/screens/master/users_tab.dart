@@ -66,17 +66,14 @@ class _UsersTabState extends ConsumerState<UsersTab> {
     await showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDlg) => AlertDialog(
-          backgroundColor: kCard,
-          title: Text(user == null ? 'Nuovo utente' : 'Modifica utente',
-              style: const TextStyle(color: kText)),
-          content: SizedBox(
-            width: 440,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const SizedBox(height: 8),
+        builder: (ctx, setDlg) {
+          // Desktop: anagrafica a sinistra, dati di ruolo (grado/forza o
+          // qualifiche AMC) a destra; mobile: tutto in colonna come prima.
+          final hasExtra = selectedRole == UserRole.attendee ||
+              (selectedRole == UserRole.instructor && allQuals.isNotEmpty);
+          final screenW = MediaQuery.of(ctx).size.width;
+          final wide = hasExtra && screenW >= 820;
+          final base = <Widget>[
                   _field('Cognome', cognomeCtrl),
                   const SizedBox(height: 12),
                   _field('Nome', nomeCtrl),
@@ -101,8 +98,9 @@ class _UsersTabState extends ConsumerState<UsersTab> {
                         .toList(),
                     onChanged: (v) => setDlg(() => selectedRole = v ?? selectedRole),
                   ),
+          ];
+          final extra = <Widget>[
                   if (selectedRole == UserRole.attendee) ...[
-                    const SizedBox(height: 12),
                     _field('Grado', titoloCtrl, hint: 'es. GRD, CAR. SC'),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
@@ -122,9 +120,11 @@ class _UsersTabState extends ConsumerState<UsersTab> {
                     ),
                   ],
                   if (selectedRole == UserRole.instructor && allQuals.isNotEmpty) ...[
-                    const SizedBox(height: 16),
-                    const Divider(color: kBorder, height: 1),
-                    const SizedBox(height: 12),
+                    if (!wide) ...const [
+                      SizedBox(height: 4),
+                      Divider(color: kBorder, height: 1),
+                      SizedBox(height: 12),
+                    ],
                     const Align(
                       alignment: Alignment.centerLeft,
                       child: Text('Qualifiche istruttore (AMC)',
@@ -190,7 +190,33 @@ class _UsersTabState extends ConsumerState<UsersTab> {
                       ),
                     ),
                   ],
-                ],
+          ];
+          return AlertDialog(
+          backgroundColor: kCard,
+          title: Text(user == null ? 'Nuovo utente' : 'Modifica utente',
+              style: const TextStyle(color: kText)),
+          content: SizedBox(
+            width: wide ? (screenW - 96).clamp(0.0, 920.0) : 440,
+            child: SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: wide
+                    ? Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(child: Column(children: base)),
+                          const SizedBox(width: 28),
+                          Expanded(child: Column(children: extra)),
+                        ],
+                      )
+                    : Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          ...base,
+                          if (hasExtra) const SizedBox(height: 12),
+                          ...extra,
+                        ],
+                      ),
               ),
             ),
           ),
@@ -254,7 +280,8 @@ class _UsersTabState extends ConsumerState<UsersTab> {
               child: const Text('Salva'),
             ),
           ],
-        ),
+          );
+        },
       ),
     );
   }

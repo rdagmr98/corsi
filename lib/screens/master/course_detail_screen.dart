@@ -33,6 +33,7 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
   final _refService = ReferenceService();
   final _userService = UserService();
   final _gradeFilters = GradeFilters();
+  final _gradesHCtrl = ScrollController();
 
   late Course _course;
   late List<ScheduledLesson> _lessons;
@@ -49,6 +50,7 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
   @override
   void dispose() {
     _tabController.dispose();
+    _gradesHCtrl.dispose();
     super.dispose();
   }
 
@@ -76,8 +78,9 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
       backgroundColor: kBg,
       insetPadding: const EdgeInsets.all(12),
       child: ConstrainedBox(
+        // Desktop 16:9: quasi tutta la finestra (tabella voti con molti moduli).
         constraints: BoxConstraints(
-          maxWidth: 1100,
+          maxWidth: MediaQuery.of(context).size.width - 24,
           maxHeight: MediaQuery.of(context).size.height * 0.92,
         ),
         child: Column(children: [
@@ -470,7 +473,11 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
             ? const Center(
                 child: Text('Nessun voto corrisponde ai filtri',
                     style: TextStyle(color: kTextDim)))
-            : SingleChildScrollView(
+            : Scrollbar(
+                controller: _gradesHCtrl,
+                thumbVisibility: true,
+                child: SingleChildScrollView(
+                controller: _gradesHCtrl,
                 scrollDirection: Axis.horizontal,
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.all(20),
@@ -521,6 +528,7 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
                     ],
                   ),
                 ),
+              ),
               ),
       ),
     ]);

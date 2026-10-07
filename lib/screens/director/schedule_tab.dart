@@ -824,13 +824,6 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                     taskId: tid,
                     aula: selectedAula,
                   );
-                  await _notifService.notifyLessonScheduled(
-                    attendeeIds: _selected!.attendeeIds,
-                    instructorId: selectedInstructor,
-                    courseTitle: _selected!.title,
-                    dateLabel: DateFormat('dd/MM/yyyy').format(date),
-                    moduleLabel: selSub?.name ?? module?.name ?? '',
-                  );
                   _refreshWeek();
                   final next = _nextFreeSlot(date, slot);
                   if (next == null) {
@@ -872,13 +865,6 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                     instructorId2: id2,
                     taskId: tid,
                     aula: selectedAula,
-                  );
-                  await _notifService.notifyLessonScheduled(
-                    attendeeIds: _selected!.attendeeIds,
-                    instructorId: selectedInstructor,
-                    courseTitle: _selected!.title,
-                    dateLabel: DateFormat('dd/MM/yyyy').format(date),
-                    moduleLabel: selSub?.name ?? module?.name ?? '',
                   );
                   _refreshWeek();
                 },
@@ -1439,6 +1425,33 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
   }
 
   Future<void> _deleteLesson(ScheduledLesson lesson) async {
+    if (lesson.confirmed) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: kCard,
+          title: const Text('Elimina ora validata?', style: TextStyle(color: kError)),
+          content: Text(
+            'L\'ora "${lesson.topic}" del ${DateFormat('dd/MM/yyyy').format(lesson.date)} '
+            'è già stata validata: eliminandola si perdono presenze e ore registrate.\n\n'
+            'L\'operazione non è reversibile.',
+            style: const TextStyle(color: kText),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Annulla', style: TextStyle(color: kTextDim)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: kError),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Elimina'),
+            ),
+          ],
+        ),
+      );
+      if (ok != true) return;
+    }
     await _scheduleService.deleteLesson(lesson.id);
     _refreshWeek();
   }
@@ -1807,15 +1820,6 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                   topic: newTopic,
                   aula: selectedAula,
                 ));
-                if (selectedInstructor != null &&
-                    selectedInstructor != lesson.instructorId) {
-                  await _notifService.notifyLessonChanged(
-                    instructorId: selectedInstructor!,
-                    courseTitle: _selected!.title,
-                    dateLabel: DateFormat('dd/MM/yyyy').format(lesson.date),
-                    moduleLabel: newTopic,
-                  );
-                }
                 await saveAbsences(force: false);
                 if (subChanged && recompile) {
                   final nextDay = lesson.date.add(const Duration(days: 1));
@@ -1864,6 +1868,48 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
         SnackBar(content: Text('$deleted lezioni non svolte cancellate.')),
       );
       _refreshWeek();
+    }
+  }
+
+  /// Il direttore decide quando avvisare: istruttori con lezioni ancora da svolgere
+  /// e frequentatori ricevono la stessa notifica (programma pronto o modificato).
+  Future<void> _sendPlannerNotification() async {
+    final course = _selected;
+    if (course == null) return;
+    final recipients = ScheduleService.plannerRecipients(
+        _scheduleService.getLessonsForCourse(course.id), course.attendeeIds);
+    final instructors = recipients.length - course.attendeeIds.toSet().length;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: kCard,
+        title: const Text('Invia notifica programma',
+            style: TextStyle(color: kText, fontSize: 14)),
+        content: Text(
+          'Verrà avvisato chi ha lezioni ancora da svolgere in "${course.title}" '
+          '(${instructors < 0 ? 0 : instructors} istruttori) e i '
+          '${course.attendeeIds.length} frequentatori: programma pronto o modificato.',
+          style: const TextStyle(color: kText, fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annulla', style: TextStyle(color: kTextDim)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Invia'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    final sent = await _notifService.notifyPlannerPublished(
+        userIds: recipients, courseTitle: course.title);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Notifica inviata a $sent persone.')),
+      );
     }
   }
 
@@ -1982,23 +2028,30 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
           padding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
           child: Row(
             children: [
-              if (_courses.length > 1)
-                DropdownButton<String>(
-                  value: _selected?.id,
-                  dropdownColor: kSurface,
-                  style: const TextStyle(color: kText),
-                  underline: const SizedBox(),
-                  items: _courses
-                      .map((c) => DropdownMenuItem(value: c.id, child: Text(c.title)))
-                      .toList(),
-                  onChanged: (id) {
-                    setState(() => _selected = _courses.firstWhere((c) => c.id == id));
-                    _refreshWeek();
-                  },
-                )
-              else
-                Text(_selected?.title ?? '', style: Theme.of(context).textTheme.titleLarge),
-              const Spacer(),
+              // Titolo a sinistra e azioni a destra hanno lo stesso spazio
+              // (Expanded): la navigazione tra settimane resta al centro.
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: _courses.length > 1
+                      ? DropdownButton<String>(
+                          value: _selected?.id,
+                          dropdownColor: kSurface,
+                          style: const TextStyle(color: kText),
+                          underline: const SizedBox(),
+                          items: _courses
+                              .map((c) => DropdownMenuItem(value: c.id, child: Text(c.title)))
+                              .toList(),
+                          onChanged: (id) {
+                            setState(() => _selected = _courses.firstWhere((c) => c.id == id));
+                            _refreshWeek();
+                          },
+                        )
+                      : Text(_selected?.title ?? '',
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.titleLarge),
+                ),
+              ),
               IconButton(icon: const Icon(Icons.chevron_left), onPressed: _prevWeek, color: kText),
               InkWell(
                 onTap: _pickWeek,
@@ -2022,61 +2075,100 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                 onPressed: _goToday,
                 color: kTextDim,
               ),
-              const SizedBox(width: 8),
-              if (_selected != null)
-                PopupMenuButton<String>(
-                  tooltip: 'Impostazioni planner',
-                  icon: const Icon(Icons.settings, size: 20, color: kTextDim),
-                  color: kCard,
-                  onSelected: (v) {
-                    switch (v) {
-                      case 'ps':
-                        _showPsHeaderSettings();
-                      case 'excluded':
-                        _showExcludedDates();
-                      case 'generate':
-                        _generateRemaining();
-                      case 'delete':
-                        _deleteUnconfirmedLessons();
-                      case 'excel':
-                        _exportWeeklyExcel();
-                    }
-                  },
-                  itemBuilder: (_) {
-                    final n = _selected!.excludedDates.length;
-                    return [
-                      _menuItem('ps', Icons.edit_calendar, 'Dati corso PS'),
-                      _menuItem('excluded', Icons.event_busy,
-                          'Giorni esclusi${n > 0 ? ' ($n)' : ''}'),
-                      _menuItem('excel', Icons.table_view, 'Excel PS'),
-                      const PopupMenuDivider(),
-                      _menuItem('generate', Icons.auto_fix_high, 'Genera lezioni rimanenti'),
-                      _menuItem('delete', Icons.delete_sweep, 'Cancella non svolte',
-                          color: kError),
-                    ];
-                  },
-                ),
-              IconButton(icon: const Icon(Icons.refresh, color: kTextDim), onPressed: _reload),
-              ValueListenableBuilder<int>(
-                valueListenable: GhDbService.pendingSaves,
-                builder: (_, n, __) => n > 0
-                    ? const Tooltip(
-                        message: 'Salvataggio in corso…',
-                        child: SizedBox(
-                            width: 14,
-                            height: 14,
-                            child: CircularProgressIndicator(strokeWidth: 2)),
-                      )
-                    : ValueListenableBuilder<String?>(
-                        valueListenable: GhDbService.saveError,
-                        builder: (_, err, __) => err == null
-                            ? const SizedBox(width: 14)
-                            : Tooltip(
-                                message: err,
-                                child: const Icon(Icons.cloud_off,
-                                    color: kError, size: 16),
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerRight,
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      if (_selected != null) ...[
+                        OutlinedButton.icon(
+                          onPressed: _exportWeeklyExcel,
+                          icon: const Icon(Icons.table_view, size: 16),
+                          label: const Text('Excel PS'),
+                          style: OutlinedButton.styleFrom(
+                              foregroundColor: kAccent,
+                              side: const BorderSide(color: kAccent)),
+                        ),
+                        const SizedBox(width: 8),
+                        // Etichetta testuale: il menu resta riconoscibile anche
+                        // se il glifo dell'icona non viene caricato.
+                        PopupMenuButton<String>(
+                          tooltip: 'Impostazioni planner',
+                          color: kCard,
+                          onSelected: (v) {
+                            switch (v) {
+                              case 'notify':
+                                _sendPlannerNotification();
+                              case 'ps':
+                                _showPsHeaderSettings();
+                              case 'excluded':
+                                _showExcludedDates();
+                              case 'generate':
+                                _generateRemaining();
+                              case 'delete':
+                                _deleteUnconfirmedLessons();
+                            }
+                          },
+                          itemBuilder: (_) {
+                            final n = _selected!.excludedDates.length;
+                            return [
+                              _menuItem('notify', Icons.notifications_active,
+                                  'Invia notifica programma'),
+                              const PopupMenuDivider(),
+                              _menuItem('ps', Icons.edit_calendar, 'Dati corso PS'),
+                              _menuItem('excluded', Icons.event_busy,
+                                  'Giorni esclusi${n > 0 ? ' ($n)' : ''}'),
+                              const PopupMenuDivider(),
+                              _menuItem('generate', Icons.auto_fix_high,
+                                  'Genera lezioni rimanenti'),
+                              _menuItem('delete', Icons.delete_sweep, 'Cancella non svolte',
+                                  color: kError),
+                            ];
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            decoration: BoxDecoration(
+                              border: Border.all(color: kBorder),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                              Icon(Icons.settings, size: 16, color: kText),
+                              SizedBox(width: 6),
+                              Text('Impostazioni',
+                                  style: TextStyle(color: kText, fontSize: 13)),
+                            ]),
+                          ),
+                        ),
+                      ],
+                      IconButton(
+                          icon: const Icon(Icons.refresh, color: kTextDim),
+                          onPressed: _reload),
+                      ValueListenableBuilder<int>(
+                        valueListenable: GhDbService.pendingSaves,
+                        builder: (_, n, __) => n > 0
+                            ? const Tooltip(
+                                message: 'Salvataggio in corso…',
+                                child: SizedBox(
+                                    width: 14,
+                                    height: 14,
+                                    child: CircularProgressIndicator(strokeWidth: 2)),
+                              )
+                            : ValueListenableBuilder<String?>(
+                                valueListenable: GhDbService.saveError,
+                                builder: (_, err, __) => err == null
+                                    ? const SizedBox(width: 14)
+                                    : Tooltip(
+                                        message: err,
+                                        child: const Icon(Icons.cloud_off,
+                                            color: kError, size: 16),
+                                      ),
                               ),
                       ),
+                    ]),
+                  ),
+                ),
               ),
             ],
           ),
@@ -2089,8 +2181,12 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
           // sotto i minimi restano gli scroll (finestre molto piccole).
           LayoutBuilder(builder: (context, box) {
             final dayW = ((box.maxWidth - 48 - 80) / 7).clamp(110.0, 400.0);
-            // 120 = intestazione giorni + riga recuperi.
-            final rowH = ((box.maxHeight - 120) / allSlots.length).clamp(84.0, 240.0);
+            // Altezza esatta: intestazione fissa (_kHeaderH) + riga recuperi
+            // (_kRecRowH) + 0,5 di bordo per ogni riga; il resto si divide tra gli slot.
+            final n = allSlots.length;
+            final rowH = ((box.maxHeight - _kHeaderH - _kRecRowH - 0.5 * (n + 3) - 2) / n)
+                .floorToDouble()
+                .clamp(84.0, 240.0);
             return Align(
             alignment: Alignment.topCenter,
             child: SingleChildScrollView(
@@ -2107,7 +2203,8 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                       decoration: const BoxDecoration(color: kSurface),
                       children: [
                         _headerCell('Ora'),
-                        ...weekDays.map(_dayHeaderCell),
+                        ...weekDays.map((d) => SizedBox(
+                            height: _kHeaderH, child: _dayHeaderCell(d))),
                       ],
                     ),
                     // Riga recupero (slot 0) — sempre visibile
@@ -2129,7 +2226,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                             child: InkWell(
                               onTap: () => _addRecovery(day),
                               child: Container(
-                                height: 50,
+                                height: _kRecRowH - 4,
                                 margin: const EdgeInsets.all(2),
                                 padding: const EdgeInsets.all(4),
                                 decoration: BoxDecoration(
@@ -2270,7 +2367,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                                           ordinals: lessonOrdinals,
                                           planT: subPlanT, planP: subPlanP,
                                           taskOrdinals: taskOrdinals, taskPlanMap: taskPlanMap,
-                                          height: rowH,
+                                          height: rowH - 4, // + margin 2+2 = rowH
                                           note: slotNote,
                                           onNote: () => _editNote(day, slot.slot, slotNote))),
                                 ),
@@ -2309,7 +2406,11 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
         ]),
       );
 
+  static const _kHeaderH = 64.0;
+  static const _kRecRowH = 54.0;
+
   Widget _headerCell(String text, {bool highlight = false}) => Container(
+    height: _kHeaderH,
     padding: const EdgeInsets.all(8),
     alignment: Alignment.center,
     decoration: BoxDecoration(

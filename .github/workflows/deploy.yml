@@ -29,7 +29,13 @@ jobs:
         run: flutter pub get
 
       - name: Build web
-        run: flutter build web --dart-define=READ_PAT=${{ secrets.READ_PAT }} --base-href /corsi/
+        run: >
+          flutter build web
+          --dart-define=READ_PAT=${{ secrets.READ_PAT }}
+          --dart-define=PUSH_URL=${{ secrets.PUSH_URL }}
+          --dart-define=APP_KEY=${{ secrets.APP_KEY }}
+          --dart-define=VAPID_PUBLIC_KEY=${{ secrets.VAPID_PUBLIC_KEY }}
+          --base-href /corsi/
 
       - name: Setup Pages
         uses: actions/configure-pages@v5

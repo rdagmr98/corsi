@@ -1,4 +1,7 @@
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../config/gh_config.dart';
 import '../models/notification_models.dart';
 import 'gh_db_service.dart';
 import 'web_notification_service.dart';
@@ -134,48 +137,75 @@ class NotificationService {
       .map((u) => u['id'] as String)
       .toList();
 
-  /// Lezione aggiunta al calendario: notifica frequentatori + istruttore.
-  Future<void> notifyLessonScheduled({
-    required List<String> attendeeIds,
-    String? instructorId,
-    required String courseTitle,
-    required String dateLabel,
-    required String moduleLabel,
-  }) async {
-    final msg = 'Nuova lezione: $moduleLabel – $dateLabel ($courseTitle)';
-    await createNotifications(
-      [
-        ...attendeeIds.map((id) => (
-          userId: id,
-          type: 'LESSON_SCHEDULED',
-          message: msg,
-          metadata: null,
-        )),
-        if (instructorId != null && instructorId.isNotEmpty)
-          (
-            userId: instructorId,
-            type: 'LESSON_SCHEDULED',
-            message: msg,
-            metadata: null,
-          ),
-      ],
-      dedupeUnread: false,
-    );
+  // ── Web Push (app chiusa) ────────────────────────────────────────────────────
+
+  /// Sottoscrive questo browser al push e lo associa all'utente (idempotente).
+  Future<void> registerPushSubscription(String userId) async {
+    if (!GhConfig.pushEnabled) return;
+    final sub = await WebNotificationService.subscribe(GhConfig.vapidPublicKey);
+    if (sub == null) return;
+    final all = _db.pushSubscriptions;
+    final i = all.indexWhere((s) => s['endpoint'] == sub['endpoint']);
+    if (i != -1 && all[i]['user_id'] == userId) return;
+    if (i != -1) all.removeAt(i);
+    all.add({'user_id': userId, ...sub});
+    await _db.savePushSubscriptions(all);
   }
 
-  /// Lezione modificata (istruttore o sottomodulo cambiato): notifica l'istruttore.
-  Future<void> notifyLessonChanged({
-    required String instructorId,
+  /// Invia un push di sistema ai dispositivi degli utenti indicati (best-effort).
+  /// Il Worker restituisce gli endpoint scaduti, che vengono potati.
+  Future<void> _push(Iterable<String> userIds, String body, {String? tag}) async {
+    if (!GhConfig.pushEnabled) return;
+    final ids = userIds.toSet();
+    final subs = _db.pushSubscriptions.where((s) => ids.contains(s['user_id'])).toList();
+    if (subs.isEmpty) return;
+    try {
+      final res = await http.post(
+        Uri.parse('${GhConfig.pushUrl}/push/send'),
+        headers: {
+          'Content-Type': 'application/json',
+          if (GhConfig.appKey.isNotEmpty) 'X-App-Key': GhConfig.appKey,
+        },
+        body: jsonEncode({
+          'subscriptions': [
+            for (final s in subs) {'endpoint': s['endpoint'], 'keys': s['keys']},
+          ],
+          'payload': {'title': _appTitle, 'body': body, if (tag != null) 'tag': tag},
+        }),
+      );
+      if (res.statusCode != 200) return;
+      final gone = ((jsonDecode(res.body) as Map)['gone'] as List?)?.cast<String>().toSet() ??
+          <String>{};
+      if (gone.isEmpty) return;
+      await _db.savePushSubscriptions(
+          _db.pushSubscriptions.where((s) => !gone.contains(s['endpoint'])).toList());
+    } catch (_) {}
+  }
+
+  /// Il direttore preme "Invia notifica": avvisa istruttori e frequentatori che
+  /// il programma è pronto o è cambiato. Una sola notifica per utente (dedup su non letta).
+  Future<int> notifyPlannerPublished({
+    required Iterable<String> userIds,
     required String courseTitle,
-    required String dateLabel,
-    required String moduleLabel,
   }) async {
-    if (instructorId.isEmpty) return;
-    await createNotification(
-      userId: instructorId,
-      type: 'LESSON_CHANGED',
-      message: 'Lezione modificata: $moduleLabel – $dateLabel ($courseTitle)',
+    final ids = userIds.toSet();
+    if (ids.isEmpty) return 0;
+    final msg = 'Programma lezioni aggiornato: $courseTitle';
+    await createNotifications(
+      ids.map((id) => (userId: id, type: 'PLANNER_PUBLISHED', message: msg, metadata: null)),
+      dedupeUnread: true,
     );
+    await _push(ids, msg, tag: 'planner');
+    return ids.length;
+  }
+
+  /// Una tantum: elimina le notifiche per-lezione del vecchio sistema (migliaia di record).
+  Future<void> pruneLegacy() async {
+    final all = _db.notifications;
+    final kept = all
+        .where((n) => n['type'] != 'LESSON_SCHEDULED' && n['type'] != 'LESSON_CHANGED')
+        .toList();
+    if (kept.length != all.length) await _db.saveNotifications(kept);
   }
 
   /// Istruttore ha registrato le presenze: notifica il/i direttore/i.
@@ -196,6 +226,7 @@ class NotificationService {
         metadata: null,
       )),
     );
+    await _push(directorIds, msg, tag: 'validated');
   }
 
   /// Reminder giorno prima per l'istruttore (dedup: non duplica se già presente e non letto).
@@ -244,7 +275,10 @@ class NotificationService {
 
   // ── Browser notifications sync ───────────────────────────────────────────────
 
+  /// All'apertura dell'app: UNA sola notifica di sistema riassuntiva per le non
+  /// lette mai mostrate. Con il push attivo ci pensa già il server: si salta.
   Future<void> syncBrowserNotifications(String userId) async {
+    if (GhConfig.pushEnabled) return;
     final unread = _db.notifications
         .where((n) => n['user_id'] == userId && n['is_read'] != true)
         .map(AppNotification.fromJson)
@@ -258,13 +292,14 @@ class NotificationService {
     final seenSet = seenList.toSet();
     final updatedSeen = [...seenList];
 
-    for (final n in unread) {
-      final id = n.id.toString();
-      if (seenSet.contains(id)) continue;
-      WebNotificationService.showNotification(_appTitle, n.message);
-      seenSet.add(id);
-      updatedSeen.add(id);
-    }
+    final fresh = unread.where((n) => !seenSet.contains(n.id.toString())).toList();
+    if (fresh.isEmpty) return;
+    await WebNotificationService.showNotification(
+      _appTitle,
+      fresh.length == 1 ? fresh.first.message : 'Hai ${fresh.length} nuove notifiche',
+      tag: 'corsi-sync',
+    );
+    updatedSeen.addAll(fresh.map((n) => n.id.toString()));
 
     if (updatedSeen.length > _seenLimit) {
       updatedSeen.removeRange(0, updatedSeen.length - _seenLimit);

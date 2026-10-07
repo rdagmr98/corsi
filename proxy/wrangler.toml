@@ -3,5 +3,9 @@ main = "worker.js"
 compatibility_date = "2024-11-01"
 
 # I secret NON vanno qui. Impostali con:
-#   wrangler secret put GH_TOKEN
-#   wrangler secret put APP_KEY   (opzionale)
+#   wrangler secret put GH_TOKEN            (solo se usi il proxy GitHub)
+#   wrangler secret put APP_KEY             (obbligatorio per il push)
+#   wrangler secret put VAPID_PUBLIC_KEY
+#   wrangler secret put VAPID_PRIVATE_KEY
+#   wrangler secret put VAPID_SUBJECT       (es. mailto:tuamail@esempio.it)
+# Prima del deploy: npm install   (installa @block65/webcrypto-web-push)

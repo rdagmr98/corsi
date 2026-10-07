@@ -123,6 +123,7 @@ class GhDbService {
       _loadFile('amc.json'),
       _loadFile('notes.json'),
       _loadFile('notifications.json'),
+      _loadFile('push_subscriptions.json'),
     ]);
   }
 
@@ -475,6 +476,13 @@ class GhDbService {
 
   Future<void> saveNotifications(List<Map<String, dynamic>> data) async =>
       _enqueueWrite('notifications.json', data, 'aggiornamento notifiche');
+
+  /// Sottoscrizioni Web Push: `{user_id, endpoint, keys:{p256dh,auth}}`.
+  List<Map<String, dynamic>> get pushSubscriptions =>
+      List<Map<String, dynamic>>.from(_getData('push_subscriptions.json') as List? ?? []);
+
+  Future<void> savePushSubscriptions(List<Map<String, dynamic>> data) async =>
+      _enqueueWrite('push_subscriptions.json', data, 'aggiornamento sottoscrizioni push');
 
   Future<void> updateUserPassword(String userId, String newHash) async {
     final all = users;

@@ -748,73 +748,10 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
         .toList();
     final macchine = quals.where((q) => !lauree.contains(q)).toList();
 
-    showDialog(
-      context: context,
-      builder: (_) => StatefulBuilder(
-        builder: (ctx, setDlg) => Dialog(
-          backgroundColor: kCard,
-          insetPadding: const EdgeInsets.all(24),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 760, maxHeight: 720),
-            child: Column(children: [
-              // Header
-              Container(
-                color: kSurface,
-                padding: const EdgeInsets.fromLTRB(20, 16, 12, 16),
-                child: Row(children: [
-                  Expanded(child: Text(instr.fullName,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: kText, fontSize: 18,
-                          fontWeight: FontWeight.bold))),
-                  if (instr.goOverride)
-                    Container(
-                      margin: const EdgeInsets.only(right: 8),
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: kWarning.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(color: kWarning),
-                      ),
-                      child: Text(
-                          AppUser.ojtKindLabel(instr.ojtKind) ?? 'OJT',
-                          style: const TextStyle(color: kWarning,
-                              fontSize: 10, fontWeight: FontWeight.bold)),
-                    ),
-                  if (instr.currencyLostAt != null && !instr.goOverride)
-                    Container(
-                      margin: const EdgeInsets.only(right: 8),
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: kError.withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(color: kError),
-                      ),
-                      child: const Text('CURRENCY PERSA',
-                          style: TextStyle(color: kError,
-                              fontSize: 10, fontWeight: FontWeight.bold)),
-                    ),
-                  _goBadge(go),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    icon: const Icon(Icons.add_circle_outline, color: kPrimary),
-                    tooltip: 'Aggiungi ore',
-                    onPressed: () {
-                      Navigator.pop(context);
-                      _addUpdate(instr);
-                    },
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close, color: kTextDim),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ]),
-              ),
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
+    // Desktop (>= 1000 px): due colonne affiancate; mobile: una colonna.
+    final screenSize = MediaQuery.of(context).size;
+    final wide = screenSize.width >= 1000;
+    final sAnag = <Widget>[
                       // ── Anagrafica ───────────────────────────────────────
                       _sectionTitle('Anagrafica / stato di servizio'),
                       const SizedBox(height: 8),
@@ -858,7 +795,8 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
                         ),
                       ),
                       const SizedBox(height: 16),
-
+    ];
+    final sQuals = <Widget>[
                       // ── Qualifiche / abilitazioni ────────────────────────
                       _sectionTitle('Abilitazioni e lauree (AMC)'),
                       const SizedBox(height: 8),
@@ -895,7 +833,8 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
                         ],
                       ],
                       const SizedBox(height: 20),
-
+    ];
+    final sCurr = <Widget>[
                       // ── Currency ─────────────────────────────────────────
                       _sectionTitle('Idoneità (Currency) — come schermo GO/NO-GO'),
                       const SizedBox(height: 8),
@@ -963,7 +902,8 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
                           ),
                       ]),
                       const SizedBox(height: 20),
-
+    ];
+    final sHist = <Widget>[
                       // ── Storico perdita / OJT ────────────────────────────
                       Builder(builder: (_) {
                         final hist = updates
@@ -1013,7 +953,8 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
                           ],
                         );
                       }),
-
+    ];
+    final sYears = <Widget>[
                       // ── Ore insegnamento 2 anni ──────────────────────────
                       _sectionTitle(
                           'Ore insegnamento ultimi 2 anni: '
@@ -1047,7 +988,8 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
                           ]),
                         )),
                       const SizedBox(height: 20),
-
+    ];
+    final sProf = <Widget>[
                       // ── Aggiornamenti professionali ──────────────────────
                       _sectionTitle(
                           'Aggiornamenti professionali svolti (ultimi 2 anni: '
@@ -1085,7 +1027,8 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
                           ]),
                         )),
                       const SizedBox(height: 20),
-
+    ];
+    final sMat = <Widget>[
                       // ── Sottomoduli / materie assegnate ──────────────────
                       _sectionTitle('Materie assegnate (griglia AMC)'),
                       const SizedBox(height: 8),
@@ -1124,7 +1067,101 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
                           ],
                         )),
                       ]),
-                    ],
+    ];
+    showDialog(
+      context: context,
+      builder: (_) => StatefulBuilder(
+        builder: (ctx, setDlg) => Dialog(
+          backgroundColor: kCard,
+          insetPadding: const EdgeInsets.all(24),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: wide ? 1240 : 760,
+              maxHeight: (screenSize.height - 48).clamp(420.0, 900.0),
+            ),
+            child: Column(children: [
+              // Header
+              Container(
+                color: kSurface,
+                padding: const EdgeInsets.fromLTRB(20, 16, 12, 16),
+                child: Row(children: [
+                  Expanded(child: Text(instr.fullName,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: kText, fontSize: 18,
+                          fontWeight: FontWeight.bold))),
+                  if (instr.goOverride)
+                    Container(
+                      margin: const EdgeInsets.only(right: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: kWarning.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: kWarning),
+                      ),
+                      child: Text(
+                          AppUser.ojtKindLabel(instr.ojtKind) ?? 'OJT',
+                          style: const TextStyle(color: kWarning,
+                              fontSize: 10, fontWeight: FontWeight.bold)),
+                    ),
+                  if (instr.currencyLostAt != null && !instr.goOverride)
+                    Container(
+                      margin: const EdgeInsets.only(right: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: kError.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: kError),
+                      ),
+                      child: const Text('CURRENCY PERSA',
+                          style: TextStyle(color: kError,
+                              fontSize: 10, fontWeight: FontWeight.bold)),
+                    ),
+                  _goBadge(go),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    icon: const Icon(Icons.add_circle_outline, color: kPrimary),
+                    tooltip: 'Aggiungi ore',
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _addUpdate(instr);
+                    },
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: kTextDim),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ]),
+              ),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: wide
+                        ? [
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [...sAnag, ...sQuals, ...sHist, ...sYears],
+                                  ),
+                                ),
+                                const SizedBox(width: 28),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [...sCurr, ...sProf, ...sMat],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ]
+                        : [
+                            ...sAnag, ...sQuals, ...sCurr, ...sHist,
+                            ...sYears, ...sProf, ...sMat,
+                          ],
                   ),
                 ),
               ),

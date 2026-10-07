@@ -40,6 +40,7 @@ class AppNotification {
   );
 
   IconData get icon {
+    if (type.contains('PLANNER_PUBLISHED')) return Icons.event_available;
     if (type.contains('LESSON_SCHEDULED')) return Icons.event_available;
     if (type.contains('LESSON_CHANGED')) return Icons.edit_calendar;
     if (type.contains('LESSON_VALIDATED')) return Icons.task_alt;

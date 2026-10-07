@@ -4,6 +4,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user_models.dart';
 import '../services/auth_service.dart';
 import '../services/gh_db_service.dart';
+import '../services/notification_service.dart';
+import '../services/web_notification_service.dart';
 
 final authProvider = ChangeNotifierProvider((ref) => AuthProvider());
 
@@ -67,6 +69,7 @@ class AuthProvider extends ChangeNotifier {
       notifyListeners();
       // ponytail: solo l'id utente nel browser, mai la password
       (await SharedPreferences.getInstance()).setString(_uidKey, user.id);
+      _setupNotifications(user.id).ignore();
       return true;
     } catch (e) {
       _error = 'Errore di connessione: $e';
@@ -100,7 +103,22 @@ class AuthProvider extends ChangeNotifier {
         .where((n) => n['user_id'] == uid && n['is_read'] != true)
         .length;
     notifyListeners();
+    _setupNotifications(uid).ignore();
     return true;
+  }
+
+  /// Best-effort, non bloccante: pulizia notifiche legacy, permesso di sistema,
+  /// sottoscrizione push del dispositivo e riepilogo delle non lette.
+  Future<void> _setupNotifications(String userId) async {
+    try {
+      final svc = NotificationService();
+      await svc.pruneLegacy();
+      _unreadCount = svc.getUnreadCount(userId);
+      notifyListeners();
+      await WebNotificationService.requestPermission().catchError((_) => false);
+      await svc.registerPushSubscription(userId);
+      await svc.syncBrowserNotifications(userId);
+    } catch (_) {}
   }
 
   Future<void> reloadDb() async {

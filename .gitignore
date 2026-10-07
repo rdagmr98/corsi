@@ -43,3 +43,6 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Cloudflare Worker (dipendenze npm)
+proxy/node_modules/

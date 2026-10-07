@@ -19,6 +19,16 @@ class GhConfig {
   /// scoraggiare l'uso del proxy da origini non previste. Rotabile lato Worker.
   static const String appKey = String.fromEnvironment('APP_KEY', defaultValue: '');
 
+  /// Endpoint del Worker che firma e inoltra le notifiche push (POST /push/send).
+  /// Distinto da PROXY_URL: attivarlo non sposta il traffico GitHub sul proxy.
+  /// Esempio build: --dart-define=PUSH_URL=https://corsi-proxy.<account>.workers.dev
+  static const String pushUrl = String.fromEnvironment('PUSH_URL', defaultValue: '');
+
+  /// Chiave pubblica VAPID (base64url) usata dal browser per sottoscriversi al push.
+  static const String vapidPublicKey = String.fromEnvironment('VAPID_PUBLIC_KEY', defaultValue: '');
+
+  static bool get pushEnabled => pushUrl.isNotEmpty && vapidPublicKey.isNotEmpty;
+
   static const String passwordSalt = 'corsi_salt_2024';
 
   static bool get useProxy => proxyUrl.isNotEmpty;

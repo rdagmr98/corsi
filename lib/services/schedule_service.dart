@@ -236,6 +236,22 @@ class ScheduleService {
     return l.confirmed || l.date.isBefore(DateTime(t.year, t.month, t.day));
   }
 
+  /// Destinatari di "Invia notifica": istruttori (anche il secondo) delle lezioni
+  /// ancora da svolgere ([isFrozen] esclude validate e passate) + frequentatori.
+  static Set<String> plannerRecipients(
+    Iterable<ScheduledLesson> lessons,
+    Iterable<String> attendeeIds, [
+    DateTime? today,
+  ]) =>
+      {
+        for (final l in lessons)
+          if (!isFrozen(l, today)) ...[
+            if (l.instructorId != null) l.instructorId!,
+            if (l.instructorId2 != null) l.instructorId2!,
+          ],
+        ...attendeeIds,
+      };
+
   /// Drag & drop del planner: su posizione libera sposta solo [dragged]; su
   /// posizione occupata la inserisce lì e fa scalare di una posizione le
   /// lezioni comprese tra origine e destinazione, riempiendo il buco

@@ -26,6 +26,7 @@ class _DirectorGradesTabState extends ConsumerState<DirectorGradesTab> {
   final _refService = ReferenceService();
   final _userService = UserService();
   final _filters = GradeFilters();
+  final _hCtrl = ScrollController();
 
   List<Course> _courses = [];
   Course? _selected;
@@ -34,6 +35,12 @@ class _DirectorGradesTabState extends ConsumerState<DirectorGradesTab> {
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _hCtrl.dispose();
+    super.dispose();
   }
 
   void _load() {
@@ -545,16 +552,27 @@ class _DirectorGradesTabState extends ConsumerState<DirectorGradesTab> {
                       );
                     }
 
-                    return SingleChildScrollView(
+                    // Desktop: la tabella riempie la larghezza; se i moduli
+                    // non entrano, scrollbar orizzontale sempre visibile in basso.
+                    final minW = 32 + 130 + 64.0 * (mods.length + 1) + 48;
+                    final tableW =
+                        constraints.maxWidth > minW ? constraints.maxWidth : minW;
+                    return Scrollbar(
+                      controller: _hCtrl,
+                      thumbVisibility: true,
+                      child: SingleChildScrollView(
+                      controller: _hCtrl,
                       scrollDirection: Axis.horizontal,
+                      child: SizedBox(
+                      width: tableW,
                       child: SingleChildScrollView(
                         padding: const EdgeInsets.symmetric(horizontal: 24),
                         child: Table(
                           border: TableBorder.all(color: kBorder, width: 0.5),
-                          defaultColumnWidth: const FixedColumnWidth(64),
+                          defaultColumnWidth: const FlexColumnWidth(1),
                           columnWidths: const {
                             0: FixedColumnWidth(32),   // Pos.
-                            1: FixedColumnWidth(130),  // Nome
+                            1: FlexColumnWidth(2),     // Nome
                           },
                           children: [
                             TableRow(
@@ -673,6 +691,8 @@ class _DirectorGradesTabState extends ConsumerState<DirectorGradesTab> {
                             }),
                           ],
                         ),
+                      ),
+                      ),
                       ),
                     );
                   },
