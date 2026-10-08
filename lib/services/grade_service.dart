@@ -215,14 +215,32 @@ class GradeService {
   /// incide solo sul modulo 10: la scadenza NAM non deve rendere NOGO
   /// un istruttore per gli altri moduli.
   bool isGo(AppUser u, {DateTime? now, int? moduleNumber}) {
-    final teachOk = getTeachingHoursRollingYear(u.id) >= 6;
-    // L'OJT abilita fino alle 6 ore annuali di lezione, poi decade da solo.
-    if (u.goOverride && !teachOk) return true;
-    final profOk = getProfessionalUpdateHoursLast2Years(u.id) >= 35;
+    final g = ojtGrace(u, now: now);
+    final teachOk = getTeachingHoursRollingYear(u.id) >= 6 || g.teach;
+    final profOk = getProfessionalUpdateHoursLast2Years(u.id) >= 35 || g.prof;
     if (moduleNumber != 10) return teachOk && profOk;
     final n = now ?? DateTime.now();
-    final daaOk = u.daaExpiry == null || u.daaExpiry!.isAfter(n);
+    final daaOk = u.daaExpiry == null || u.goOverride || u.daaExpiry!.isAfter(n);
     return teachOk && profOk && daaOk;
+  }
+
+  /// Deroga OJT (iniziale o ripristino), ancorata alla data di inizio OJT:
+  /// GO per le 6 h annuali entro 1 anno (finché l'OJT non è chiuso) e per le
+  /// 35 h di aggiornamento entro 2 anni. Scaduta la finestra senza ore maturate
+  /// l'istruttore è NO GO. Un OJT chiuso a mano prima delle 6 h perde anche la
+  /// deroga sulle 35 h; la chiusura automatica a 6 h la mantiene.
+  /// Legacy: `goOverride` senza data inizio = GO finché non maturano le 6 h.
+  ({bool teach, bool prof}) ojtGrace(AppUser u, {DateTime? now}) =>
+      ojtGraceFor(u, getTeachingHoursRollingYear(u.id), now ?? DateTime.now());
+
+  static ({bool teach, bool prof}) ojtGraceFor(AppUser u, double teachH, DateTime n) {
+    final at = u.ojtAt;
+    if (at == null) return (teach: u.goOverride, prof: u.goOverride);
+    final open = u.goOverride || teachH >= 6;
+    return (
+      teach: u.goOverride && n.isBefore(DateTime(at.year + 1, at.month, at.day)),
+      prof: open && n.isBefore(DateTime(at.year + 2, at.month, at.day)),
+    );
   }
 
   Future<InstructorUpdate> addUpdate({

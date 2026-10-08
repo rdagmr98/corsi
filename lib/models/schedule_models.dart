@@ -174,6 +174,9 @@ class AttendanceRecord {
   final String? recoveredType;
   final String? confirmedBy;
   final DateTime? confirmedAt;
+  /// Solo recuperi: false = programmato ma non ancora validato dal direttore
+  /// (non entra nelle statistiche). Assente nei dati storici = validato.
+  final bool validated;
 
   const AttendanceRecord({
     required this.id,
@@ -187,6 +190,7 @@ class AttendanceRecord {
     this.recoveredType,
     this.confirmedBy,
     this.confirmedAt,
+    this.validated = true,
   });
 
   /// Per i record di recupero (justification == 'recupero'), la vera data
@@ -214,6 +218,7 @@ class AttendanceRecord {
     confirmedAt: j['confirmed_at'] != null
         ? DateTime.tryParse(j['confirmed_at'] as String)
         : null,
+    validated: j['validated'] as bool? ?? true,
   );
 
   Map<String, dynamic> toJson() => {
@@ -228,5 +233,6 @@ class AttendanceRecord {
     if (recoveredType != null) 'recovered_type': recoveredType,
     'confirmed_by': confirmedBy,
     'confirmed_at': confirmedAt?.toIso8601String(),
+    if (!validated) 'validated': false,
   };
 }

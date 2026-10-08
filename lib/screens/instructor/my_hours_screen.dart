@@ -42,8 +42,9 @@ class _InstructorHoursScreenState extends ConsumerState<InstructorHoursScreen> {
     final updates = _gradeService.getUpdatesForInstructor(widget.userId);
     final me      = _userService.findById(widget.userId);
     final daaExpiry = me?.daaExpiry;
-    final teachOk = teachH >= 6 || (me?.goOverride ?? false);
-    final profOk  = profH >= 35 || (me?.goOverride ?? false);
+    final grace   = me == null ? (teach: false, prof: false) : _gradeService.ojtGrace(me);
+    final teachOk = teachH >= 6 || grace.teach;
+    final profOk  = profH >= 35 || grace.prof;
     final daaOk   = daaExpiry == null ||
         (me?.goOverride ?? false) ||
         daaExpiry.isAfter(DateTime.now());

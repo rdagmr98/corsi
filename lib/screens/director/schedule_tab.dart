@@ -40,6 +40,8 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
   DateTime _weekStart = _mondayOf(DateTime.now());
   List<ScheduledLesson> _weekLessons = [];
   List<SlotNote> _weekNotes = [];
+  // Recuperi registrati nella settimana (validati e da validare).
+  List<AttendanceRecord> _weekRecoveries = [];
   CourseTypeInfo? _typeInfo;
   List<ScheduledLesson> _allCourseLessons = [];
   // Cognomi degli assenti per lezione della settimana (id lezione → cognomi).
@@ -279,6 +281,11 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
     setState(() {
       _weekLessons = _scheduleService.getLessonsForWeek(_selected!.id, _weekStart);
       _weekNotes = _scheduleService.getNotesForWeek(_selected!.id, _weekStart);
+      final weekEnd = DateTime(_weekStart.year, _weekStart.month, _weekStart.day + 7);
+      _weekRecoveries = _attendanceService.getPlannerRecoveries(_selected!.id).where((r) {
+        final d = r.recoveryDate;
+        return d != null && !d.isBefore(_weekStart) && d.isBefore(weekEnd);
+      }).toList();
       _allCourseLessons = _scheduleService.getLessonsForCourse(_selected!.id)
           .where((l) => l.timeSlot > 0).toList();
       _typeInfo = _refService.getEffectiveCourseType(_selected!.courseTypeId, _selected!.extensionTypeId, _selected!.mamlCombinationId);
@@ -1221,7 +1228,8 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
       }
       sel.removeWhere((id) => hoursOf(id, mod: module) == 0);
       final types = typesInScope();
-      if (!types.contains(type)) type = types.isEmpty ? null : types.first;
+      // Con teoria e pratica entrambe da recuperare nessun default: sceglie il direttore.
+      if (!types.contains(type)) type = types.length == 1 ? types.first : null;
       sel.removeWhere((id) => hoursOf(id, mod: module, type: type) == 0);
     }
 
@@ -1309,9 +1317,11 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                       const SizedBox(height: 12),
                       Text(
                         types.length > 1
-                            ? 'Teoria e pratica da recuperare: scegli cosa si recupera'
+                            ? 'Teoria e pratica da recuperare: scegli quale recuperare'
                             : 'Si recupera:',
-                        style: const TextStyle(color: kTextDim, fontSize: 12),
+                        style: TextStyle(
+                            color: types.length > 1 && type == null ? kWarning : kTextDim,
+                            fontSize: 12),
                       ),
                       const SizedBox(height: 6),
                       Wrap(
@@ -1403,6 +1413,10 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                     ? null
                     : () async {
                         Navigator.pop(ctx);
+                        // Recupero già svolto (oggi o prima) = validato; futuro = da validare.
+                        final today = DateTime.now();
+                        final done = !DateTime(day.year, day.month, day.day)
+                            .isAfter(DateTime(today.year, today.month, today.day));
                         for (final id in sel) {
                           await _attendanceService.saveRecovery(
                             courseId: _selected!.id,
@@ -1411,11 +1425,192 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                             recoveredModule: module!,
                             recoveryDate: day,
                             recoveredType: type,
+                            validated: done,
                           );
                         }
                         _refreshWeek();
                       },
                 child: const Text('Salva recuperi'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  /// Recuperi raggruppati per (modulo, tipo): più persone e più moduli nello stesso giorno.
+  Map<(int, String), List<AttendanceRecord>> _recoveryGroups(List<AttendanceRecord> recs) {
+    final groups = <(int, String), List<AttendanceRecord>>{};
+    for (final r in recs) {
+      (groups[(r.recoveredModule ?? 0, r.recoveredType ?? '')] ??= []).add(r);
+    }
+    return Map.fromEntries(groups.entries.toList()
+      ..sort((a, b) {
+        final c = a.key.$1.compareTo(b.key.$1);
+        return c != 0 ? c : a.key.$2.compareTo(b.key.$2);
+      }));
+  }
+
+  String _moduleCode(int n) =>
+      _typeInfo?.modules.where((m) => m.number == n).firstOrNull?.displayCode ?? '$n';
+
+  String _typeLetter(String t) => t == 'teoria' ? 'T' : (t == 'pratica' ? 'P' : '');
+
+  Future<bool> _confirm(String title, String message, String action) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: kCard,
+        title: Text(title, style: const TextStyle(color: kWarning)),
+        content: Text(message, style: const TextStyle(color: kText)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annulla', style: TextStyle(color: kTextDim)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: kWarning),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(action),
+          ),
+        ],
+      ),
+    );
+    return ok == true;
+  }
+
+  /// Recuperi del giorno: validazione, svalidazione ed eliminazione per modulo/tipo.
+  Future<void> _showDayRecoveries(DateTime day) async {
+    if (_selected == null) return;
+    final user = ref.read(authProvider).currentUser;
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlg) {
+          final recs = _attendanceService
+              .getPlannerRecoveries(_selected!.id)
+              .where((r) => r.recoveryDate != null && _sameDay(r.recoveryDate!, day))
+              .toList();
+          final groups = _recoveryGroups(recs);
+
+          Future<void> run(Future<void> Function() action) async {
+            await action();
+            _refreshWeek();
+            setDlg(() {});
+          }
+
+          Future<void> remove(List<AttendanceRecord> rs, String what) async {
+            if (!await _confirm('Elimina recupero',
+                'Eliminare il recupero di $what? L\'operazione non è reversibile.', 'Elimina')) {
+              return;
+            }
+            await run(() => _attendanceService.deleteRecoveries([for (final r in rs) r.id]));
+          }
+
+          return AlertDialog(
+            backgroundColor: kCard,
+            title: Text('Recuperi – ${DateFormat('dd/MM/yyyy').format(day)}',
+                style: const TextStyle(color: kText, fontSize: 14)),
+            content: SizedBox(
+              width: 460,
+              child: groups.isEmpty
+                  ? const Text('Nessun recupero registrato.',
+                      style: TextStyle(color: kTextDim, fontSize: 12))
+                  : SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          for (final e in groups.entries)
+                            () {
+                              final rs = e.value;
+                              final validated = rs.every((r) => r.validated);
+                              final color = validated ? kAccent : kWarning;
+                              final label =
+                                  'M${_moduleCode(e.key.$1)}${e.key.$2.isEmpty ? '' : ' · ${e.key.$2 == 'teoria' ? 'Teoria' : 'Pratica'}'}';
+                              return Container(
+                                margin: const EdgeInsets.only(bottom: 8),
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: color.withOpacity(0.08),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(color: color.withOpacity(0.4)),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(children: [
+                                      Expanded(
+                                        child: Text(label,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                                color: kText,
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.bold)),
+                                      ),
+                                      Text(validated ? 'Validato' : 'Da validare',
+                                          style: TextStyle(
+                                              color: color,
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.bold)),
+                                    ]),
+                                    const SizedBox(height: 6),
+                                    Wrap(spacing: 6, runSpacing: 4, children: [
+                                      for (final r in rs)
+                                        Chip(
+                                          label: Text(
+                                              _userService.findById(r.attendeeId)?.fullName ?? '?',
+                                              style: const TextStyle(color: kText, fontSize: 11)),
+                                          backgroundColor: kSurface,
+                                          side: BorderSide(
+                                              color: (r.validated ? kAccent : kWarning)
+                                                  .withOpacity(0.5)),
+                                          visualDensity: VisualDensity.compact,
+                                          onDeleted: () => remove([r],
+                                              '${_userService.findById(r.attendeeId)?.fullName ?? '?'} ($label)'),
+                                        ),
+                                    ]),
+                                    Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+                                      TextButton.icon(
+                                        icon: const Icon(Icons.delete_outline, size: 16, color: kError),
+                                        label: const Text('Elimina',
+                                            style: TextStyle(color: kError, fontSize: 12)),
+                                        onPressed: () => remove(rs, '$label (${rs.length} frequentatori)'),
+                                      ),
+                                      TextButton.icon(
+                                        icon: Icon(validated ? Icons.undo : Icons.check_circle_outline,
+                                            size: 16, color: validated ? kWarning : kAccent),
+                                        label: Text(validated ? 'Svalida' : 'Valida',
+                                            style: TextStyle(
+                                                color: validated ? kWarning : kAccent,
+                                                fontSize: 12)),
+                                        onPressed: () => run(() =>
+                                            _attendanceService.setRecoveriesValidated(
+                                                [for (final r in rs) r.id],
+                                                !validated,
+                                                user?.id ?? '')),
+                                      ),
+                                    ]),
+                                  ],
+                                ),
+                              );
+                            }(),
+                        ],
+                      ),
+                    ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Chiudi', style: TextStyle(color: kTextDim)),
+              ),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.add, size: 16),
+                label: const Text('Aggiungi recupero'),
+                onPressed: () async {
+                  await _addRecovery(day);
+                  setDlg(() {});
+                },
               ),
             ],
           );
@@ -1791,6 +1986,27 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                 icon: const Icon(Icons.task_alt, size: 14),
                 label: const Text('Valida ora'),
               ),
+            if (lesson.confirmed)
+              OutlinedButton.icon(
+                onPressed: () async {
+                  final ok = await _confirm(
+                      'Svalida ora',
+                      'L\'ora "${lesson.topic}" del ${DateFormat('dd/MM/yyyy').format(lesson.date)} '
+                      'torna da validare: non conta più per ore istruttore e frequenze finché non viene validata di nuovo. '
+                      'Gli appelli registrati restano.',
+                      'Svalida');
+                  if (!ok) return;
+                  if (ctx.mounted) Navigator.pop(ctx);
+                  await _scheduleService.unconfirmLessons([lesson.id]);
+                  _refreshWeek();
+                },
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: kWarning),
+                  foregroundColor: kWarning,
+                ),
+                icon: const Icon(Icons.undo, size: 14),
+                label: const Text('Svalida'),
+              ),
             ElevatedButton(
               onPressed: () async {
                 Navigator.pop(ctx);
@@ -2091,16 +2307,18 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                               foregroundColor: kAccent,
                               side: const BorderSide(color: kAccent)),
                         ),
-                        const SizedBox(width: 8),
-                        // Etichetta testuale: il menu resta riconoscibile anche
-                        // se il glifo dell'icona non viene caricato.
+                        const SizedBox(width: 4),
+                        IconButton(
+                          icon: const Icon(Icons.notifications_active,
+                              size: 20, color: kAccent),
+                          tooltip: 'Invia notifica programma',
+                          onPressed: _sendPlannerNotification,
+                        ),
                         PopupMenuButton<String>(
                           tooltip: 'Impostazioni planner',
                           color: kCard,
                           onSelected: (v) {
                             switch (v) {
-                              case 'notify':
-                                _sendPlannerNotification();
                               case 'ps':
                                 _showPsHeaderSettings();
                               case 'excluded':
@@ -2114,9 +2332,6 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                           itemBuilder: (_) {
                             final n = _selected!.excludedDates.length;
                             return [
-                              _menuItem('notify', Icons.notifications_active,
-                                  'Invia notifica programma'),
-                              const PopupMenuDivider(),
                               _menuItem('ps', Icons.edit_calendar, 'Dati corso PS'),
                               _menuItem('excluded', Icons.event_busy,
                                   'Giorni esclusi${n > 0 ? ' ($n)' : ''}'),
@@ -2127,19 +2342,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                                   color: kError),
                             ];
                           },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            decoration: BoxDecoration(
-                              border: Border.all(color: kBorder),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                              Icon(Icons.settings, size: 16, color: kText),
-                              SizedBox(width: 6),
-                              Text('Impostazioni',
-                                  style: TextStyle(color: kText, fontSize: 13)),
-                            ]),
-                          ),
+                          icon: const Icon(Icons.settings, size: 20, color: kText),
                         ),
                       ],
                       IconButton(
@@ -2221,35 +2424,53 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                           ),
                         ),
                         ...weekDays.map((day) {
-                          final recs = recoveryLessons.where((l) => _sameDay(l.date, day)).toList();
+                          final hasSlot0 = recoveryLessons.any((l) => _sameDay(l.date, day));
+                          final dayRecs = _weekRecoveries
+                              .where((r) => _sameDay(r.recoveryDate!, day))
+                              .toList();
+                          final groups = _recoveryGroups(dayRecs);
+                          final allValid = dayRecs.every((r) => r.validated);
+                          final tone = dayRecs.isNotEmpty && allValid ? kAccent : kWarning;
+                          final active = dayRecs.isNotEmpty || hasSlot0;
                           return TableCell(
                             child: InkWell(
-                              onTap: () => _addRecovery(day),
+                              onTap: () => dayRecs.isEmpty ? _addRecovery(day) : _showDayRecoveries(day),
                               child: Container(
                                 height: _kRecRowH - 4,
                                 margin: const EdgeInsets.all(2),
                                 padding: const EdgeInsets.all(4),
                                 decoration: BoxDecoration(
-                                  color: recs.isNotEmpty
-                                      ? kWarning.withOpacity(0.12)
-                                      : Colors.transparent,
+                                  color: active ? tone.withOpacity(0.12) : Colors.transparent,
                                   borderRadius: BorderRadius.circular(4),
                                   border: Border.all(
-                                    color: recs.isNotEmpty
-                                        ? kWarning.withOpacity(0.4)
-                                        : kBorder.withOpacity(0.3),
-                                    width: recs.isNotEmpty ? 1 : 0.5,
+                                    color: active ? tone.withOpacity(0.4) : kBorder.withOpacity(0.3),
+                                    width: active ? 1 : 0.5,
                                   ),
                                 ),
-                                child: recs.isNotEmpty
-                                    ? Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text('${recs.length} rec.',
-                                              style: const TextStyle(color: kWarning, fontSize: 9, fontWeight: FontWeight.bold)),
-                                        ],
+                                child: dayRecs.isNotEmpty
+                                    ? ClipRect(
+                                        child: Wrap(
+                                          spacing: 4,
+                                          runSpacing: 1,
+                                          children: [
+                                            for (final e in groups.entries)
+                                              Text(
+                                                'M${_moduleCode(e.key.$1)}${_typeLetter(e.key.$2)}·${e.value.length}',
+                                                style: TextStyle(
+                                                    color: e.value.every((r) => r.validated)
+                                                        ? kAccent
+                                                        : kWarning,
+                                                    fontSize: 10,
+                                                    fontWeight: FontWeight.bold),
+                                              ),
+                                          ],
+                                        ),
                                       )
-                                    : const Center(child: Icon(Icons.add, color: kBorder, size: 12)),
+                                    : hasSlot0
+                                        ? const Center(
+                                            child: Text('ora rec.',
+                                                style: TextStyle(color: kWarning, fontSize: 9)))
+                                        : const Center(child: Icon(Icons.add, color: kBorder, size: 12)),
                               ),
                             ),
                           );
@@ -2349,13 +2570,13 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                                             child: GestureDetector(
                                               onTap: () => _editNote(day, slot.slot, slotNote),
                                               child: Padding(
-                                                padding: const EdgeInsets.all(3),
+                                                padding: const EdgeInsets.all(4),
                                                 child: Icon(
                                                     slotNote != null
                                                         ? Icons.sticky_note_2
                                                         : Icons.sticky_note_2_outlined,
-                                                    size: 12,
-                                                    color: slotNote != null ? kWarning : kBorder),
+                                                    size: 22,
+                                                    color: slotNote != null ? kWarning : kTextDim),
                                               ),
                                             ),
                                           ),
@@ -2406,7 +2627,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
         ]),
       );
 
-  static const _kHeaderH = 64.0;
+  static const _kHeaderH = 78.0;
   static const _kRecRowH = 54.0;
 
   Widget _headerCell(String text, {bool highlight = false}) => Container(
@@ -2434,6 +2655,7 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
     final pending = dayLessons
         .where((l) => !l.confirmed && l.instructorId != null)
         .toList();
+    final validated = dayLessons.where((l) => l.confirmed).toList();
     final highlight = _isToday(d);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
@@ -2490,6 +2712,29 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                       Text('Valida ${pending.length}',
                           style: const TextStyle(
                               color: kAccent,
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          if (validated.isNotEmpty)
+            Tooltip(
+              message:
+                  'Svalida le ${validated.length} ore validate del giorno\n(tornano da validare, gli appelli restano)',
+              child: InkWell(
+                onTap: () => _unvalidateDay(d, validated),
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.undo, size: 11, color: kWarning),
+                      const SizedBox(width: 3),
+                      Text('Svalida ${validated.length}',
+                          style: const TextStyle(
+                              color: kWarning,
                               fontSize: 9,
                               fontWeight: FontWeight.bold)),
                     ],
@@ -2625,6 +2870,19 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
       batch,
       confirmedBy: user?.id ?? '',
     );
+    _refreshWeek();
+  }
+
+  Future<void> _unvalidateDay(DateTime day, List<ScheduledLesson> validated) async {
+    final ok = await _confirm(
+        'Svalida giornata',
+        'Riportare da validare ${validated.length} ore di '
+        '${DateFormat('EEEE dd/MM/yyyy', 'it').format(day)}?\n\n'
+        'Non contano più per ore istruttore e frequenze finché non vengono validate di nuovo; '
+        'gli appelli registrati restano.',
+        'Svalida');
+    if (!ok) return;
+    await _scheduleService.unconfirmLessons(validated.map((l) => l.id).toList());
     _refreshWeek();
   }
 

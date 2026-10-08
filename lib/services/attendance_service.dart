@@ -31,8 +31,18 @@ class AbsenceDetail {
 class AttendanceService {
   final _db = GhDbService();
 
-  List<AttendanceRecord> getAllRecords() =>
-      _db.records.map(AttendanceRecord.fromJson).toList();
+  /// Solo record validati: i recuperi "da validare" non contano in statistiche,
+  /// frequenze o ore istruttore (vedi [getPlannerRecoveries] per il planner).
+  List<AttendanceRecord> getAllRecords() => _db.records
+      .map(AttendanceRecord.fromJson)
+      .where((r) => r.validated)
+      .toList();
+
+  /// Tutti i recuperi del corso, validati e non, per il planner.
+  List<AttendanceRecord> getPlannerRecoveries(String courseId) => _db.records
+      .map(AttendanceRecord.fromJson)
+      .where((r) => r.courseId == courseId && r.justification == 'recupero')
+      .toList();
 
   List<AttendanceRecord> getRecordsForLesson(String scheduleId) =>
       getAllRecords().where((r) => r.scheduleId == scheduleId).toList();
@@ -494,6 +504,7 @@ class AttendanceService {
     required DateTime recoveryDate,
     String? recoveredType,
     String? recoveredSubmodule,
+    bool validated = true,
   }) async {
     final records = _db.records.toList();
     final dateKey = recoveryDate.toIso8601String().split('T').first;
@@ -520,13 +531,41 @@ class AttendanceService {
       if (recoveredType != null) 'recovered_type': recoveredType,
       'confirmed_by': confirmedBy,
       'confirmed_at': DateTime.now().toIso8601String(),
+      if (!validated) 'validated': false,
     });
     await _db.saveRecords(records);
   }
 
-  Future<void> deleteRecovery(String recordId) async {
-    final records = _db.records.where((r) => r['id'] != recordId).toList();
+  Future<void> deleteRecovery(String recordId) => deleteRecoveries([recordId]);
+
+  Future<void> deleteRecoveries(List<String> recordIds) async {
+    final ids = recordIds.toSet();
+    final records = _db.records.where((r) => !ids.contains(r['id'])).toList();
     await _db.saveRecords(records);
+  }
+
+  /// Valida/svalida in blocco i recuperi indicati. Alla validazione registra
+  /// chi ha confermato; lo stato "validated" assente equivale a validato.
+  Future<void> setRecoveriesValidated(
+      List<String> recordIds, bool validated, String confirmedBy) async {
+    final ids = recordIds.toSet();
+    final nowIso = DateTime.now().toIso8601String();
+    var changed = false;
+    final records = _db.records.map((r) {
+      if (!ids.contains(r['id']) || r['justification'] != 'recupero') return r;
+      if ((r['validated'] as bool? ?? true) == validated) return r;
+      changed = true;
+      final next = {...r};
+      if (validated) {
+        next.remove('validated');
+        next['confirmed_by'] = confirmedBy;
+        next['confirmed_at'] = nowIso;
+      } else {
+        next['validated'] = false;
+      }
+      return next;
+    }).toList();
+    if (changed) await _db.saveRecords(records);
   }
 
   /// Frequentatori fuori limite: per ogni modulo, se

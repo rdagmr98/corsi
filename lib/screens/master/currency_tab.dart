@@ -103,6 +103,7 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
       for (final raw in _db.records) {
         if (raw['justification'] != 'recupero') continue;
         if (raw['present'] != true) continue;
+        if (raw['validated'] == false) continue;
         final instr = raw['confirmed_by'] as String?;
         if (instr == null || instr.isEmpty) continue;
         result[instr] = (result[instr] ?? 0) + 1;
@@ -499,8 +500,10 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
               child: SingleChildScrollView(
                 child: Column(mainAxisSize: MainAxisSize.min, children: [
                   const Text(
-                    "Con fine vuota l'istruttore è abilitato (GO) e l'OJT si chiude "
-                    'da solo alle 6 ore di lezione annuali.',
+                    "L'OJT abilita (GO) anche senza ore: 1 anno per le 6 ore di "
+                    'lezione, 2 anni per le 35 ore di aggiornamento. Scaduti senza '
+                    'ore maturate, NO GO. Con fine vuota l\'OJT si chiude da solo '
+                    'alle 6 ore di lezione annuali.',
                     style: TextStyle(color: kTextDim, fontSize: 12),
                   ),
                   const SizedBox(height: 16),
@@ -729,8 +732,9 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
       ..sort((a, b) => b.date.compareTo(a.date));
     final teachHours2y = teachList2y.fold<double>(0, (s, u) => s + u.hours) +
         _confirmedHoursLast2Years(instr.id);
-    final goTeach  = instr.goOverride || teachH >= 6;
-    final goProf   = instr.goOverride || profH >= 35;
+    final grace    = _gradeService.ojtGrace(instr);
+    final goTeach  = grace.teach || teachH >= 6;
+    final goProf   = grace.prof || profH >= 35;
     final goDaa    = instr.daaExpiry == null || instr.goOverride ||
         instr.daaExpiry!.isAfter(DateTime.now());
     final go       = _gradeService.isGo(instr);
@@ -842,12 +846,13 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
                         Expanded(child: _currencyCard(
                           'Ore lezione (ultimi 365 giorni)',
                           teachH, 6, goTeach,
-                          override: instr.goOverride,
+                          override: grace.teach && teachH < 6,
                         )),
                         const SizedBox(width: 12),
                         Expanded(child: _currencyCard(
                           'Ore aggiornamento professionale (2 anni)',
                           profH, 35, goProf,
+                          override: grace.prof && profH < 35,
                         )),
                       ]),
                       const SizedBox(height: 8),
@@ -1333,8 +1338,9 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
     final rows = _instructors.map((instr) {
       final teachH = _gradeService.getTeachingHoursRollingYear(instr.id);
       final profH  = _gradeService.getProfessionalUpdateHoursLast2Years(instr.id);
-      final goT  = instr.goOverride || teachH >= 6;
-      final goP  = instr.goOverride || profH >= 35;
+      final grace = _gradeService.ojtGrace(instr, now: now);
+      final goT  = grace.teach || teachH >= 6;
+      final goP  = grace.prof || profH >= 35;
       final goDaa = instr.daaExpiry == null || instr.goOverride || instr.daaExpiry!.isAfter(now);
       final go  = _gradeService.isGo(instr, now: now);
       return (instr: instr, teachH: teachH, profH: profH, goT: goT, goP: goP, goDaa: goDaa, go: go);
@@ -1483,11 +1489,11 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
                     ),
                     const SizedBox(width: 12),
                     _miniStat('Lez. 365gg',
-                        instr.goOverride ? 'OJT' : '${teachH.toStringAsFixed(0)}h / 6h',
+                        goT && teachH < 6 ? 'OJT' : '${teachH.toStringAsFixed(0)}h / 6h',
                         goT),
                     const SizedBox(width: 16),
                     _miniStat('Aggiorn. 2 anni',
-                        '${profH.toStringAsFixed(0)}h / 35h',
+                        goP && profH < 35 ? 'OJT' : '${profH.toStringAsFixed(0)}h / 35h',
                         goP),
                     const SizedBox(width: 12),
                     Expanded(

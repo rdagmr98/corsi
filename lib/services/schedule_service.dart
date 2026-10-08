@@ -223,6 +223,26 @@ class ScheduleService {
     if (changed) await _db.saveSchedules(schedules);
   }
 
+  /// Annulla la validazione (singola ora o giornata). Le presenze registrate
+  /// restano: la nuova validazione le riusa e le statistiche contano solo le
+  /// lezioni confermate.
+  Future<void> unconfirmLessons(List<String> lessonIds) async {
+    if (lessonIds.isEmpty) return;
+    final ids = lessonIds.toSet();
+    final nowIso = DateTime.now().toIso8601String();
+    var changed = false;
+    final schedules = _db.schedules.map((s) {
+      if (!ids.contains(s['id']) || s['confirmed'] != true) return s;
+      changed = true;
+      return {
+        ...s,
+        'confirmed': false,
+        'updated_at': nowIso,
+      }..remove('confirmed_by');
+    }).toList();
+    if (changed) await _db.saveSchedules(schedules);
+  }
+
   // Venerdì ore 4ª-6ª + intero sabato/domenica: fuori dall'orario regolare,
   // disponibili solo per i recuperi.
   static bool isRegularSlot(DateTime d, int slot) =>

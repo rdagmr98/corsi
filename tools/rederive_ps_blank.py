@@ -34,6 +34,8 @@ LUNCH_OFFSET = 5
 # PERSONALE data rows only (headers 48–49 stay). Do NOT use row>=50:
 # that wiped I62–I64 Accountable Manager chrome on the right.
 ATTENDEE_DATA_ROWS = range(50, 59)  # 50–58 inclusive
+# Column O style -> same style with borderId that adds R=medium (font/alignment equal).
+O_RIGHT_EDGE = {"1220": "1221", "1224": "1256", "1216": "1217"}
 # Official empty-cell styles (from 66_PS EI lesson row) — keep if present.
 EMPTY_BY_COL = {
     "D": 1159,
@@ -188,6 +190,11 @@ def clear_week_data(sheet: str) -> str:
                 sid = s_id or str(EMPTY_BY_COL["N"])
                 return f'<c r="{addr}" s="{sid}"/>'
             return f'<c r="{addr}" s="{EMPTY_BY_COL[col]}"/>'
+
+        # Student table, right edge of the CC block (J:O merge): O must carry its
+        # own R=medium on every row, else the edge only exists via P's left border.
+        if col == "O" and 49 <= row <= 58 and s_id in O_RIGHT_EDGE:
+            return full.replace(f's="{s_id}"', f's="{O_RIGHT_EDGE[s_id]}"', 1)
 
         # Header placeholders
         if addr == "B5":
