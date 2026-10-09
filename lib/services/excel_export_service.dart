@@ -20,8 +20,8 @@ import 'ps_ooxml_filler.dart';
 ///
 /// Frequentatori (66_PS PERSONALE INTERESSATO):
 /// - R48 title, R49 headers fixed in blank
-/// - R50+: sinistra B/C = ESERCITO, destra I/J = CARABINIERI (forza=CC / titolo CAR.)
-/// - numbering restarts at 1 in each column
+/// - R50+: elenco unico (cognome), nessuna distinzione di forza armata né grado:
+///   prima colonna B/C (righe 50-58), poi I/J; numerazione continua
 /// - Footer destra I62–I63: IL COMANDANTE / (Accountable Manager); I64 vuoto
 ///
 /// Unknown fields (firma AM, ecc.) restano vuoti.
@@ -34,8 +34,11 @@ class ExcelExportService {
   /// First data row under PERSONALE INTERESSATO (headers are row 49).
   static const attendeeDataStartRow = 50;
 
-  /// Template data slots: rows 50–58 (9), chrome ends at 58.
+  /// Template data slots per colonna: rows 50–58 (9), chrome ends at 58.
   static const attendeeMaxRows = 9;
+
+  /// Capienza totale (colonna B/C + colonna I/J).
+  static const attendeeMaxTotal = attendeeMaxRows * 2;
 
   /// Official 66_PS LOCALITA' labels.
   static const hangarPratica = 'HANGAR 6';
@@ -53,16 +56,12 @@ class ExcelExportService {
   static int? resolveAula(ScheduledLesson lesson, Course course) =>
       lesson.aula ?? course.resolvedDefaultAula;
 
-  /// Template label: "GRADO, NOME e COGNOME".
+  /// Template label: "NOME COGNOME" (modello generale, senza grado).
   static String attendeePsLabel(AppUser u) {
-    final grado = (u.titolo ?? '').trim();
     final nome = u.nome.trim().toUpperCase();
     final cognome = u.cognome.trim().toUpperCase();
-    return [grado, nome, cognome].where((s) => s.isNotEmpty).join(' ');
+    return [nome, cognome].where((s) => s.isNotEmpty).join(' ');
   }
-
-  /// Destra (CARABINIERI) se `forza=CC` o grado titolo tipo CAR./CC.
-  static bool isCarabinieriAttendee(AppUser u) => u.isCarabinieri;
 
   /// Blocchi giorno nel template (righe Excel 1-based).
   static const _dayBlocks = <(int, int)>[
@@ -371,28 +370,17 @@ class ExcelExportService {
           : 'Direttore del corso: $directorNames',
     );
 
+    // Elenco unico per cognome: colonna B/C poi I/J, numerazione continua.
     final sortedAtt = [...attendees]
       ..sort((a, b) => a.cognome.compareTo(b.cognome));
-    final esercito = sortedAtt.where((u) => !isCarabinieriAttendee(u)).toList();
-    final carabinieri =
-        sortedAtt.where(isCarabinieriAttendee).toList();
-    // 66_PS: col sinistra ESERCITO (B=N., C=label), destra CARABINIERI (I/J).
-    // Numerazione indipendente da 1 in ciascuna colonna; non inventare Capo Corso.
-    final nEs = esercito.length < attendeeMaxRows
-        ? esercito.length
-        : attendeeMaxRows;
-    final nCc = carabinieri.length < attendeeMaxRows
-        ? carabinieri.length
-        : attendeeMaxRows;
-    for (var i = 0; i < nEs; i++) {
-      final row = attendeeDataStartRow + i;
-      filler.setInt('B$row', i + 1);
-      filler.setText('C$row', attendeePsLabel(esercito[i]));
-    }
-    for (var i = 0; i < nCc; i++) {
-      final row = attendeeDataStartRow + i;
-      filler.setInt('I$row', i + 1);
-      filler.setText('J$row', attendeePsLabel(carabinieri[i]));
+    final n = sortedAtt.length < attendeeMaxTotal
+        ? sortedAtt.length
+        : attendeeMaxTotal;
+    for (var i = 0; i < n; i++) {
+      final row = attendeeDataStartRow + i % attendeeMaxRows;
+      final (numCol, nameCol) = i < attendeeMaxRows ? ('B', 'C') : ('I', 'J');
+      filler.setInt('$numCol$row', i + 1);
+      filler.setText('$nameCol$row', attendeePsLabel(sortedAtt[i]));
     }
 
     return filler.encode();

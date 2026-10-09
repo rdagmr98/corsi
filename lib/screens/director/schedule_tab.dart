@@ -2657,6 +2657,41 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
         .toList();
     final validated = dayLessons.where((l) => l.confirmed).toList();
     final highlight = _isToday(d);
+    final actions = <({
+      IconData icon,
+      Color color,
+      String label,
+      String tooltip,
+      VoidCallback onTap
+    })>[
+      if (dayLessons.isNotEmpty && _selected != null)
+        (
+          icon: Icons.person_off,
+          color: kError,
+          label: 'Assenti',
+          tooltip:
+              'Segna assenti per tutte le ore del giorno\n(le assenze orarie restano modificabili)',
+          onTap: () => _markDayAbsences(d, dayLessons),
+        ),
+      if (pending.isNotEmpty)
+        (
+          icon: Icons.task_alt,
+          color: kAccent,
+          label: 'Valida ${pending.length}',
+          tooltip:
+              'Conferma le ${pending.length} ore del giorno con istruttore assegnato\nper conto degli istruttori',
+          onTap: () => _validateDay(d, pending),
+        ),
+      if (validated.isNotEmpty)
+        (
+          icon: Icons.undo,
+          color: kWarning,
+          label: 'Svalida ${validated.length}',
+          tooltip:
+              'Svalida le ${validated.length} ore validate del giorno\n(tornano da validare, gli appelli restano)',
+          onTap: () => _unvalidateDay(d, validated),
+        ),
+    ];
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
       alignment: Alignment.center,
@@ -2673,75 +2708,44 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
                 fontSize: 11,
                 fontWeight: FontWeight.bold,
               )),
-          if (dayLessons.isNotEmpty && _selected != null)
-            Tooltip(
-              message:
-                  'Segna assenti per tutte le ore del giorno\n(le assenze orarie restano modificabili)',
-              child: InkWell(
-                onTap: () => _markDayAbsences(d, dayLessons),
-                child: const Padding(
-                  padding: EdgeInsets.only(top: 2),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.person_off, size: 11, color: kError),
-                      SizedBox(width: 3),
-                      Text('Assenti',
-                          style: TextStyle(
-                              color: kError,
-                              fontSize: 9,
-                              fontWeight: FontWeight.bold)),
+          if (actions.isNotEmpty)
+            LayoutBuilder(builder: (context, c) {
+              // Testi solo se entrano tutte le azioni, altrimenti solo icone.
+              final showText = c.maxWidth >= actions.length * 60.0;
+              return Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (var i = 0; i < actions.length; i++) ...[
+                      if (i > 0) const SizedBox(width: 6),
+                      Tooltip(
+                        message: actions[i].tooltip,
+                        child: InkWell(
+                          onTap: actions[i].onTap,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(actions[i].icon,
+                                  size: showText ? 11 : 14,
+                                  color: actions[i].color),
+                              if (showText) ...[
+                                const SizedBox(width: 3),
+                                Text(actions[i].label,
+                                    style: TextStyle(
+                                        color: actions[i].color,
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.bold)),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ),
                     ],
-                  ),
+                  ],
                 ),
-              ),
-            ),
-          if (pending.isNotEmpty)
-            Tooltip(
-              message:
-                  'Conferma le ${pending.length} ore del giorno con istruttore assegnato\nper conto degli istruttori',
-              child: InkWell(
-                onTap: () => _validateDay(d, pending),
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 2),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.task_alt, size: 11, color: kAccent),
-                      const SizedBox(width: 3),
-                      Text('Valida ${pending.length}',
-                          style: const TextStyle(
-                              color: kAccent,
-                              fontSize: 9,
-                              fontWeight: FontWeight.bold)),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          if (validated.isNotEmpty)
-            Tooltip(
-              message:
-                  'Svalida le ${validated.length} ore validate del giorno\n(tornano da validare, gli appelli restano)',
-              child: InkWell(
-                onTap: () => _unvalidateDay(d, validated),
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 2),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.undo, size: 11, color: kWarning),
-                      const SizedBox(width: 3),
-                      Text('Svalida ${validated.length}',
-                          style: const TextStyle(
-                              color: kWarning,
-                              fontSize: 9,
-                              fontWeight: FontWeight.bold)),
-                    ],
-                  ),
-                ),
-              ),
-            ),
+              );
+            }),
         ],
       ),
     );

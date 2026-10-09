@@ -19,23 +19,34 @@ void main() {
 
   test('OJT aperto: GO sulle 6 h entro 1 anno, sulle 35 h entro 2 anni', () {
     final u = _u(go: true, ojtAt: at);
-    expect(GradeService.ojtGraceFor(u, 0, DateTime(2026, 10, 8)), (teach: true, prof: true));
-    expect(GradeService.ojtGraceFor(u, 0, DateTime(2026, 10, 9)), (teach: false, prof: true));
-    expect(GradeService.ojtGraceFor(u, 0, DateTime(2027, 10, 9)), (teach: false, prof: false));
+    expect(GradeService.ojtGraceFor(u, DateTime(2026, 10, 8)), (teach: true, prof: true));
+    expect(GradeService.ojtGraceFor(u, DateTime(2026, 10, 9)), (teach: false, prof: true));
+    expect(GradeService.ojtGraceFor(u, DateTime(2027, 10, 9)), (teach: false, prof: false));
   });
 
-  test('OJT chiuso a 6 h: le 35 h restano in deroga fino a 2 anni', () {
+  test('OJT chiuso (a 6 h o a mano): la deroga resta fino alla scadenza', () {
     final u = _u(ojtAt: at);
-    expect(GradeService.ojtGraceFor(u, 6, DateTime(2026, 3, 1)), (teach: false, prof: true));
+    expect(GradeService.ojtGraceFor(u, DateTime(2026, 3, 1)), (teach: true, prof: true));
+    expect(GradeService.ojtGraceFor(u, DateTime(2026, 12, 1)), (teach: false, prof: true));
+    expect(GradeService.ojtGraceFor(u, DateTime(2027, 12, 1)), (teach: false, prof: false));
   });
 
-  test('OJT chiuso a mano prima delle 6 h: nessuna deroga', () {
-    final u = _u(ojtAt: at);
-    expect(GradeService.ojtGraceFor(u, 2, DateTime(2026, 3, 1)), (teach: false, prof: false));
+  test('legacy chiuso senza ojt_at: ancora sull\'ultimo evento OJT', () {
+    final last = DateTime(2026, 7, 13);
+    expect(GradeService.ojtGraceFor(_u(), DateTime(2026, 10, 9), lastOjt: last),
+        (teach: true, prof: true));
+    expect(GradeService.ojtGraceFor(_u(), DateTime(2027, 8, 1), lastOjt: last),
+        (teach: false, prof: true));
+    expect(GradeService.ojtGraceFor(_u(), DateTime(2028, 8, 1), lastOjt: last),
+        (teach: false, prof: false));
   });
 
-  test('legacy goOverride senza data inizio e istruttore senza OJT', () {
-    expect(GradeService.ojtGraceFor(_u(go: true), 0, DateTime(2026, 3, 1)), (teach: true, prof: true));
-    expect(GradeService.ojtGraceFor(_u(), 0, DateTime(2026, 3, 1)), (teach: false, prof: false));
+  test('legacy attivo senza data e istruttore senza OJT', () {
+    final n = DateTime(2026, 3, 1);
+    expect(GradeService.ojtGraceFor(_u(go: true), n), (teach: true, prof: true));
+    // OJT attivo senza data: un vecchio evento OJT non lo ancora.
+    expect(GradeService.ojtGraceFor(_u(go: true), DateTime(2030), lastOjt: DateTime(2026)),
+        (teach: true, prof: true));
+    expect(GradeService.ojtGraceFor(_u(), n), (teach: false, prof: false));
   });
 }

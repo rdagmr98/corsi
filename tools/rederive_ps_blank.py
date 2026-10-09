@@ -503,13 +503,22 @@ def resolve_ei_sheet(zin: zipfile.ZipFile) -> tuple[str, str]:
     return pick[1], printer
 
 
+def neutral_attendee_headers(shared: str) -> str:
+    """Elenco frequentatori unico: niente distinzione Esercito/Carabinieri né grado."""
+    for old in ("GRADO, NOME e COGNOME (ESERCITO)", "GRADO, NOME e COGNOME (CARABINIERI)"):
+        shared = shared.replace(f"<t>{old}</t>", "<t>NOME e COGNOME</t>")
+    return shared
+
+
 def pack_from_official(src: Path) -> None:
     with zipfile.ZipFile(src, "r") as zin:
         sheet_path, _printer_path = resolve_ei_sheet(zin)
         sheet = zin.read(sheet_path).decode("utf-8")
         styles = zin.read("xl/styles.xml").decode("utf-8")
         theme = zin.read("xl/theme/theme1.xml")
-        shared = zin.read("xl/sharedStrings.xml")
+        shared = neutral_attendee_headers(
+            zin.read("xl/sharedStrings.xml").decode("utf-8")
+        ).encode("utf-8")
         core = zin.read("docProps/core.xml")
 
     sheet = re.sub(r"<drawing[^/]*/>", "", sheet)
@@ -632,6 +641,9 @@ def clear_existing_blank() -> None:
     write_dart_map(xf_map)
     data["xl/worksheets/sheet1.xml"] = sheet.encode("utf-8")
     data["xl/styles.xml"] = styles.encode("utf-8")
+    data["xl/sharedStrings.xml"] = neutral_attendee_headers(
+        data["xl/sharedStrings.xml"].decode("utf-8")
+    ).encode("utf-8")
     wb = data["xl/workbook.xml"].decode("utf-8")
     if "_xlnm.Print_Area" not in wb:
         wb = wb.replace(

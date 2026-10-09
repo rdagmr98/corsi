@@ -433,7 +433,8 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
               style: TextStyle(color: kText)),
           content: Text(
             'Chiudere l\'OJT di ${instr.cognome} con data di fine oggi? '
-            'La valutazione tornerà automatica (resta lo storico OJT).',
+            'Le deroghe di 1 anno (6 ore) e 2 anni (35 ore) dall\'inizio restano '
+            'valide fino alla scadenza (resta lo storico OJT).',
             style: const TextStyle(color: kTextDim),
           ),
           actions: [
@@ -474,8 +475,13 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
   // registrati. Fine vuota = OJT in corso (GO attivo), fine valorizzata = chiuso.
   Future<void> _editOjt(AppUser instr, {bool fresh = false}) async {
     String kind = instr.ojtKind == 'ripristino' ? 'ripristino' : 'iniziale';
-    DateTime start = fresh ? DateTime.now() : (instr.ojtAt ?? DateTime.now());
-    DateTime? end = fresh || instr.goOverride ? null : instr.ojtEndAt;
+    // OJT legacy già chiuso (senza date proprie): parte dall'ultimo evento OJT
+    // registrato, così il salvataggio non lo riapre.
+    final legacyEnd = instr.ojtAt == null && !instr.goOverride
+        ? _gradeService.lastOjtDate(instr.id)
+        : null;
+    DateTime start = fresh ? DateTime.now() : (instr.ojtAt ?? legacyEnd ?? DateTime.now());
+    DateTime? end = fresh || instr.goOverride ? null : (instr.ojtEndAt ?? legacyEnd);
     final noteCtrl = TextEditingController(text: fresh ? '' : (instr.ojtNote ?? ''));
     final isNew = fresh || instr.ojtAt == null;
 
@@ -877,7 +883,8 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 12, vertical: 6)),
                         ),
-                        if (instr.ojtAt != null)
+                        if (instr.ojtAt != null ||
+                            _gradeService.lastOjtDate(instr.id) != null)
                           OutlinedButton.icon(
                             onPressed: () async {
                               Navigator.pop(context);

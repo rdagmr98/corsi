@@ -252,68 +252,31 @@ void main() {
     expect(i64.contains('<v>'), isFalse, reason: 'I64 name/date stays empty');
   });
 
-  test('attendee PS label and Carabinieri split match 66_PS columns', () {
+  test('attendee PS label: solo NOME COGNOME, nessun grado', () {
+    final u = AppUser(
+      id: '1',
+      nome: 'Lorenzo',
+      cognome: 'Codina',
+      role: 'attendee',
+      titolo: 'GRD',
+      forza: 'EI',
+      createdAt: DateTime(2026),
+      updatedAt: DateTime(2026),
+    );
+    expect(ExcelExportService.attendeePsLabel(u), 'LORENZO CODINA');
+    // Carabinieri o Esercito: stessa etichetta, nessuna distinzione.
     expect(
       ExcelExportService.attendeePsLabel(
-        AppUser(
-          id: '1',
-          nome: 'Lorenzo',
-          cognome: 'Codina',
-          role: 'attendee',
-          titolo: 'GRD',
-          forza: 'EI',
-          createdAt: DateTime(2026),
-          updatedAt: DateTime(2026),
-        ),
+        u.copyWith(nome: 'Christian', cognome: 'Laraspata', titolo: 'CAR. SC', forza: 'CC'),
       ),
-      'GRD LORENZO CODINA',
+      'CHRISTIAN LARASPATA',
     );
-    // forza=CC → destra (anche senza titolo CAR.)
-    expect(
-      ExcelExportService.isCarabinieriAttendee(
-        AppUser(
-          id: '2',
-          nome: 'Christian',
-          cognome: 'LA RASPATA',
-          role: 'attendee',
-          forza: 'CC',
-          titolo: 'CAR. SC',
-          createdAt: DateTime(2026),
-          updatedAt: DateTime(2026),
-        ),
-      ),
-      isTrue,
-    );
-    // titolo CAR. alone still counts
-    expect(
-      ExcelExportService.isCarabinieriAttendee(
-        AppUser(
-          id: '2b',
-          nome: 'Christian',
-          cognome: 'Laraspata',
-          role: 'attendee',
-          titolo: 'CAR. SC',
-          createdAt: DateTime(2026),
-          updatedAt: DateTime(2026),
-        ),
-      ),
-      isTrue,
-    );
-    expect(
-      ExcelExportService.isCarabinieriAttendee(
-        AppUser(
-          id: '3',
-          nome: 'Giuseppe',
-          cognome: 'Berni',
-          role: 'attendee',
-          titolo: 'GRD',
-          createdAt: DateTime(2026),
-          updatedAt: DateTime(2026),
-        ),
-      ),
-      isFalse,
-    );
+  });
+
+  test('lista frequentatori unica: 9 per colonna, capienza 18', () {
     expect(ExcelExportService.attendeeDataStartRow, 50);
+    expect(ExcelExportService.attendeeMaxRows, 9);
+    expect(ExcelExportService.attendeeMaxTotal, 18);
   });
 
   test('localitaLabel teoria AULA n / pratica HANGAR 6', () {

@@ -224,22 +224,27 @@ class GradeService {
     return teachOk && profOk && daaOk;
   }
 
-  /// Deroga OJT (iniziale o ripristino), ancorata alla data di inizio OJT:
-  /// GO per le 6 h annuali entro 1 anno (finché l'OJT non è chiuso) e per le
-  /// 35 h di aggiornamento entro 2 anni. Scaduta la finestra senza ore maturate
-  /// l'istruttore è NO GO. Un OJT chiuso a mano prima delle 6 h perde anche la
-  /// deroga sulle 35 h; la chiusura automatica a 6 h la mantiene.
-  /// Legacy: `goOverride` senza data inizio = GO finché non maturano le 6 h.
+  /// Deroga OJT (iniziale o ripristino), ancorata alla data dell'OJT e valida
+  /// anche a OJT chiuso (a mano o a 6 h): GO per le 6 h annuali entro 1 anno e
+  /// per le 35 h di aggiornamento entro 2 anni. Scaduta la finestra senza ore
+  /// maturate l'istruttore è NO GO.
+  /// Legacy senza `ojt_at`: OJT attivo = GO finché non maturano le 6 h; OJT già
+  /// chiuso = ancora sull'ultimo evento 'ojt' registrato negli aggiornamenti.
   ({bool teach, bool prof}) ojtGrace(AppUser u, {DateTime? now}) =>
-      ojtGraceFor(u, getTeachingHoursRollingYear(u.id), now ?? DateTime.now());
+      ojtGraceFor(u, now ?? DateTime.now(), lastOjt: lastOjtDate(u.id));
 
-  static ({bool teach, bool prof}) ojtGraceFor(AppUser u, double teachH, DateTime n) {
-    final at = u.ojtAt;
+  /// Data dell'ultimo evento OJT (inizio o fine) negli aggiornamenti.
+  DateTime? lastOjtDate(String instructorId) {
+    final ojt = getUpdatesForInstructor(instructorId).where((u) => u.type == 'ojt');
+    return ojt.isEmpty ? null : ojt.last.date;
+  }
+
+  static ({bool teach, bool prof}) ojtGraceFor(AppUser u, DateTime n, {DateTime? lastOjt}) {
+    final at = u.ojtAt ?? (u.goOverride ? null : lastOjt);
     if (at == null) return (teach: u.goOverride, prof: u.goOverride);
-    final open = u.goOverride || teachH >= 6;
     return (
-      teach: u.goOverride && n.isBefore(DateTime(at.year + 1, at.month, at.day)),
-      prof: open && n.isBefore(DateTime(at.year + 2, at.month, at.day)),
+      teach: n.isBefore(DateTime(at.year + 1, at.month, at.day)),
+      prof: n.isBefore(DateTime(at.year + 2, at.month, at.day)),
     );
   }
 
