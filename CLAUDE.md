@@ -69,7 +69,13 @@ GitHub Actions (`.github/workflows/deploy.yml`) deploya automaticamente su push 
 
 ---
 
-## STATO SESSIONE — aggiornato 2026-10-09 (sessione 36)
+## STATO SESSIONE — aggiornato 2026-10-13 (sessione 37)
+
+### Ultime modifiche (2026-10-13) — sessione 37 — admin modifica data aggiornamenti professionali (commit `5992047`)
+Richiesta: "dai la possibilità all'admin di modificare le date degli aggiornamenti professionali degli istruttori (quelli delle 35 ore in 3 ANNI)".
+- `GradeService.updateUpdateDate(id, date)` (solo `date`, ore/descrizione invariate); in `currency_tab.dart` ogni voce di "Aggiornamenti professionali svolti" ha il pulsante `Icons.edit_calendar` → `_editUpdateDate` (date picker, salva, ricarica, riapre il dettaglio). La lista mostra ora TUTTE le voci professionali con data `dd/MM/yyyy`, quelle fuori finestra sbiadite (altrimenti una voce vecchia non sarebbe correggibile).
+- Finestra lasciata a **2 anni** (730 gg, regola 35 h/2 anni ovunque nel codice, nel foglio `currency 2 anni` e nelle deroghe OJT): la richiesta dice "3 anni", non cambiata senza conferma perché altera il GO/NO GO di tutti gli istruttori. Da decidere con l'utente.
+- Stesse giornate: planner con settimane sempre da lunedì (`c7acfb0`), drag & drop lezioni con anteprima animata e griglia centrata (`6bc358e`, `aae1999`, `3f0de8e`, rifinito `73089c0`): [[AVES Corsi/Planner drag and drop lezioni]]. Vault: [[AVES Corsi/Modifica date aggiornamenti professionali 2026-10-13]].
 
 ### Ultime modifiche (2026-10-09) — sessione 36 — recuperi nel planner, svalida, OJT con deroga, bordi Excel PS (commit `a3a3d62`)
 Richiesta utente (verbatim, troncata): "il simbolino note a cella vuota fallo più grande [...] aggiusta i bordi della tabella degli studenti nell'excel alcune celle non hanno il bordo destro [...] permetti ai dir di svalidare una lezione validata e anche tutta la giornata [...] se di un modulo c'è da recuperare sia teoria che pratica il dir possa scegliere quale [...] i recuperi vengono registrati ma non vengono visualizzati nel planner [...] prevedi validazione e svalidazione anche per i recuperi [...] quando un istruttore fa un ojt iniziale o di ripristino è go anche dal punto di vista delle 35 h, se dopo i 2 anni non le ha fatte diventa no go, allo stesso modo è go per il primo anno anche se non ha fatto le 6 ore [...] togli la scritta impostazioni, lascia solo il simbolo e tira fuori da li l'invio delle notifiche".
