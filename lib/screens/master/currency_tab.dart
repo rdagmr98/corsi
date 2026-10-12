@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import '../../models/grade_models.dart';
 import '../../models/user_models.dart';
 import '../../models/reference_models.dart';
 import '../../providers/auth_provider.dart';
@@ -341,6 +342,23 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
         ),
       ),
     );
+  }
+
+  // ── Modifica data di un aggiornamento professionale ───────────────────────
+  Future<void> _editUpdateDate(AppUser instr, InstructorUpdate u) async {
+    Navigator.pop(context); // chiude il dettaglio, che si riapre aggiornato
+    final d = await showDatePicker(
+      context: context,
+      initialDate: u.date,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2035),
+      helpText: '${u.description} · ${u.hours.toStringAsFixed(0)}h',
+    );
+    if (d != null && d != u.date) {
+      await _gradeService.updateUpdateDate(u.id, d);
+      await _reload();
+    }
+    if (mounted) _showDetail(_userService.findById(instr.id) ?? instr);
   }
 
   // ── DAAA expiry dialog ────────────────────────────────────────────────────
@@ -726,9 +744,10 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
     final practM   = _practiceMods(instr.id);
     final byYear   = _teachingByYear(instr.id);
     final updates  = _gradeService.getUpdatesForInstructor(instr.id);
+    final profCutoff = DateTime.now().subtract(const Duration(days: 730));
+    // Tutte le voci, anche fuori finestra (sbiadite): servono per correggerne la data.
     final profList = updates
         .where((u) => u.isProfessional)
-        .where((u) => u.date.isAfter(DateTime.now().subtract(const Duration(days: 730))))
         .toList()
       ..sort((a, b) => b.date.compareTo(a.date));
     final teachList2y = updates
@@ -1011,13 +1030,15 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
                         const Text('Nessun aggiornamento registrato',
                             style: TextStyle(color: kTextDim, fontSize: 12))
                       else
-                        ...profList.map((u) => Padding(
+                        ...profList.map((u) => Opacity(
+                          opacity: u.date.isAfter(profCutoff) ? 1 : 0.45,
+                          child: Padding(
                           padding: const EdgeInsets.only(bottom: 4),
                           child: Row(children: [
                             SizedBox(
-                              width: 72,
+                              width: 76,
                               child: Text(
-                                DateFormat('MM/yyyy').format(u.date),
+                                DateFormat('dd/MM/yyyy').format(u.date),
                                 style: const TextStyle(color: kTextDim, fontSize: 11),
                               ),
                             ),
@@ -1036,8 +1057,16 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
                             Expanded(child: Text(u.description,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(color: kTextDim, fontSize: 11))),
+                            IconButton(
+                              icon: const Icon(Icons.edit_calendar, color: kPrimary),
+                              tooltip: 'Modifica data',
+                              iconSize: 16,
+                              padding: const EdgeInsets.all(4),
+                              constraints: const BoxConstraints(),
+                              onPressed: () => _editUpdateDate(instr, u),
+                            ),
                           ]),
-                        )),
+                        ))),
                       const SizedBox(height: 20),
     ];
     final sMat = <Widget>[
