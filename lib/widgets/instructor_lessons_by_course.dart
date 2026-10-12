@@ -33,8 +33,9 @@ class InstructorLessonsByCourse extends StatelessWidget {
               padding: const EdgeInsets.only(bottom: 3),
               child: Row(children: [
                 SizedBox(
-                  width: 78,
+                  width: 92,
                   child: Text(fmt.format(l.date),
+                      softWrap: false,
                       style: TextStyle(color: dim ? kTextDim : kText, fontSize: 11)),
                 ),
                 SizedBox(

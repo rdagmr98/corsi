@@ -310,13 +310,23 @@ class GradeService {
     await _db.saveUpdates(updates);
   }
 
-  /// Correzione admin della data di una voce (ore/descrizione invariate).
-  Future<void> updateUpdateDate(String updateId, DateTime date) async {
+  /// Correzione admin di una voce: tipo, ore, descrizione, data.
+  /// `course_id` e stato di approvazione restano invariati.
+  Future<void> editUpdate(
+    String updateId, {
+    required String type,
+    required double hours,
+    required String description,
+    required DateTime date,
+  }) async {
     final updates = _db.updates.toList();
     final idx = updates.indexWhere((u) => u['id'] == updateId);
     if (idx < 0) return;
     updates[idx] = {
       ...updates[idx],
+      'type': type,
+      'hours': hours,
+      'description': description,
       'date': date.toIso8601String().split('T').first,
     };
     await _db.saveUpdates(updates);

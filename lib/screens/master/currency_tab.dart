@@ -344,22 +344,122 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
     );
   }
 
-  // ── Modifica data di un aggiornamento professionale ───────────────────────
-  Future<void> _editUpdateDate(AppUser instr, InstructorUpdate u) async {
+  // ── Modifica generale di una voce (tipo, ore, descrizione, data) ──────────
+  Future<void> _editUpdate(AppUser instr, InstructorUpdate u) async {
     Navigator.pop(context); // chiude il dettaglio, che si riapre aggiornato
-    final d = await showDatePicker(
+    final hoursCtrl = TextEditingController(text: _fmtHours(u.hours));
+    final descCtrl = TextEditingController(text: u.description);
+    String type = u.type;
+    DateTime date = u.date;
+
+    Widget label(String t) => Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: Text(t, style: const TextStyle(color: kTextDim, fontSize: 12)),
+        );
+
+    final saved = await showDialog<bool>(
       context: context,
-      initialDate: u.date,
-      firstDate: DateTime(2000),
-      lastDate: DateTime(2035),
-      helpText: '${u.description} · ${u.hours.toStringAsFixed(0)}h',
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlg) => AlertDialog(
+          backgroundColor: kCard,
+          title: Text('Modifica voce – ${instr.cognome}',
+              style: const TextStyle(color: kText)),
+          content: SizedBox(
+            width: 380,
+            child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  label('Tipo'),
+                  DropdownButtonFormField<String>(
+                    value: type,
+                    dropdownColor: kSurface,
+                    style: const TextStyle(color: kText),
+                    decoration: const InputDecoration(isDense: true),
+                    items: [
+                      const DropdownMenuItem(
+                          value: 'teaching', child: Text('Ore insegnamento')),
+                      const DropdownMenuItem(
+                          value: 'professional',
+                          child: Text('Aggiornamento professionale')),
+                      // tipi speciali: mostrati solo se la voce è già di quel tipo
+                      if (type != 'teaching' && type != 'professional')
+                        DropdownMenuItem(value: type, child: Text(type)),
+                    ],
+                    onChanged: (v) => setDlg(() => type = v ?? type),
+                  ),
+                  const SizedBox(height: 12),
+                  label('Ore'),
+                  TextField(
+                    controller: hoursCtrl,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    style: const TextStyle(color: kText),
+                    decoration: const InputDecoration(isDense: true),
+                  ),
+                  const SizedBox(height: 12),
+                  label('Descrizione / riferimento'),
+                  TextField(
+                    controller: descCtrl,
+                    style: const TextStyle(color: kText),
+                    decoration: const InputDecoration(isDense: true),
+                  ),
+                  const SizedBox(height: 12),
+                  label('Data'),
+                  Row(children: [
+                    Text(DateFormat('dd/MM/yyyy').format(date),
+                        style: const TextStyle(color: kText)),
+                    const SizedBox(width: 12),
+                    TextButton(
+                      onPressed: () async {
+                        final d = await showDatePicker(
+                          context: ctx,
+                          initialDate: date,
+                          firstDate: DateTime(2000),
+                          lastDate: DateTime(2035),
+                        );
+                        if (d != null) setDlg(() => date = d);
+                      },
+                      child: const Text('Cambia'),
+                    ),
+                  ]),
+                ]),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Annulla', style: TextStyle(color: kTextDim)),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final h =
+                    double.tryParse(hoursCtrl.text.trim().replaceAll(',', '.'));
+                if (h == null || h <= 0) return;
+                Navigator.pop(ctx, true);
+              },
+              child: const Text('Salva'),
+            ),
+          ],
+        ),
+      ),
     );
-    if (d != null && d != u.date) {
-      await _gradeService.updateUpdateDate(u.id, d);
+
+    if (saved == true) {
+      await _gradeService.editUpdate(
+        u.id,
+        type: type,
+        hours: double.parse(hoursCtrl.text.trim().replaceAll(',', '.')),
+        description: descCtrl.text.trim(),
+        date: date,
+      );
       await _reload();
     }
     if (mounted) _showDetail(_userService.findById(instr.id) ?? instr);
   }
+
+  /// 8 -> "8", 7.5 -> "7.5" (campo ore del dialog di modifica).
+  String _fmtHours(double h) =>
+      h == h.roundToDouble() ? h.toStringAsFixed(0) : h.toString();
 
   // ── DAAA expiry dialog ────────────────────────────────────────────────────
   Future<void> _editDaaExpiry(AppUser instr) async {
@@ -957,10 +1057,11 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
                                         const EdgeInsets.only(bottom: 4),
                                     child: Row(children: [
                                       SizedBox(
-                                        width: 72,
+                                        width: 92,
                                         child: Text(
                                           DateFormat('dd/MM/yyyy')
                                               .format(u.date),
+                                          softWrap: false,
                                           style: const TextStyle(
                                               color: kTextDim,
                                               fontSize: 11),
@@ -1036,9 +1137,10 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
                           padding: const EdgeInsets.only(bottom: 4),
                           child: Row(children: [
                             SizedBox(
-                              width: 76,
+                              width: 92,
                               child: Text(
                                 DateFormat('dd/MM/yyyy').format(u.date),
+                                softWrap: false,
                                 style: const TextStyle(color: kTextDim, fontSize: 11),
                               ),
                             ),
@@ -1049,7 +1151,7 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
                                 color: kAccent.withOpacity(0.15),
                                 borderRadius: BorderRadius.circular(4),
                               ),
-                              child: Text('${u.hours.toStringAsFixed(0)}h',
+                              child: Text('${_fmtHours(u.hours)}h',
                                   style: const TextStyle(color: kAccent,
                                       fontSize: 11, fontWeight: FontWeight.bold)),
                             ),
@@ -1058,12 +1160,12 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(color: kTextDim, fontSize: 11))),
                             IconButton(
-                              icon: const Icon(Icons.edit_calendar, color: kPrimary),
-                              tooltip: 'Modifica data',
+                              icon: const Icon(Icons.edit, color: kPrimary),
+                              tooltip: 'Modifica voce',
                               iconSize: 16,
                               padding: const EdgeInsets.all(4),
                               constraints: const BoxConstraints(),
-                              onPressed: () => _editUpdateDate(instr, u),
+                              onPressed: () => _editUpdate(instr, u),
                             ),
                           ]),
                         ))),
@@ -1117,7 +1219,7 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
           insetPadding: const EdgeInsets.all(24),
           child: ConstrainedBox(
             constraints: BoxConstraints(
-              maxWidth: wide ? 1240 : 760,
+              maxWidth: wide ? 1480 : 760,
               maxHeight: (screenSize.height - 48).clamp(420.0, 900.0),
             ),
             child: Column(children: [
