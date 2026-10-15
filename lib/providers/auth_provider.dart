@@ -122,7 +122,7 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> reloadDb() async {
-    await _db.reloadAll();
+    await _db.refresh();
     if (_user != null) {
       _unreadCount = _db.notifications
           .where((n) => n['user_id'] == _user!.id && n['is_read'] != true)

@@ -1661,7 +1661,7 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
         gradeService: _gradeService,
         notifService: _notifService,
         userService: _userService,
-        onChanged: _reload,
+        onChanged: _load, // cache già aggiornata: niente rete
       ),
       Expanded(
         child: Builder(builder: (context) {
@@ -1892,7 +1892,7 @@ typedef _Row = ({
   int bucket,
 });
 
-class _PendingUpdatesSection extends StatelessWidget {
+class _PendingUpdatesSection extends StatefulWidget {
   final GradeService gradeService;
   final NotificationService notifService;
   final UserService userService;
@@ -1906,9 +1906,45 @@ class _PendingUpdatesSection extends StatelessWidget {
   });
 
   @override
+  State<_PendingUpdatesSection> createState() => _PendingUpdatesSectionState();
+}
+
+class _PendingUpdatesSectionState extends State<_PendingUpdatesSection> {
+  // ponytail: un solo lock per tutta la lista (non per riga): dopo ogni azione
+  // la lista si riordina e un secondo tap veloce colpirebbe un'altra riga.
+  // Cooldown fisso 600 ms, nessuna coda di tap.
+  String? _busyId;
+  bool _cooldown = false;
+
+  GradeService get gradeService => widget.gradeService;
+  NotificationService get notifService => widget.notifService;
+  UserService get userService => widget.userService;
+
+  Future<void> _run(InstructorUpdate u, Future<void> Function() action) async {
+    if (_busyId != null || _cooldown) return;
+    setState(() => _busyId = u.id);
+    try {
+      await action();
+      widget.onChanged();
+    } catch (_) {
+      showAppError('Operazione non riuscita. Riprova.');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _busyId = null;
+          _cooldown = true;
+        });
+      }
+    }
+    await Future.delayed(const Duration(milliseconds: 600));
+    if (mounted) setState(() => _cooldown = false);
+  }
+
+  @override
   Widget build(BuildContext context) {
     final pending = gradeService.getPendingUpdates();
     if (pending.isEmpty) return const SizedBox.shrink();
+    final locked = _busyId != null || _cooldown;
 
     return Container(
       margin: const EdgeInsets.fromLTRB(24, 0, 24, 12),
@@ -1961,41 +1997,54 @@ class _PendingUpdatesSection extends StatelessWidget {
                     ],
                   ),
                 ),
-                TextButton(
-                  onPressed: () async {
-                    if (u.isCurrencyLoss) {
-                      await CurrencyLossService().validate(u);
-                    } else {
-                      await gradeService.approveUpdate(u.id, u.instructorId);
-                      await notifService.notifyUpdateApproved(
-                        instructorId: u.instructorId,
-                        description: u.description,
-                      );
-                    }
-                    onChanged();
-                  },
-                  style: TextButton.styleFrom(
-                    foregroundColor: kAccent,
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                if (_busyId == u.id)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 22, vertical: 6),
+                    child: SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )
+                else ...[
+                  TextButton(
+                    onPressed: locked
+                        ? null
+                        : () => _run(u, () async {
+                              if (u.isCurrencyLoss) {
+                                await CurrencyLossService().validate(u);
+                              } else {
+                                await gradeService.approveUpdate(u.id, u.instructorId);
+                                await notifService.notifyUpdateApproved(
+                                  instructorId: u.instructorId,
+                                  description: u.description,
+                                );
+                              }
+                            }),
+                    style: TextButton.styleFrom(
+                      foregroundColor: kAccent,
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    ),
+                    child: Text(u.isCurrencyLoss ? 'Valida' : 'Approva',
+                        style: const TextStyle(fontSize: 11)),
                   ),
-                  child: Text(u.isCurrencyLoss ? 'Valida' : 'Approva',
-                      style: const TextStyle(fontSize: 11)),
-                ),
-                TextButton(
-                  onPressed: () async {
-                    if (u.isCurrencyLoss) {
-                      await CurrencyLossService().reject(u);
-                    } else {
-                      await gradeService.deleteUpdate(u.id, u.instructorId);
-                    }
-                    onChanged();
-                  },
-                  style: TextButton.styleFrom(
-                    foregroundColor: kError,
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  TextButton(
+                    onPressed: locked
+                        ? null
+                        : () => _run(u, () async {
+                              if (u.isCurrencyLoss) {
+                                await CurrencyLossService().reject(u);
+                              } else {
+                                await gradeService.deleteUpdate(u.id, u.instructorId);
+                              }
+                            }),
+                    style: TextButton.styleFrom(
+                      foregroundColor: kError,
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    ),
+                    child: const Text('Rifiuta', style: TextStyle(fontSize: 11)),
                   ),
-                  child: const Text('Rifiuta', style: TextStyle(fontSize: 11)),
-                ),
+                ],
               ]),
             );
           }).toList()),

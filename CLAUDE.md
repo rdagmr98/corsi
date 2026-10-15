@@ -69,7 +69,14 @@ GitHub Actions (`.github/workflows/deploy.yml`) deploya automaticamente su push 
 
 ---
 
-## STATO SESSIONE — aggiornato 2026-10-15 (sessione 39)
+## STATO SESSIONE — aggiornato 2026-10-16 (sessione 40)
+
+### Ultime modifiche (2026-10-16) — sessione 40 — latenze rimosse: reload incrementale, salvataggi non bloccanti, anti-doppio-tap Valida
+Richiesta: "ho premuto valida su minissi e il tasto non funzionava, aveva una grossa latenza quindi ho premuto piu volte e per sbaglio ho premuto su mirizzi e non volevo. togli le latenze nell'app!"
+- **Causa**: ogni azione chiamava `_reload()` → `reloadDb()` → `flushPending()` (attendeva le PUT in coda) + `init()` (`_cache.clear()` e 11 GET); `saveUsers`/`saveCourses` attendevano inoltre la PUT (`_awaitWrite`, s23). Costo percepito 3-6 s per tap.
+- **Fix** (`gh_db_service.dart`): nuovo `refresh()` non distruttivo = 1 listing della cartella dati + download solo dei file con sha cambiato, salta i file con scritture in coda/in corso (mai sovrascrive i dati ottimistici); `reloadDb()` ora lo usa (rimossi `reloadAll`, `flushPending`, `_awaitWrite`). `saveUsers`/`saveCourses` ora in coda ottimistica come gli altri file (niente attesa PUT). Parametro `_` sempre diverso sulle GET (l'API GitHub ha `max-age=60`: causa probabile dei dati stale dopo F5 della s23). `app.dart`: `beforeunload` chiede conferma se `pendingSaves > 0`.
+- `currency_tab.dart` `_PendingUpdatesSection`: lock unico sulla lista + cooldown 600 ms + spinner sulla riga, altri bottoni disabilitati; `onChanged: _load` (locale, niente rete).
+- Limite noto: una F5 entro 1-3 s dal salvataggio ora è protetta solo dall'avviso del browser. L'utente ha cliccato per sbaglio su Mirizzi: non verificato in `updates.json` se l'azione abbia avuto effetto. Vault: [[AVES Corsi/Latenze rimosse reload incrementale 2026-10-16]].
 
 ### Ultime modifiche (2026-10-15) — sessione 39 — perdita currency validata, vista a quadrati stati di servizio
 Richiesta: eliminazione voce oltre alla modifica; perdita currency registrata in automatico ma valida solo dopo validazione admin; "gli anni sono 2 non 3" (confermato: finestra 730 gg invariata); stati di servizio a quadrati di default (toggle elenco) con ordine NO-GO non validato / in scadenza / GO / NO-GO validato; backfill dei NO-GO già presenti all'import Excel.
@@ -79,11 +86,7 @@ Richiesta: eliminazione voce oltre alla modifica; perdita currency registrata in
 - Backfill alla prima apertura admin (`sync` senza voci automatiche precedenti): chi era NO-GO all'import 2026-06-06 ha la perdita validata in automatico (data esatta se determinabile, altrimenti stima; senza dati: data import 2026-06-06 come segnaposto, modificabile con "Modifica perdita currency"). Test `test/currency_loss_test.dart`. Vault: [[AVES Corsi/Perdita currency validata e vista a quadrati 2026-10-15]].
 - Chiuso: finestra aggiornamenti professionali = 2 anni (confermato dall'utente).
 
-### Ultime modifiche (2026-10-15) — sessione 38 — id duplicati negli aggiornamenti istruttori (commit `d9bfadb`)
-Richiesta: "Non riesco a modificare l'aggiornamento professionale a [18 istruttori] ... forse sono stati registrati in maniera strana i dati quando sono stati importati dall'excel".
-- **Causa**: 23 id duplicati su 178 voci in `updates.json`, tra istruttori diversi. Gli id erano `microsecondsSinceEpoch` (risoluzione ms su web) generati in loop bulk "Aggiorna ore"; `approveUpdate`/`editUpdate`/`deleteUpdate` cercavano per solo id e agivano sulla prima voce (di un altro istruttore).
-- **Fix** (`grade_service.dart`): `GradeService.newUpdateId` (id mai già presente) e `GradeService.updateIndex` (lookup id + instructor_id); `approveUpdate`/`editUpdate`/`deleteUpdate` prendono `instructorId`. Test `test/update_id_test.dart`. Dati `corsi-data` non toccati (nessuna coppia id+istruttore duplicata). Vault: [[AVES Corsi/ID duplicati aggiornamenti istruttori 2026-10-15]].
-- Finestra aggiornamenti professionali: 2 anni, confermato dall'utente (sessione 39).
+### [COMPRESSO s40] sessione 38 (2026-10-15, commit `d9bfadb`) — id duplicati negli aggiornamenti istruttori: `GradeService.newUpdateId`/`updateIndex` (id + instructor_id), test `test/update_id_test.dart`. Vault: [[AVES Corsi/ID duplicati aggiornamenti istruttori 2026-10-15]].
 
 ## STATO SESSIONE — sessione 37 (2026-10-13)
 
@@ -185,7 +188,7 @@ Richiesta utente (verbatim): "ora di latenza molto meno, ma comunque dopo il sal
 2. **Fix**: `_load()` ora risincronizza `_selected` cercando per id dentro `_courses` appena ricaricato (`.firstOrNull ?? _selected`), non solo quando è null. Punto unico condiviso da tutte e 3 le chiamate post-salvataggio nel file (righe 145, 176, 686) più `initState`.
 3. Build+push: solo `lib/screens/director/schedule_tab.dart`, `flutter build web --release --base-href "/corsi/"` ok, deploy Actions verificato success (run `28714571315`).
 
-### Ultime modifiche (2026-07-03) — sessione 23 — fix bug persistenza courses.json/users.json (commit `1a714ee`)
+### [SUPERATO s40: `_awaitWrite` rimosso, `refresh()` non sovrascrive i file in coda] Ultime modifiche (2026-07-03) — sessione 23 — fix bug persistenza courses.json/users.json (commit `1a714ee`)
 Richiesta utente (verbatim): "niente, se cancello o inserisco un giorno tra quelli esclusi e premo salva non vedo modifiche nemmeno se ricarico la pagina, dopo tanto tempo vedo le modifiche" (giorni esclusi dalla pianificazione, `schedule_tab.dart` → `_showExcludedDates()`).
 1. **Root cause**: `saveUsers`/`saveCourses` in `gh_db_service.dart` erano finite sulla coda di scrittura ottimistica (`_enqueueWrite`, fire-and-forget) invece che sincrone, rompendo l'invariante storica "users/courses/reference/amc restano sincroni" (sessione 11). Il `Future` del chiamante si risolveva prima che la vera PUT su GitHub arrivasse: un reload subito dopo "Salva" richiamava `init()` (svuota `_cache`, ricarica da GitHub) prima che la scrittura fosse arrivata → dati vecchi visibili per un po'.
 2. **Fix**: nuovo helper `_awaitWrite(fileName)` (stesso pattern di `flushPending()` ma per un solo file) chiamato dopo `_enqueueWrite()` in `saveUsers`/`saveCourses`. Nessun caller rotto (tutti già in `await`). Copre transitivamente tutte le scritture corsi/utenti (create/update/delete/activate/complete corso, giorni esclusi, create/update/delete utente, auto-registrazione da login).

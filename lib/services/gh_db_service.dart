@@ -109,30 +109,60 @@ class GhDbService {
     return data;
   }
 
+  static const _files = [
+    'reference.json',
+    'users.json',
+    'courses.json',
+    'schedules.json',
+    'records.json',
+    'grades.json',
+    'updates.json',
+    'amc.json',
+    'notes.json',
+    'notifications.json',
+    'push_subscriptions.json',
+  ];
+
   Future<void> init() async {
     _cache.clear();
     ReferenceService.invalidateLabelCache();
-    await Future.wait([
-      _loadFile('reference.json'),
-      _loadFile('users.json'),
-      _loadFile('courses.json'),
-      _loadFile('schedules.json'),
-      _loadFile('records.json'),
-      _loadFile('grades.json'),
-      _loadFile('updates.json'),
-      _loadFile('amc.json'),
-      _loadFile('notes.json'),
-      _loadFile('notifications.json'),
-      _loadFile('push_subscriptions.json'),
-    ]);
+    await Future.wait(_files.map((f) async => _cache[f] = await _fetchFile(f)));
+  }
+
+  /// Riallinea la cache a GitHub senza svuotarla: un solo listing e poi si
+  /// scaricano solo i file il cui sha è cambiato. I file con scritture in
+  /// coda o in corso si saltano, così i dati ottimistici non vengono mai
+  /// sovrascritti con la versione vecchia (e non serve attendere le PUT).
+  Future<void> refresh() async {
+    // Ritenta in background i salvataggi falliti, senza bloccare il chiamante.
+    for (final f in _pending.keys.toList()) {
+      _startDrain(f);
+    }
+    final remote = await _remoteShas();
+    if (remote == null) return; // offline: si resta sulla cache
+    bool busy(String f) => _pending.containsKey(f) || _drains.containsKey(f);
+    await Future.wait(
+      _files.where((f) => !busy(f) && (remote[f] ?? '') != _getSha(f)).map((f) async {
+        final entry = await _fetchFile(f);
+        if (!busy(f)) _cache[f] = entry; // una scrittura può partire durante il fetch
+      }),
+    );
+    ReferenceService.invalidateLabelCache();
   }
 
   static String get _blobBase =>
       '${GhConfig.apiRoot}/repos/${GhConfig.owner}/${GhConfig.dataRepo}/git/blobs';
 
-  Future<void> _loadFile(String fileName) async {
+  // L'API GitHub risponde con Cache-Control max-age=60: senza un parametro
+  // sempre diverso il browser serve la risposta vecchia di fino a un minuto
+  // (dati stale subito dopo un salvataggio).
+  Uri _fresh(String url) => Uri.parse(url).replace(queryParameters: {
+        '_': DateTime.now().microsecondsSinceEpoch.toString(),
+      });
+
+  Future<Map<String, dynamic>> _fetchFile(String fileName) async {
     final res = await http.get(
-      Uri.parse('$_base/$fileName'),
+      _fresh('$_base/$fileName'),
       headers: {
         ...GhConfig.authHeaders(),
         'Accept': 'application/vnd.github+json',
@@ -164,18 +194,16 @@ class GhDbService {
         content = blobRes.body;
       }
 
-      _cache[fileName] = {
+      return {
         'data': _normalizeLoaded(fileName, jsonDecode(content)),
         'sha': sha,
       };
-      return;
     }
     if (res.statusCode == 404) {
-      _cache[fileName] = {
+      return {
         'data': fileName == 'reference.json' ? <String, dynamic>{} : <dynamic>[],
         'sha': '',
       };
-      return;
     }
     throw Exception('GitHub API ${res.statusCode} loading $fileName');
   }
@@ -228,7 +256,7 @@ class GhDbService {
       } catch (e) {
         // Non perdere il payload: se nel frattempo non ne è arrivato uno più
         // recente, rimettilo in coda; verrà ritentato al prossimo salvataggio
-        // o da flushPending().
+        // o da refresh().
         _pending.putIfAbsent(fileName, () => job);
         saveError.value = 'Salvataggio $fileName non riuscito: $e';
         return;
@@ -337,47 +365,30 @@ class GhDbService {
   /// Recupera solo lo sha corrente del file (listing della directory, senza
   /// scaricare il contenuto) mantenendo i dati ottimistici in cache.
   Future<void> _refreshSha(String fileName) async {
-    final http.Response res;
+    final sha = (await _remoteShas())?[fileName];
+    if (sha == null) return;
+    _cache[fileName] = {'data': _cache[fileName]?['data'], 'sha': sha};
+  }
+
+  /// nome file → sha corrente, da un solo listing della cartella dati.
+  /// Null se la rete o l'API non rispondono.
+  Future<Map<String, String>?> _remoteShas() async {
     try {
-      res = await http.get(
-        Uri.parse(_base),
+      final res = await http.get(
+        _fresh(_base),
         headers: {
           ...GhConfig.authHeaders(),
           'Accept': 'application/vnd.github+json',
           'X-GitHub-Api-Version': '2022-11-28',
         },
       ).timeout(const Duration(seconds: 15));
+      if (res.statusCode != 200) return null;
+      return {
+        for (final e in (jsonDecode(res.body) as List).cast<Map<String, dynamic>>())
+          e['name'] as String: e['sha'] as String,
+      };
     } catch (_) {
-      return;
-    }
-    if (res.statusCode != 200) return;
-    for (final e in (jsonDecode(res.body) as List).cast<Map<String, dynamic>>()) {
-      if (e['name'] == fileName) {
-        final cur = _cache[fileName];
-        _cache[fileName] = {'data': cur?['data'], 'sha': e['sha'] as String};
-        return;
-      }
-    }
-  }
-
-  /// Attende il completamento di tutte le scritture in coda; ritenta una volta
-  /// quelle fallite. Lancia se restano salvataggi non scritti.
-  Future<void> flushPending() async {
-    for (var round = 0; round < 2; round++) {
-      while (_drains.isNotEmpty) {
-        await Future.wait(_drains.values.toList());
-      }
-      if (_pending.isEmpty) return;
-      for (final f in _pending.keys.toList()) {
-        _startDrain(f);
-      }
-    }
-    while (_drains.isNotEmpty) {
-      await Future.wait(_drains.values.toList());
-    }
-    if (_pending.isNotEmpty) {
-      throw Exception(saveError.value ??
-          'Salvataggi in sospeso non completati: ${_pending.keys.join(', ')}');
+      return null;
     }
   }
 
@@ -414,32 +425,18 @@ class GhDbService {
   List<Map<String, dynamic>> get users =>
       List<Map<String, dynamic>>.from(_getData('users.json') as List? ?? []);
 
-  Future<void> saveUsers(List<Map<String, dynamic>> data) async {
-    final encrypted = data.map(_encryptUser).toList();
-    _enqueueWrite('users.json', data, 'aggiornamento utenti', wire: encrypted);
-    await _awaitWrite('users.json');
-  }
+  // ponytail: users/courses vanno in coda ottimistica come gli altri file: il
+  // chiamante non aspetta la PUT (1-3 s). refresh() non sovrascrive mai i file
+  // in coda, quindi niente dati stale; resta solo la finestra di una F5 entro
+  // pochi secondi (il browser avvisa, vedi app.dart).
+  Future<void> saveUsers(List<Map<String, dynamic>> data) async => _enqueueWrite(
+      'users.json', data, 'aggiornamento utenti', wire: data.map(_encryptUser).toList());
 
   List<Map<String, dynamic>> get courses =>
       List<Map<String, dynamic>>.from(_getData('courses.json') as List? ?? []);
 
-  Future<void> saveCourses(List<Map<String, dynamic>> data) async {
-    _enqueueWrite('courses.json', data, 'aggiornamento corsi');
-    await _awaitWrite('courses.json');
-  }
-
-  /// Attende che la scrittura in coda per [fileName] arrivi davvero su
-  /// GitHub. users.json/courses.json sono a bassa frequenza: meglio bloccare
-  /// il chiamante che rischiare una ricarica pagina prima che il PUT sia
-  /// arrivato (la cache ottimistica da sola non basta, viene svuotata da
-  /// init()). Rilancia l'errore se il salvataggio ha esaurito i retry.
-  Future<void> _awaitWrite(String fileName) async {
-    final drain = _drains[fileName];
-    if (drain != null) await drain;
-    if (_pending.containsKey(fileName)) {
-      throw Exception(saveError.value ?? 'Salvataggio $fileName non riuscito');
-    }
-  }
+  Future<void> saveCourses(List<Map<String, dynamic>> data) async =>
+      _enqueueWrite('courses.json', data, 'aggiornamento corsi');
 
   List<Map<String, dynamic>> get schedules =>
       List<Map<String, dynamic>>.from(_getData('schedules.json') as List? ?? []);
@@ -491,13 +488,6 @@ class GhDbService {
     all[idx] = {...all[idx], 'password_hash': newHash,
       'updated_at': DateTime.now().toUtc().toIso8601String()};
     await saveUsers(all);
-  }
-
-  Future<void> reloadAll() async {
-    // Prima scrivi ciò che è in coda, altrimenti il reload sovrascriverebbe
-    // in cache i dati ottimistici non ancora salvati.
-    await flushPending();
-    await init();
   }
 }
 

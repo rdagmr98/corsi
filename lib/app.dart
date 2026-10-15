@@ -1,3 +1,7 @@
+// ignore_for_file: deprecated_member_use, avoid_web_libraries_in_flutter
+
+import 'dart:async';
+import 'dart:html' as html;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -36,15 +40,25 @@ class CorsiApp extends ConsumerStatefulWidget {
 }
 
 class _CorsiAppState extends ConsumerState<CorsiApp> {
+  late final StreamSubscription<html.Event> _unloadSub;
+
   @override
   void initState() {
     super.initState();
     GhDbService.saveError.addListener(_onSaveError);
+    // Salvataggi in coda non ancora su GitHub: il browser chiede conferma prima
+    // di chiudere/ricaricare, così una F5 subito dopo "Salva" non perde dati.
+    _unloadSub = html.window.onBeforeUnload.listen((e) {
+      if (GhDbService.pendingSaves.value > 0) {
+        (e as html.BeforeUnloadEvent).returnValue = 'Salvataggio in corso';
+      }
+    });
   }
 
   @override
   void dispose() {
     GhDbService.saveError.removeListener(_onSaveError);
+    _unloadSub.cancel();
     super.dispose();
   }
 
