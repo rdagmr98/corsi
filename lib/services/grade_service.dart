@@ -248,6 +248,25 @@ class GradeService {
     );
   }
 
+  /// Id nuovo non presente in [updates]. Su web `microsecondsSinceEpoch` ha
+  /// risoluzione al millisecondo: i loop bulk ("Aggiorna ore" su più istruttori)
+  /// generavano lo stesso id per istruttori diversi.
+  static String newUpdateId(List<Map<String, dynamic>> updates) {
+    final ids = updates.map((u) => u['id']).toSet();
+    var n = DateTime.now().microsecondsSinceEpoch;
+    while (ids.contains(n.toRadixString(16))) {
+      n++;
+    }
+    return n.toRadixString(16);
+  }
+
+  /// Indice della voce di [instructorId] con [id]. Il dato storico ha id
+  /// duplicati tra istruttori diversi: l'id da solo non identifica la voce.
+  static int updateIndex(
+          List<Map<String, dynamic>> updates, String id, String instructorId) =>
+      updates.indexWhere(
+          (u) => u['id'] == id && u['instructor_id'] == instructorId);
+
   Future<InstructorUpdate> addUpdate({
     required String instructorId,
     required String type,
@@ -258,7 +277,7 @@ class GradeService {
   }) async {
     final updates = _db.updates.toList();
     final now = DateTime.now();
-    final id = now.microsecondsSinceEpoch.toRadixString(16);
+    final id = newUpdateId(updates);
     final entry = {
       'id': id,
       'instructor_id': instructorId,
@@ -285,7 +304,7 @@ class GradeService {
   }) async {
     final updates = _db.updates.toList();
     final now = DateTime.now();
-    final id = now.microsecondsSinceEpoch.toRadixString(16);
+    final id = newUpdateId(updates);
     final entry = {
       'id': id,
       'instructor_id': instructorId,
@@ -302,9 +321,9 @@ class GradeService {
     return InstructorUpdate.fromJson(entry);
   }
 
-  Future<void> approveUpdate(String updateId) async {
+  Future<void> approveUpdate(String updateId, String instructorId) async {
     final updates = _db.updates.toList();
-    final idx = updates.indexWhere((u) => u['id'] == updateId);
+    final idx = updateIndex(updates, updateId, instructorId);
     if (idx < 0) return;
     updates[idx] = {...updates[idx], 'status': 'approved'};
     await _db.saveUpdates(updates);
@@ -313,14 +332,15 @@ class GradeService {
   /// Correzione admin di una voce: tipo, ore, descrizione, data.
   /// `course_id` e stato di approvazione restano invariati.
   Future<void> editUpdate(
-    String updateId, {
+    String updateId,
+    String instructorId, {
     required String type,
     required double hours,
     required String description,
     required DateTime date,
   }) async {
     final updates = _db.updates.toList();
-    final idx = updates.indexWhere((u) => u['id'] == updateId);
+    final idx = updateIndex(updates, updateId, instructorId);
     if (idx < 0) return;
     updates[idx] = {
       ...updates[idx],
@@ -359,8 +379,11 @@ class GradeService {
     ];
   }
 
-  Future<void> deleteUpdate(String updateId) async {
-    final updates = _db.updates.where((u) => u['id'] != updateId).toList();
+  Future<void> deleteUpdate(String updateId, String instructorId) async {
+    final updates = _db.updates.toList();
+    final idx = updateIndex(updates, updateId, instructorId);
+    if (idx < 0) return;
+    updates.removeAt(idx);
     await _db.saveUpdates(updates);
   }
 }

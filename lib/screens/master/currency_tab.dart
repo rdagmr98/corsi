@@ -447,6 +447,7 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
     if (saved == true) {
       await _gradeService.editUpdate(
         u.id,
+        u.instructorId,
         type: type,
         hours: double.parse(hoursCtrl.text.trim().replaceAll(',', '.')),
         description: descCtrl.text.trim(),
@@ -1760,7 +1761,7 @@ class _PendingUpdatesSection extends StatelessWidget {
                 ),
                 TextButton(
                   onPressed: () async {
-                    await gradeService.approveUpdate(u.id);
+                    await gradeService.approveUpdate(u.id, u.instructorId);
                     await notifService.notifyUpdateApproved(
                       instructorId: u.instructorId,
                       description: u.description,
@@ -1775,7 +1776,7 @@ class _PendingUpdatesSection extends StatelessWidget {
                 ),
                 TextButton(
                   onPressed: () async {
-                    await gradeService.deleteUpdate(u.id);
+                    await gradeService.deleteUpdate(u.id, u.instructorId);
                     onChanged();
                   },
                   style: TextButton.styleFrom(
