@@ -130,6 +130,9 @@ class InstructorUpdate {
   bool get isOjt => type == 'ojt';
   bool get isApproved => status == 'approved';
   bool get isPending => status == 'pending';
+  /// Voce rifiutata dall'admin (es. perdita currency rilevata ma non valida):
+  /// resta a registro perché il rilevamento automatico non la ricrei.
+  bool get isRejected => status == 'rejected';
 
   factory InstructorUpdate.fromJson(Map<String, dynamic> j) => InstructorUpdate(
     id: j['id'] as String,

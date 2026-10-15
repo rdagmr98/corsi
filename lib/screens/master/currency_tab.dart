@@ -5,6 +5,7 @@ import '../../models/grade_models.dart';
 import '../../models/user_models.dart';
 import '../../models/reference_models.dart';
 import '../../providers/auth_provider.dart';
+import '../../services/currency_loss_service.dart';
 import '../../services/gh_db_service.dart';
 import '../../services/grade_service.dart';
 import '../../services/notification_service.dart';
@@ -28,13 +29,15 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
   final _db            = GhDbService();
   List<AppUser> _instructors = [];
   bool? _filterGo; // null=tutti, true=GO, false=NO-GO
-  _SortMode _sortMode = _SortMode.name;
+  _SortMode _sortMode = _SortMode.priority;
+  bool _gridView = true; // quadrati di default, elenco con il toggle
+  final _lossService = CurrencyLossService();
 
   @override
   void initState() {
     super.initState();
     _load();
-    _autoDecayOjt();
+    _autoDecayOjt().then((_) => _autoSync());
   }
 
   void _load() {
@@ -47,6 +50,18 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
     await ref.read(authProvider).reloadDb();
     _load();
     await _autoDecayOjt();
+    await _autoSync();
+  }
+
+  // Registra le perdite di currency non ancora a registro: quelle già NO-GO
+  // all'import iniziale sono validate in automatico, le altre restano
+  // "da validare" finché l'admin non le conferma.
+  Future<void> _autoSync() async {
+    try {
+      if (await _lossService.sync() && mounted) _load();
+    } catch (e) {
+      showAppError('Rilevamento perdite currency non riuscito: $e');
+    }
   }
 
   // L'OJT (GO manuale) finisce da solo quando l'istruttore raggiunge le 6 ore
@@ -458,6 +473,39 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
     if (mounted) _showDetail(_userService.findById(instr.id) ?? instr);
   }
 
+  // ── Eliminazione di una voce (con conferma) ───────────────────────────────
+  Future<void> _deleteUpdate(AppUser instr, InstructorUpdate u) async {
+    Navigator.pop(context); // chiude il dettaglio, che si riapre aggiornato
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: kCard,
+        title: const Text('Eliminare la voce?', style: TextStyle(color: kText)),
+        content: Text(
+          '${DateFormat('dd/MM/yyyy').format(u.date)} · ${_fmtHours(u.hours)}h · '
+          '${u.description}\n\nL\'operazione non si può annullare.',
+          style: const TextStyle(color: kTextDim, fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annulla', style: TextStyle(color: kTextDim)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: kError),
+            child: const Text('Elimina'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await _gradeService.deleteUpdate(u.id, u.instructorId);
+      await _reload();
+    }
+    if (mounted) _showDetail(_userService.findById(instr.id) ?? instr);
+  }
+
   /// 8 -> "8", 7.5 -> "7.5" (campo ore del dialog di modifica).
   String _fmtHours(double h) =>
       h == h.roundToDouble() ? h.toStringAsFixed(0) : h.toString();
@@ -845,6 +893,10 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
     final practM   = _practiceMods(instr.id);
     final byYear   = _teachingByYear(instr.id);
     final updates  = _gradeService.getUpdatesForInstructor(instr.id);
+    final proposedLoss = _gradeService
+        .getPendingUpdates()
+        .where((u) => u.isCurrencyLoss && u.instructorId == instr.id)
+        .firstOrNull;
     final profCutoff = DateTime.now().subtract(const Duration(days: 730));
     // Tutte le voci, anche fuori finestra (sbiadite): servono per correggerne la data.
     final profList = updates
@@ -899,7 +951,9 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
                         instr.currencyLostAt != null
                             ? DateFormat('dd/MM/yyyy')
                                 .format(instr.currencyLostAt!)
-                            : '—',
+                            : proposedLoss != null
+                                ? 'rilevata ${DateFormat('dd/MM/yyyy').format(proposedLoss.date)} — da validare'
+                                : '—',
                       ),
                       _kvRow('OJT', instr.ojtSummary ?? '—'),
                       if (instr.ojtNote?.trim().isNotEmpty == true)
@@ -1167,6 +1221,15 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
                               padding: const EdgeInsets.all(4),
                               constraints: const BoxConstraints(),
                               onPressed: () => _editUpdate(instr, u),
+                            ),
+                            const SizedBox(width: 6),
+                            IconButton(
+                              icon: const Icon(Icons.delete_outline, color: kError),
+                              tooltip: 'Elimina voce',
+                              iconSize: 16,
+                              padding: const EdgeInsets.all(4),
+                              constraints: const BoxConstraints(),
+                              onPressed: () => _deleteUpdate(instr, u),
                             ),
                           ]),
                         ))),
@@ -1474,7 +1537,7 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
   Widget build(BuildContext context) {
     final now = DateTime.now();
     // Compute GO for each instructor
-    final rows = _instructors.map((instr) {
+    final rows = _instructors.map<_Row>((instr) {
       final teachH = _gradeService.getTeachingHoursRollingYear(instr.id);
       final profH  = _gradeService.getProfessionalUpdateHoursLast2Years(instr.id);
       final grace = _gradeService.ojtGrace(instr, now: now);
@@ -1482,8 +1545,25 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
       final goP  = grace.prof || profH >= 35;
       final goDaa = instr.daaExpiry == null || instr.goOverride || instr.daaExpiry!.isAfter(now);
       final go  = _gradeService.isGo(instr, now: now);
-      return (instr: instr, teachH: teachH, profH: profH, goT: goT, goP: goP, goDaa: goDaa, go: go);
+      // "In scadenza": oggi GO ma NO-GO tra expiringSoonDays giorni (senza
+      // contare ore future non ancora registrate).
+      final ev = _gradeService.currencyEvents(instr.id);
+      final expiring = go &&
+          !goOn(DateTime(now.year, now.month, now.day + expiringSoonDays),
+              teach: ev.teach,
+              prof: ev.prof,
+              user: instr,
+              lastOjt: _gradeService.lastOjtDate(instr.id));
+      final bucket = priorityBucket(
+          go: go, lossValidated: instr.currencyLostAt != null, expiringSoon: expiring);
+      return (instr: instr, teachH: teachH, profH: profH, goT: goT, goP: goP,
+          goDaa: goDaa, go: go, bucket: bucket);
     }).toList();
+    final pendingLossIds = _gradeService
+        .getPendingUpdates()
+        .where((u) => u.isCurrencyLoss)
+        .map((u) => u.instructorId)
+        .toSet();
 
     // Filter
     final filtered = _filterGo == null
@@ -1492,6 +1572,9 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
 
     // Sort
     filtered.sort((a, b) => switch (_sortMode) {
+      _SortMode.priority => a.bucket != b.bucket
+          ? a.bucket.compareTo(b.bucket)
+          : a.instr.cognome.compareTo(b.instr.cognome),
       _SortMode.name    => a.instr.cognome.compareTo(b.instr.cognome),
       _SortMode.goFirst => b.go ? 1 : (a.go ? -1 : a.instr.cognome.compareTo(b.instr.cognome)),
       _SortMode.noGoFirst => a.go ? 1 : (b.go ? -1 : a.instr.cognome.compareTo(b.instr.cognome)),
@@ -1535,6 +1618,12 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
           _filterChip('NO-GO ($noGoCount)', _filterGo == false, kError,
               () => setState(() => _filterGo = false)),
           const Spacer(),
+          IconButton(
+            icon: Icon(_gridView ? Icons.view_list : Icons.grid_view,
+                color: kTextDim, size: 20),
+            tooltip: _gridView ? 'Vista elenco' : 'Vista a quadrati',
+            onPressed: () => setState(() => _gridView = !_gridView),
+          ),
           // Sort menu
           PopupMenuButton<_SortMode>(
             color: kSurface,
@@ -1542,6 +1631,7 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
             icon: const Icon(Icons.sort, color: kTextDim, size: 20),
             onSelected: (m) => setState(() => _sortMode = m),
             itemBuilder: (_) => const [
+              PopupMenuItem(value: _SortMode.priority, child: Text('Priorità', style: TextStyle(color: kText))),
               PopupMenuItem(value: _SortMode.name,     child: Text('A-Z', style: TextStyle(color: kText))),
               PopupMenuItem(value: _SortMode.goFirst,  child: Text('GO prima', style: TextStyle(color: kText))),
               PopupMenuItem(value: _SortMode.noGoFirst,child: Text('NO-GO prima', style: TextStyle(color: kText))),
@@ -1552,11 +1642,20 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
         ]),
       ),
       Padding(
-        padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
-        child: const Text(
-          'GO se: ≥6h insegnamento (365gg) E ≥35h aggiorn. prof. (2 anni). OJT manuale bypassa entrambi e decade automaticamente al raggiungimento di entrambi i requisiti.',
-          style: TextStyle(color: kTextDim, fontSize: 11),
-        ),
+        padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text(
+            'GO se: ≥6h insegnamento (365gg) E ≥35h aggiorn. prof. (2 anni). OJT manuale bypassa entrambi e decade automaticamente al raggiungimento di entrambi i requisiti.',
+            style: TextStyle(color: kTextDim, fontSize: 11),
+          ),
+          const SizedBox(height: 6),
+          Wrap(spacing: 14, runSpacing: 4, children: [
+            _legendDot(kError, 'NO-GO, perdita da validare'),
+            _legendDot(kWarning, 'GO in scadenza (entro $expiringSoonDays gg)'),
+            _legendDot(kAccent, 'GO'),
+            _legendDot(kError.withOpacity(0.4), 'NO-GO, perdita validata'),
+          ]),
+        ]),
       ),
       _PendingUpdatesSection(
         gradeService: _gradeService,
@@ -1568,6 +1667,20 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
         child: Builder(builder: (context) {
           final theoryH  = _confirmedHoursMap(true);
           final practiceH = _confirmedHoursMap(false);
+          if (_gridView) {
+            return GridView.builder(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
+              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                maxCrossAxisExtent: 130,
+                childAspectRatio: 1.0,
+                crossAxisSpacing: 8,
+                mainAxisSpacing: 8,
+              ),
+              itemCount: filtered.length,
+              itemBuilder: (_, i) =>
+                  _gridTile(filtered[i], pendingLossIds.contains(filtered[i].instr.id)),
+            );
+          }
           return ListView.builder(
           padding: const EdgeInsets.symmetric(horizontal: 24),
           itemCount: filtered.length,
@@ -1664,6 +1777,77 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
     ]);
   }
 
+  Widget _legendDot(Color c, String label) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Container(
+        width: 10,
+        height: 10,
+        decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(3)),
+      ),
+      const SizedBox(width: 6),
+      Text(label, style: const TextStyle(color: kTextDim, fontSize: 11)),
+    ],
+  );
+
+  /// Tile della vista a quadrati; colore per priorità (0 NO-GO da validare,
+  /// 1 GO in scadenza, 2 GO, 3 NO-GO con perdita validata).
+  Widget _gridTile(_Row r, bool lossPending) {
+    final instr = r.instr;
+    final c = switch (r.bucket) {
+      0 => kError,
+      1 => kWarning,
+      2 => kAccent,
+      _ => kError.withOpacity(0.45),
+    };
+    final sub = lossPending
+        ? 'perdita da validare'
+        : instr.goOverride
+            ? (AppUser.ojtKindLabel(instr.ojtKind) ?? 'OJT')
+            : instr.currencyLostAt != null
+                ? 'persa ${DateFormat('dd/MM/yy').format(instr.currencyLostAt!)}'
+                : '${r.teachH.toStringAsFixed(0)}h · ${r.profH.toStringAsFixed(0)}h';
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () => _showDetail(instr),
+      child: Card(
+        color: c.withOpacity(0.12),
+        margin: EdgeInsets.zero,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(color: c, width: 1.5),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(6),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(r.go ? Icons.check_circle : Icons.cancel, color: c, size: 20),
+              const SizedBox(height: 4),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(instr.nome,
+                    maxLines: 1, style: const TextStyle(color: kText, fontSize: 13)),
+              ),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(instr.cognome,
+                    maxLines: 1,
+                    style: const TextStyle(
+                        color: kText, fontSize: 14, fontWeight: FontWeight.w800)),
+              ),
+              const SizedBox(height: 2),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(sub, maxLines: 1, style: TextStyle(color: c, fontSize: 10)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _miniStat(String label, String val, bool ok) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
@@ -1695,7 +1879,18 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
       );
 }
 
-enum _SortMode { name, goFirst, noGoFirst, teachH, profH }
+enum _SortMode { priority, name, goFirst, noGoFirst, teachH, profH }
+
+typedef _Row = ({
+  AppUser instr,
+  double teachH,
+  double profH,
+  bool goT,
+  bool goP,
+  bool goDaa,
+  bool go,
+  int bucket,
+});
 
 class _PendingUpdatesSection extends StatelessWidget {
   final GradeService gradeService;
@@ -1737,7 +1932,10 @@ class _PendingUpdatesSection extends StatelessWidget {
             ]),
           ),
           const Divider(color: kBorder, height: 1),
-          ...pending.map((u) {
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 240),
+            child: SingleChildScrollView(
+              child: Column(children: pending.map((u) {
             final instr = userService.findById(u.instructorId);
             return Padding(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -1750,10 +1948,14 @@ class _PendingUpdatesSection extends StatelessWidget {
                     children: [
                       Text(
                         instr?.fullName ?? u.instructorId,
+                        overflow: TextOverflow.ellipsis,
                         style: const TextStyle(color: kText, fontSize: 12, fontWeight: FontWeight.w600),
                       ),
                       Text(
-                        '${u.description} · ${u.hours.toStringAsFixed(0)}h · ${DateFormat('dd/MM/yyyy').format(u.date)}',
+                        u.isCurrencyLoss
+                            ? 'Perdita currency · ${DateFormat('dd/MM/yyyy').format(u.date)}'
+                            : '${u.description} · ${u.hours.toStringAsFixed(0)}h · ${DateFormat('dd/MM/yyyy').format(u.date)}',
+                        overflow: TextOverflow.ellipsis,
                         style: const TextStyle(color: kTextDim, fontSize: 11),
                       ),
                     ],
@@ -1761,22 +1963,31 @@ class _PendingUpdatesSection extends StatelessWidget {
                 ),
                 TextButton(
                   onPressed: () async {
-                    await gradeService.approveUpdate(u.id, u.instructorId);
-                    await notifService.notifyUpdateApproved(
-                      instructorId: u.instructorId,
-                      description: u.description,
-                    );
+                    if (u.isCurrencyLoss) {
+                      await CurrencyLossService().validate(u);
+                    } else {
+                      await gradeService.approveUpdate(u.id, u.instructorId);
+                      await notifService.notifyUpdateApproved(
+                        instructorId: u.instructorId,
+                        description: u.description,
+                      );
+                    }
                     onChanged();
                   },
                   style: TextButton.styleFrom(
                     foregroundColor: kAccent,
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   ),
-                  child: const Text('Approva', style: TextStyle(fontSize: 11)),
+                  child: Text(u.isCurrencyLoss ? 'Valida' : 'Approva',
+                      style: const TextStyle(fontSize: 11)),
                 ),
                 TextButton(
                   onPressed: () async {
-                    await gradeService.deleteUpdate(u.id, u.instructorId);
+                    if (u.isCurrencyLoss) {
+                      await CurrencyLossService().reject(u);
+                    } else {
+                      await gradeService.deleteUpdate(u.id, u.instructorId);
+                    }
                     onChanged();
                   },
                   style: TextButton.styleFrom(
@@ -1787,7 +1998,9 @@ class _PendingUpdatesSection extends StatelessWidget {
                 ),
               ]),
             );
-          }),
+          }).toList()),
+            ),
+          ),
         ],
       ),
     );

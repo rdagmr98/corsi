@@ -69,13 +69,21 @@ GitHub Actions (`.github/workflows/deploy.yml`) deploya automaticamente su push 
 
 ---
 
-## STATO SESSIONE — aggiornato 2026-10-15 (sessione 38)
+## STATO SESSIONE — aggiornato 2026-10-15 (sessione 39)
+
+### Ultime modifiche (2026-10-15) — sessione 39 — perdita currency validata, vista a quadrati stati di servizio
+Richiesta: eliminazione voce oltre alla modifica; perdita currency registrata in automatico ma valida solo dopo validazione admin; "gli anni sono 2 non 3" (confermato: finestra 730 gg invariata); stati di servizio a quadrati di default (toggle elenco) con ordine NO-GO non validato / in scadenza / GO / NO-GO validato; backfill dei NO-GO già presenti all'import Excel.
+- `lib/services/currency_loss_service.dart` (nuovo): `lossDate` (primo giorno NO-GO ricostruito all'indietro), `priorityBucket`, `CurrencyLossService.sync/validate/reject`. Perdita pending = voce `currency_loss` `status:pending`; validata = `users.currency_lost_at` + voce `approved`. `getUpdatesForInstructor` esclude le `currency_loss` non approved.
+- `GradeService`: `setUpdateStatus`, `currencyEvents`; `approveUpdate(id, instructorId)` delega a `setUpdateStatus`.
+- `currency_tab.dart`: `_gridView = true` (griglia `maxCrossAxisExtent` 130, toggle elenco), ordinamento "Priorità" di default, legenda a 4 colori, pulsante elimina voce (`_deleteUpdate`), `_PendingUpdatesSection` con Valida/Rifiuta per le perdite.
+- Backfill alla prima apertura admin (`sync` senza voci automatiche precedenti): chi era NO-GO all'import 2026-06-06 ha la perdita validata in automatico (data esatta se determinabile, altrimenti stima; senza dati: data import 2026-06-06 come segnaposto, modificabile con "Modifica perdita currency"). Test `test/currency_loss_test.dart`. Vault: [[AVES Corsi/Perdita currency validata e vista a quadrati 2026-10-15]].
+- Chiuso: finestra aggiornamenti professionali = 2 anni (confermato dall'utente).
 
 ### Ultime modifiche (2026-10-15) — sessione 38 — id duplicati negli aggiornamenti istruttori (commit `d9bfadb`)
 Richiesta: "Non riesco a modificare l'aggiornamento professionale a [18 istruttori] ... forse sono stati registrati in maniera strana i dati quando sono stati importati dall'excel".
 - **Causa**: 23 id duplicati su 178 voci in `updates.json`, tra istruttori diversi. Gli id erano `microsecondsSinceEpoch` (risoluzione ms su web) generati in loop bulk "Aggiorna ore"; `approveUpdate`/`editUpdate`/`deleteUpdate` cercavano per solo id e agivano sulla prima voce (di un altro istruttore).
 - **Fix** (`grade_service.dart`): `GradeService.newUpdateId` (id mai già presente) e `GradeService.updateIndex` (lookup id + instructor_id); `approveUpdate`/`editUpdate`/`deleteUpdate` prendono `instructorId`. Test `test/update_id_test.dart`. Dati `corsi-data` non toccati (nessuna coppia id+istruttore duplicata). Vault: [[AVES Corsi/ID duplicati aggiornamenti istruttori 2026-10-15]].
-- Aperto: finestra aggiornamenti professionali 2 vs 3 anni (rimasta 2) — vedi sessione 37.
+- Finestra aggiornamenti professionali: 2 anni, confermato dall'utente (sessione 39).
 
 ## STATO SESSIONE — sessione 37 (2026-10-13)
 
@@ -83,7 +91,7 @@ Richiesta: "Non riesco a modificare l'aggiornamento professionale a [18 istrutto
 Richiesta: "dai la possibilità all'admin di modificare le date degli aggiornamenti professionali degli istruttori (quelli delle 35 ore in 3 ANNI)".
 - Prima versione `5992047` (solo data), poi generalizzata in `721f042` su richiesta "modifica generale ... correggere tutti i dati, ore, aggiornamento, riferimento": `GradeService.editUpdate(id, type, hours, description, date)` (`course_id`/`status` invariati; sostituisce `updateUpdateDate`); in `currency_tab.dart` ogni voce di "Aggiornamenti professionali svolti" ha il pulsante `Icons.edit` → `_editUpdate` (dialog con Tipo/Ore/Descrizione-riferimento/Data, label `Text` sopra i campi, salva, ricarica, riapre il dettaglio). La lista mostra TUTTE le voci professionali con data `dd/MM/yyyy`, quelle fuori finestra sbiadite (altrimenti una voce vecchia non sarebbe correggibile). Le voci `teaching` non sono elencate nel dettaglio (solo totali per anno), quindi non hanno il pulsante.
 - Data "a capo" nel dettaglio: dialog desktop `maxWidth` 1240 → 1480, colonne data 76/72/78 → 92 px con `softWrap: false` (`sProf`, `sHist` in `currency_tab.dart`, `lib\widgets\instructor_lessons_by_course.dart`).
-- Finestra lasciata a **2 anni** (730 gg, regola 35 h/2 anni ovunque nel codice, nel foglio `currency 2 anni` e nelle deroghe OJT): la richiesta dice "3 anni", non cambiata senza conferma perché altera il GO/NO GO di tutti gli istruttori. Da decidere con l'utente.
+- Finestra a **2 anni** (730 gg, regola 35 h/2 anni ovunque nel codice, nel foglio `currency 2 anni` e nelle deroghe OJT): "3 anni" era un errore di formulazione, confermato 2 dall'utente il 2026-10-15.
 - Stesse giornate: planner con settimane sempre da lunedì (`c7acfb0`), drag & drop lezioni con anteprima animata e griglia centrata (`6bc358e`, `aae1999`, `3f0de8e`, rifinito `73089c0`): [[AVES Corsi/Planner drag and drop lezioni]]. Vault: [[AVES Corsi/Modifica date aggiornamenti professionali 2026-10-13]].
 
 ### Ultime modifiche (2026-10-09) — sessione 36 — recuperi nel planner, svalida, OJT con deroga, bordi Excel PS (commit `a3a3d62`)

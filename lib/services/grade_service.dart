@@ -114,10 +114,16 @@ class GradeService {
   static bool isBulkImportArtifact(Map<String, dynamic> raw) =>
       raw['type'] == 'teaching' && _bulkImportDescriptions.contains(raw['description']);
 
+  // Perdita currency proposta dal rilevamento automatico e non ancora validata
+  // (pending) o scartata (rejected): non è uno stato di servizio, resta fuori
+  // da storico e riepiloghi. L'admin la vede solo nelle "in attesa di validazione".
+  static bool _isUnvalidatedLoss(Map<String, dynamic> raw) =>
+      raw['type'] == 'currency_loss' && (raw['status'] ?? 'approved') != 'approved';
+
   // Instructor updates
   List<InstructorUpdate> getUpdatesForInstructor(String instructorId) =>
       _db.updates
-          .where((raw) => !isBulkImportArtifact(raw))
+          .where((raw) => !isBulkImportArtifact(raw) && !_isUnvalidatedLoss(raw))
           .map(InstructorUpdate.fromJson)
           .where((u) => u.instructorId == instructorId)
           .toList()
@@ -202,6 +208,27 @@ class GradeService {
       if (sum >= target) return d;
     }
     return null;
+  }
+
+  /// Eventi (data, ore) che contano per la currency, senza finestra temporale:
+  /// servono a ricostruire GO/NO-GO a una data passata (currency_loss_service).
+  /// Stessi criteri di [getTeachingHoursRollingYear] e
+  /// [getProfessionalUpdateHoursLast2Years].
+  ({List<(DateTime, double)> teach, List<(DateTime, double)> prof})
+      currencyEvents(String instructorId) {
+    final ups = getUpdatesForInstructor(instructorId).where((u) => u.isApproved);
+    return (
+      teach: [
+        for (final ls in getConfirmedLessonsByCourse(instructorId).values)
+          for (final l in ls) (l.date, 1.0),
+        for (final u in ups)
+          if (u.isTeaching) (u.date, u.hours),
+      ],
+      prof: [
+        for (final u in ups)
+          if (u.isProfessional) (u.date, u.hours),
+      ],
+    );
   }
 
   double getProfessionalUpdateHoursLast2Years(String instructorId) {
@@ -321,11 +348,16 @@ class GradeService {
     return InstructorUpdate.fromJson(entry);
   }
 
-  Future<void> approveUpdate(String updateId, String instructorId) async {
+  Future<void> approveUpdate(String updateId, String instructorId) =>
+      setUpdateStatus(updateId, instructorId, 'approved');
+
+  /// `approved` | `pending` | `rejected`.
+  Future<void> setUpdateStatus(
+      String updateId, String instructorId, String status) async {
     final updates = _db.updates.toList();
     final idx = updateIndex(updates, updateId, instructorId);
     if (idx < 0) return;
-    updates[idx] = {...updates[idx], 'status': 'approved'};
+    updates[idx] = {...updates[idx], 'status': status};
     await _db.saveUpdates(updates);
   }
 
