@@ -55,7 +55,7 @@ GitHub Actions (`.github/workflows/deploy.yml`) deploya automaticamente su push 
 | `lib/services/attendance_service.dart` | computePerModuleStats, saveRecovery |
 | `lib/screens/director/schedule_tab.dart` | calendario + _addLesson + genera lezioni |
 | `lib/screens/director/attendance_tab.dart` | presenze per corso (director) |
-| `lib/screens/master/courses_tab.dart` | lista corsi admin + pulsante +MIL |
+| `lib/screens/master/courses_tab.dart` | lista corsi admin + pulsante +MIL + pulsante planner settimanale per corso |
 | `lib/screens/master/course_detail_screen.dart` | dettaglio corso admin (lezioni/presenze/voti) |
 | `lib/screens/attendee/attendee_attendance_screen.dart` | presenze frequentatore + filtri |
 | `lib/screens/instructor/my_hours_screen.dart` | valuta GO/NO GO istruttore |
@@ -69,7 +69,13 @@ GitHub Actions (`.github/workflows/deploy.yml`) deploya automaticamente su push 
 
 ---
 
-## STATO SESSIONE — aggiornato 2026-10-16 (sessione 40)
+## STATO SESSIONE — aggiornato 2026-10-16 (sessione 41)
+
+### Ultime modifiche (2026-10-16) — sessione 41 — admin apre il planner settimanale del direttore (commit `6bd4366`)
+Richiesta: "permetti a admin dei corsi di vedere anche il planner settimanale dei corsi che vedono i dir (uguale anche per modificare come se stesse accedendo un dir), trova il posto piu adatto".
+- `lib/screens/director/schedule_tab.dart`: `DirectorScheduleTab` ha il parametro opzionale `course`; se valorizzato `_load()` mostra solo quel corso (`findById`), altrimenti invariato (corsi del direttore).
+- `lib/screens/master/courses_tab.dart`: `_openPlanner(Course)` + `IconButton` `Icons.calendar_month` (tooltip "Planner settimanale") su ogni card corso; apre `Scaffold` a tutta pagina con `DirectorScheduleTab(userId: admin, course: c)`, al ritorno `_reload()`.
+- Nessun controllo di ruolo nel planner: l'admin ha gli stessi poteri del direttore; `confirmedBy` = id admin; "Invia notifica programma" usa `plannerRecipients` dal corso. Pulsante solo nella lista Corsi, non nel dialog `course_detail_screen.dart`. Hard refresh (Ctrl+Shift+R) per la cache del service worker. Vault: [[AVES Corsi/Admin accede al planner direttore 2026-10-16]].
 
 ### Ultime modifiche (2026-10-16) — sessione 40 — latenze rimosse: reload incrementale, salvataggi non bloccanti, anti-doppio-tap Valida
 Richiesta: "ho premuto valida su minissi e il tasto non funzionava, aveva una grossa latenza quindi ho premuto piu volte e per sbaglio ho premuto su mirizzi e non volevo. togli le latenze nell'app!"
@@ -78,13 +84,7 @@ Richiesta: "ho premuto valida su minissi e il tasto non funzionava, aveva una gr
 - `currency_tab.dart` `_PendingUpdatesSection`: lock unico sulla lista + cooldown 600 ms + spinner sulla riga, altri bottoni disabilitati; `onChanged: _load` (locale, niente rete).
 - Limite noto: una F5 entro 1-3 s dal salvataggio ora è protetta solo dall'avviso del browser. L'utente ha cliccato per sbaglio su Mirizzi: non verificato in `updates.json` se l'azione abbia avuto effetto. Vault: [[AVES Corsi/Latenze rimosse reload incrementale 2026-10-16]].
 
-### Ultime modifiche (2026-10-15) — sessione 39 — perdita currency validata, vista a quadrati stati di servizio
-Richiesta: eliminazione voce oltre alla modifica; perdita currency registrata in automatico ma valida solo dopo validazione admin; "gli anni sono 2 non 3" (confermato: finestra 730 gg invariata); stati di servizio a quadrati di default (toggle elenco) con ordine NO-GO non validato / in scadenza / GO / NO-GO validato; backfill dei NO-GO già presenti all'import Excel.
-- `lib/services/currency_loss_service.dart` (nuovo): `lossDate` (primo giorno NO-GO ricostruito all'indietro), `priorityBucket`, `CurrencyLossService.sync/validate/reject`. Perdita pending = voce `currency_loss` `status:pending`; validata = `users.currency_lost_at` + voce `approved`. `getUpdatesForInstructor` esclude le `currency_loss` non approved.
-- `GradeService`: `setUpdateStatus`, `currencyEvents`; `approveUpdate(id, instructorId)` delega a `setUpdateStatus`.
-- `currency_tab.dart`: `_gridView = true` (griglia `maxCrossAxisExtent` 130, toggle elenco), ordinamento "Priorità" di default, legenda a 4 colori, pulsante elimina voce (`_deleteUpdate`), `_PendingUpdatesSection` con Valida/Rifiuta per le perdite.
-- Backfill alla prima apertura admin (`sync` senza voci automatiche precedenti): chi era NO-GO all'import 2026-06-06 ha la perdita validata in automatico (data esatta se determinabile, altrimenti stima; senza dati: data import 2026-06-06 come segnaposto, modificabile con "Modifica perdita currency"). Test `test/currency_loss_test.dart`. Vault: [[AVES Corsi/Perdita currency validata e vista a quadrati 2026-10-15]].
-- Chiuso: finestra aggiornamenti professionali = 2 anni (confermato dall'utente).
+### [COMPRESSO s41] sessione 39 (2026-10-15, commit `86087f8`) — perdita currency auto-registrata e validata dall'admin (`currency_loss_service.dart`, test `test/currency_loss_test.dart`), stati di servizio a quadrati di default con toggle elenco, elimina voce, finestra aggiornamenti = 2 anni confermata. Vault: [[AVES Corsi/Perdita currency validata e vista a quadrati 2026-10-15]].
 
 ### [COMPRESSO s40] sessione 38 (2026-10-15, commit `d9bfadb`) — id duplicati negli aggiornamenti istruttori: `GradeService.newUpdateId`/`updateIndex` (id + instructor_id), test `test/update_id_test.dart`. Vault: [[AVES Corsi/ID duplicati aggiornamenti istruttori 2026-10-15]].
 
