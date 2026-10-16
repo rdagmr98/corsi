@@ -20,7 +20,11 @@ import '../../theme.dart';
 
 class DirectorScheduleTab extends ConsumerStatefulWidget {
   final String userId;
-  const DirectorScheduleTab({super.key, required this.userId});
+
+  /// Se valorizzato (accesso admin) il planner mostra solo questo corso,
+  /// indipendentemente dai direttori assegnati.
+  final Course? course;
+  const DirectorScheduleTab({super.key, required this.userId, this.course});
 
   @override
   ConsumerState<DirectorScheduleTab> createState() => _DirectorScheduleTabState();
@@ -77,7 +81,10 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
   }
 
   void _load() {
-    _courses = _courseService.getCoursesForDirector(widget.userId);
+    final forced = widget.course;
+    _courses = forced != null
+        ? [_courseService.findById(forced.id) ?? forced]
+        : _courseService.getCoursesForDirector(widget.userId);
     if (_selected == null) {
       if (_courses.isNotEmpty) _selected = _courses.first;
     } else {

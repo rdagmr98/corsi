@@ -13,6 +13,7 @@ import '../../services/schedule_service.dart';
 import '../../services/user_service.dart';
 import '../../theme.dart';
 import '../../utils/snackbar.dart';
+import '../director/schedule_tab.dart';
 import 'course_detail_screen.dart';
 
 class CoursesTab extends ConsumerStatefulWidget {
@@ -43,6 +44,15 @@ class _CoursesTabState extends ConsumerState<CoursesTab> {
       _courses = _courseService.getAllCourses();
       _loading = false;
     });
+  }
+
+  /// L'admin apre il planner del direttore su un corso (stesso schermo, stessi permessi di modifica).
+  Future<void> _openPlanner(Course c) async {
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => Scaffold(
+      appBar: AppBar(title: Text(c.title)),
+      body: DirectorScheduleTab(userId: ref.read(authProvider).currentUser?.id ?? '', course: c),
+    )));
+    if (mounted) _reload();
   }
 
   Future<void> _reload() async {
@@ -625,6 +635,11 @@ class _CoursesTabState extends ConsumerState<CoursesTab> {
                                 tooltip: 'Estendi con moduli MIL',
                                 onPressed: () => _extendCourse(c),
                               ),
+                            IconButton(
+                              icon: const Icon(Icons.calendar_month, color: kPrimary, size: 20),
+                              tooltip: 'Planner settimanale',
+                              onPressed: () => _openPlanner(c),
+                            ),
                             IconButton(
                               icon: const Icon(Icons.edit_outlined, color: kTextDim, size: 20),
                               onPressed: () => _showCourseDialog(course: c),
