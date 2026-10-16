@@ -24,9 +24,70 @@ class PsOoxmlFiller {
     return map;
   }
 
+  late String _styles;
+  final _xfs = <String>[];
+  late int _xfBaseCount;
+  final _xfWithBorderCache = <(int, int), int>{};
+
   void load() {
     _sheet = utf8.decode(_files['xl/worksheets/sheet1.xml']!.content as List<int>);
     _workbook = utf8.decode(_files['xl/workbook.xml']!.content as List<int>);
+    _styles = utf8.decode(_files['xl/styles.xml']!.content as List<int>);
+    final sec =
+        RegExp(r'<cellXfs[^>]*>(.*?)</cellXfs>', dotAll: true).firstMatch(_styles)!;
+    _xfs.addAll(RegExp(r'<xf\b[^/]*?(?:/>|>.*?</xf>)', dotAll: true)
+        .allMatches(sec.group(1)!)
+        .map((m) => m.group(0)!));
+    _xfBaseCount = _xfs.length;
+  }
+
+  /// Per ogni riga [startRow]..[endRow] copia il bordo della cella [refCol]
+  /// (es. colonna ORARIO: spesso sopra al primo slot del giorno e sotto
+  /// all'ultimo, sottile in mezzo) sulle celle [cols], mantenendo fill/font.
+  void matchBordersToColumn({
+    required String refCol,
+    required List<String> cols,
+    required int startRow,
+    required int endRow,
+  }) {
+    for (var r = startRow; r <= endRow; r++) {
+      final ref = _cellStyle('$refCol$r');
+      if (ref == null) continue;
+      final border = _borderOf(ref);
+      for (final c in cols) {
+        final s = _cellStyle('$c$r');
+        if (s == null) continue;
+        final xf = _xfWithBorder(s, border);
+        if (xf == s) continue;
+        _sheet = _sheet.replaceFirstMapped(
+          RegExp('(<c r="$c$r"[^>]*?\\bs=")\\d+"'),
+          (m) => '${m.group(1)}$xf"',
+        );
+      }
+    }
+  }
+
+  int? _cellStyle(String addr) {
+    final m = RegExp('<c r="$addr"[^>]*?\\bs="(\\d+)"').firstMatch(_sheet);
+    return m == null ? null : int.parse(m.group(1)!);
+  }
+
+  int _borderOf(int xf) => int.parse(
+      RegExp(r'borderId="(\d+)"').firstMatch(_xfs[xf])?.group(1) ?? '0');
+
+  int _xfWithBorder(int xf, int border) {
+    if (_borderOf(xf) == border) return xf;
+    return _xfWithBorderCache.putIfAbsent((xf, border), () {
+      final old = _xfs[xf];
+      final b = RegExp(r'borderId="\d+"');
+      final s = old.contains('applyBorder="')
+          ? old
+              .replaceFirst(b, 'borderId="$border"')
+              .replaceFirst(RegExp(r'applyBorder="\d"'), 'applyBorder="1"')
+          : old.replaceFirst(b, 'borderId="$border" applyBorder="1"');
+      _xfs.add(s);
+      return _xfs.length - 1;
+    });
   }
 
   void renameSheet(String name) {
@@ -215,6 +276,20 @@ class PsOoxmlFiller {
     ensurePrintSetup();
     final sheetBytes = utf8.encode(_sheet);
     final wbBytes = utf8.encode(_workbook);
+    if (_xfs.length > _xfBaseCount) {
+      _styles = _styles
+          .replaceFirst(
+            '</cellXfs>',
+            '${_xfs.sublist(_xfBaseCount).join()}</cellXfs>',
+          )
+          .replaceFirst(
+            RegExp(r'<cellXfs count="\d+"'),
+            '<cellXfs count="${_xfs.length}"',
+          );
+      final stBytes = utf8.encode(_styles);
+      _files['xl/styles.xml'] =
+          ArchiveFile('xl/styles.xml', stBytes.length, stBytes);
+    }
     _files['xl/worksheets/sheet1.xml'] = ArchiveFile(
       'xl/worksheets/sheet1.xml',
       sheetBytes.length,

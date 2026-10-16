@@ -69,7 +69,13 @@ GitHub Actions (`.github/workflows/deploy.yml`) deploya automaticamente su push 
 
 ---
 
-## STATO SESSIONE — aggiornato 2026-10-16 (sessione 41)
+## STATO SESSIONE — aggiornato 2026-10-16 (sessione 42)
+
+### Ultime modifiche (2026-10-16) — sessione 42 — bordi celle lezione nell'Excel del programma settimanale
+Richiesta: "nel programma settimanale excel le celle delle lezioni devono avere i bordi come quelli delle celle con le ore alla propria sinistra: prima del giorno spessa sopra e ultima spessa sotto, ora le fai spesse sopra e sotto a tutte".
+- **Causa**: tutti gli xf modulo (`ps_module_style_map.dart`, generati da `tools/rederive_ps_blank.py` con `border_id = 20`) e gli stili vuoti D..M del template hanno `borderId 20` (top medium) su OGNI riga; la colonna C (ORARIO) usa b20 solo sulla prima riga, b77 (tutto sottile) nelle intermedie, b25 (bottom medium) sull'ultima.
+- **Fix** (patch a runtime, template e generatore NON toccati): `PsOoxmlFiller.matchBordersToColumn(refCol, cols, startRow, endRow)` copia il `borderId` della cella C sulle celle D..M clonando l'xf (fill/font invariati, cache `(xf,border)`, nuovi xf appesi a `cellXfs` e `count` aggiornato in `encode()`). `ExcelExportService` la chiama per ogni blocco `_dayBlocks` dopo aver dipinto le lezioni. Test: `test/excel_ps_template_test.dart` "bordi celle lezione = bordi colonna ORARIO". N:O (LOCALITA'/AULA) non toccate. Excel COM (`tools/excel_open_check.py`) non funziona in questo ambiente (anche sul blank): verifica solo a livello XML. Vault: [[AVES Corsi/Excel programma settimanale bordi lezioni 2026-10-16]].
+- Build web: da Git Bash `--base-href "/corsi/"` viene convertito in path Windows (build fallito): usare PowerShell o `MSYS_NO_PATHCONV=1`. `build/web` è ignorato ma i file tracciati si staggiano con `git add -u build/web`.
 
 ### Ultime modifiche (2026-10-16) — sessione 41 — admin apre il planner settimanale del direttore (commit `6bd4366`)
 Richiesta: "permetti a admin dei corsi di vedere anche il planner settimanale dei corsi che vedono i dir (uguale anche per modificare come se stesse accedendo un dir), trova il posto piu adatto".
@@ -77,12 +83,7 @@ Richiesta: "permetti a admin dei corsi di vedere anche il planner settimanale de
 - `lib/screens/master/courses_tab.dart`: `_openPlanner(Course)` + `IconButton` `Icons.calendar_month` (tooltip "Planner settimanale") su ogni card corso; apre `Scaffold` a tutta pagina con `DirectorScheduleTab(userId: admin, course: c)`, al ritorno `_reload()`.
 - Nessun controllo di ruolo nel planner: l'admin ha gli stessi poteri del direttore; `confirmedBy` = id admin; "Invia notifica programma" usa `plannerRecipients` dal corso. Pulsante solo nella lista Corsi, non nel dialog `course_detail_screen.dart`. Hard refresh (Ctrl+Shift+R) per la cache del service worker. Vault: [[AVES Corsi/Admin accede al planner direttore 2026-10-16]].
 
-### Ultime modifiche (2026-10-16) — sessione 40 — latenze rimosse: reload incrementale, salvataggi non bloccanti, anti-doppio-tap Valida
-Richiesta: "ho premuto valida su minissi e il tasto non funzionava, aveva una grossa latenza quindi ho premuto piu volte e per sbaglio ho premuto su mirizzi e non volevo. togli le latenze nell'app!"
-- **Causa**: ogni azione chiamava `_reload()` → `reloadDb()` → `flushPending()` (attendeva le PUT in coda) + `init()` (`_cache.clear()` e 11 GET); `saveUsers`/`saveCourses` attendevano inoltre la PUT (`_awaitWrite`, s23). Costo percepito 3-6 s per tap.
-- **Fix** (`gh_db_service.dart`): nuovo `refresh()` non distruttivo = 1 listing della cartella dati + download solo dei file con sha cambiato, salta i file con scritture in coda/in corso (mai sovrascrive i dati ottimistici); `reloadDb()` ora lo usa (rimossi `reloadAll`, `flushPending`, `_awaitWrite`). `saveUsers`/`saveCourses` ora in coda ottimistica come gli altri file (niente attesa PUT). Parametro `_` sempre diverso sulle GET (l'API GitHub ha `max-age=60`: causa probabile dei dati stale dopo F5 della s23). `app.dart`: `beforeunload` chiede conferma se `pendingSaves > 0`.
-- `currency_tab.dart` `_PendingUpdatesSection`: lock unico sulla lista + cooldown 600 ms + spinner sulla riga, altri bottoni disabilitati; `onChanged: _load` (locale, niente rete).
-- Limite noto: una F5 entro 1-3 s dal salvataggio ora è protetta solo dall'avviso del browser. L'utente ha cliccato per sbaglio su Mirizzi: non verificato in `updates.json` se l'azione abbia avuto effetto. Vault: [[AVES Corsi/Latenze rimosse reload incrementale 2026-10-16]].
+### [COMPRESSO s42] sessione 40 (2026-10-16, commit `e446b85`) — latenze rimosse: `GhDbService.refresh()` incrementale (listing + solo file cambiati), `saveUsers`/`saveCourses` in coda ottimistica, anti-doppio-tap su Valida (`currency_tab.dart`). Vault: [[AVES Corsi/Latenze rimosse reload incrementale 2026-10-16]].
 
 ### [COMPRESSO s41] sessione 39 (2026-10-15, commit `86087f8`) — perdita currency auto-registrata e validata dall'admin (`currency_loss_service.dart`, test `test/currency_loss_test.dart`), stati di servizio a quadrati di default con toggle elenco, elimina voce, finestra aggiornamenti = 2 anni confermata. Vault: [[AVES Corsi/Perdita currency validata e vista a quadrati 2026-10-15]].
 

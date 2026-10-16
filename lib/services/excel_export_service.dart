@@ -356,6 +356,17 @@ class ExcelExportService {
       }
     }
 
+    // Bordi celle lezione = bordi della colonna ORARIO (C): spesso sopra al
+    // primo slot del giorno e sotto all'ultimo, sottile tra uno slot e l'altro.
+    for (final (startRow, endRow) in _dayBlocks) {
+      filler.matchBordersToColumn(
+        refCol: 'C',
+        cols: const ['D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M'],
+        startRow: startRow,
+        endRow: endRow,
+      );
+    }
+
     final directorNames = directors.map((d) {
       final t = d.titolo?.trim();
       return (t != null && t.isNotEmpty)

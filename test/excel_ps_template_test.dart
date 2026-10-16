@@ -208,6 +208,71 @@ void main() {
     expect(out.workbook, contains("'07.09_11.09'!\$A\$1:\$O\$70"));
   });
 
+  test('bordi celle lezione = bordi colonna ORARIO (spesso solo 1ª/ultima riga)', () {
+    final blankBytes =
+        File('assets/templates/ps_weekly_blank.xlsx').readAsBytesSync();
+    final filler = PsOoxmlFiller(Uint8List.fromList(blankBytes));
+    filler.load();
+    for (final r in [11, 12, 17]) {
+      filler.paintLessonRow(
+        row1Based: r,
+        moduleNumber: 15,
+        addestramento: 'Modulo 15',
+        oreMod: 1,
+        oreTot: '1',
+        instructor: 'ROSSI',
+        sott: 'T15.1',
+        oreSub: 1,
+        localita: 'AULA 3',
+      );
+    }
+    filler.matchBordersToColumn(
+      refCol: 'C',
+      cols: const ['D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M'],
+      startRow: 10,
+      endRow: 17,
+    );
+    final outBytes = filler.encode();
+    File('build/ps_sample_ooxml.xlsx')
+      ..parent.createSync(recursive: true)
+      ..writeAsBytesSync(outBytes);
+    final sheet = archiveFile(outBytes, 'xl/worksheets/sheet1.xml');
+    final styles = archiveFile(outBytes, 'xl/styles.xml');
+    final cellXfs =
+        RegExp(r'<cellXfs[^>]*>(.*?)</cellXfs>', dotAll: true).firstMatch(styles)!;
+    final xfs = RegExp(r'<xf\b[^/]*?(?:/>|>.*?</xf>)', dotAll: true)
+        .allMatches(cellXfs.group(1)!)
+        .map((m) => m.group(0)!)
+        .toList();
+    expect(
+      RegExp(r'<cellXfs count="(\d+)"').firstMatch(styles)!.group(1),
+      '${xfs.length}',
+    );
+    int border(String addr) {
+      final s = int.parse(
+          RegExp('<c r="$addr"[^>]*?\\bs="(\\d+)"').firstMatch(sheet)!.group(1)!);
+      return int.parse(RegExp(r'borderId="(\d+)"').firstMatch(xfs[s])!.group(1)!);
+    }
+
+    for (var r = 10; r <= 17; r++) {
+      for (final c in ['D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M']) {
+        expect(border('$c$r'), border('C$r'), reason: '$c$r vs C$r');
+      }
+    }
+    // 1ª riga (Disposizione) spessa sopra, intermedie sottili, ultima spessa sotto.
+    expect(border('C11'), isNot(border('C10')));
+    expect(border('D11'), border('C11'));
+    expect(border('D17'), border('C17'));
+    // Il colore modulo resta (fill/font dell'xf dipinto).
+    final s11 = int.parse(
+        RegExp(r'<c r="D11"[^>]*?\bs="(\d+)"').firstMatch(sheet)!.group(1)!);
+    final base = xfs[psModuleXfLeft(15)];
+    expect(
+      RegExp(r'fillId="(\d+)"').firstMatch(xfs[s11])!.group(1),
+      RegExp(r'fillId="(\d+)"').firstMatch(base)!.group(1),
+    );
+  });
+
   test('N8 LOCALITA single col + Accountable Manager footer', () {
     final blankBytes =
         File('assets/templates/ps_weekly_blank.xlsx').readAsBytesSync();
