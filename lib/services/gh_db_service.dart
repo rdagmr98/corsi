@@ -471,8 +471,18 @@ class GhDbService {
   List<Map<String, dynamic>> get notifications =>
       List<Map<String, dynamic>>.from(_getData('notifications.json') as List? ?? []);
 
-  Future<void> saveNotifications(List<Map<String, dynamic>> data) async =>
-      _enqueueWrite('notifications.json', data, 'aggiornamento notifiche');
+  /// Il workflow `push` di corsi-data invia il Web Push solo per i commit con
+  /// questo messaggio (letture/cancellazioni non consumano minuti Actions).
+  static const pushCommitMsg = 'nuove notifiche';
+
+  /// [fresh]: contiene notifiche nuove. Le scritture ravvicinate vengono fuse
+  /// (vedi [_enqueueWrite]), quindi il messaggio "nuove" resta finché non parte.
+  // ponytail: se la PUT "nuove" fallisce e ne arriva una più recente, quel push si perde (la notifica no)
+  Future<void> saveNotifications(List<Map<String, dynamic>> data, {bool fresh = false}) async =>
+      _enqueueWrite('notifications.json', data,
+          fresh || _pending['notifications.json']?.msg == pushCommitMsg
+              ? pushCommitMsg
+              : 'aggiornamento notifiche');
 
   /// Sottoscrizioni Web Push: `{user_id, endpoint, keys:{p256dh,auth}}`.
   List<Map<String, dynamic>> get pushSubscriptions =>

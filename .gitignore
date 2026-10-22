@@ -46,3 +46,6 @@ app.*.map.json
 
 # Cloudflare Worker (dipendenze npm)
 proxy/node_modules/
+
+# Web Push (dipendenze npm del workflow di corsi-data)
+push/node_modules/

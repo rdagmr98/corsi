@@ -1,5 +1,3 @@
-import 'dart:convert';
-import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/gh_config.dart';
 import '../models/notification_models.dart';
@@ -46,7 +44,7 @@ class NotificationService {
       'is_read': false,
       'created_at': DateTime.now().toIso8601String(),
     });
-    await _db.saveNotifications(all);
+    await _db.saveNotifications(all, fresh: true);
   }
 
   Future<void> createNotifications(
@@ -82,7 +80,7 @@ class NotificationService {
       });
       changed = true;
     }
-    if (changed) await _db.saveNotifications(all);
+    if (changed) await _db.saveNotifications(all, fresh: true);
   }
 
   List<AppNotification> getNotifications(String userId) {
@@ -152,36 +150,6 @@ class NotificationService {
     await _db.savePushSubscriptions(all);
   }
 
-  /// Invia un push di sistema ai dispositivi degli utenti indicati (best-effort).
-  /// Il Worker restituisce gli endpoint scaduti, che vengono potati.
-  Future<void> _push(Iterable<String> userIds, String body, {String? tag}) async {
-    if (!GhConfig.pushEnabled) return;
-    final ids = userIds.toSet();
-    final subs = _db.pushSubscriptions.where((s) => ids.contains(s['user_id'])).toList();
-    if (subs.isEmpty) return;
-    try {
-      final res = await http.post(
-        Uri.parse('${GhConfig.pushUrl}/push/send'),
-        headers: {
-          'Content-Type': 'application/json',
-          if (GhConfig.appKey.isNotEmpty) 'X-App-Key': GhConfig.appKey,
-        },
-        body: jsonEncode({
-          'subscriptions': [
-            for (final s in subs) {'endpoint': s['endpoint'], 'keys': s['keys']},
-          ],
-          'payload': {'title': _appTitle, 'body': body, if (tag != null) 'tag': tag},
-        }),
-      );
-      if (res.statusCode != 200) return;
-      final gone = ((jsonDecode(res.body) as Map)['gone'] as List?)?.cast<String>().toSet() ??
-          <String>{};
-      if (gone.isEmpty) return;
-      await _db.savePushSubscriptions(
-          _db.pushSubscriptions.where((s) => !gone.contains(s['endpoint'])).toList());
-    } catch (_) {}
-  }
-
   /// Il direttore preme "Invia notifica": avvisa istruttori e frequentatori che
   /// il programma è pronto o è cambiato. Una sola notifica per utente (dedup su non letta).
   Future<int> notifyPlannerPublished({
@@ -195,7 +163,6 @@ class NotificationService {
       ids.map((id) => (userId: id, type: 'PLANNER_PUBLISHED', message: msg, metadata: null)),
       dedupeUnread: true,
     );
-    await _push(ids, msg, tag: 'planner');
     return ids.length;
   }
 
@@ -226,7 +193,6 @@ class NotificationService {
         metadata: null,
       )),
     );
-    await _push(directorIds, msg, tag: 'validated');
   }
 
   /// Reminder giorno prima per l'istruttore (dedup: non duplica se già presente e non letto).
@@ -276,7 +242,7 @@ class NotificationService {
   // ── Browser notifications sync ───────────────────────────────────────────────
 
   /// All'apertura dell'app: UNA sola notifica di sistema riassuntiva per le non
-  /// lette mai mostrate. Con il push attivo ci pensa già il server: si salta.
+  /// lette mai mostrate. Con il push attivo ci pensa già il workflow di corsi-data: si salta.
   Future<void> syncBrowserNotifications(String userId) async {
     if (GhConfig.pushEnabled) return;
     final unread = _db.notifications
