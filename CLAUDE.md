@@ -69,7 +69,14 @@ GitHub Actions (`.github/workflows/deploy.yml`) deploya automaticamente su push 
 
 ---
 
-## STATO SESSIONE — aggiornato 2026-10-24 (sessione 43)
+## STATO SESSIONE — aggiornato 2026-10-24 (sessione 44)
+
+### Ultime modifiche (2026-10-24) — sessione 44 — banner notifiche senza lampeggio, indietro solo sulla shell del proprio ruolo (commit `d0529a2`)
+Richiesta: "in corsi smam vedo una schermata dove mi dice di attivare le notifiche poi cambia subito e ho anche notato che a volte quando vado indietro mi da delle schermate sctrane, come se fossero di altri profili".
+- **Banner**: `WebNotificationService.pushActive` è `bool?` (null = controllo in corso). Lo imposta solo `registerPushSubscription` a fine tentativo; `PushBanner` si mostra solo con `false`.
+- **Indietro**: `redirect` in `lib/app.dart` per ruolo (`UserRole.home` in `user_models.dart`). Con utente in memoria si accede solo alla sua shell, `/login` compreso redirige. Prima la cronologia del browser riapriva `/master` o `/director` di profili usati in precedenza.
+- Vault: [[AVES Corsi/Corsi banner notifiche e indietro per ruolo 2026-10-24]].
+
 
 ### Ultime modifiche (2026-10-24) — sessione 43 — notifiche ad app chiusa funzionanti
 Richiesta: "abilita le notifiche ad app chiusa anche per corsi smam" (l'infrastruttura di `cd3ad25` c'era, ma nessun utente risultava sottoscritto: `push_subscriptions.json` assente su corsi-data).
@@ -77,11 +84,7 @@ Richiesta: "abilita le notifiche ad app chiusa anche per corsi smam" (l'infrastr
 - **Fix**: `applicationServerKey` passata come stringa base64url; `lastError` + `pushActive` (`ValueNotifier`) + `needsHomeScreen`; `requestPermission` dentro `registerPushSubscription`. Nuovo `lib/widgets/push_banner.dart`, mostrato in cima alle shell istruttore/frequentatore e nel pannello notifiche (direttore/master), finché il browser non è sottoscritto.
 - Verifica reale da fare sul telefono: tocco su Consenti, poi controllare che compaia `push_subscriptions.json` su corsi-data.
 
-### Ultime modifiche (2026-10-16) — sessione 42 — bordi celle lezione nell'Excel del programma settimanale
-Richiesta: "nel programma settimanale excel le celle delle lezioni devono avere i bordi come quelli delle celle con le ore alla propria sinistra: prima del giorno spessa sopra e ultima spessa sotto, ora le fai spesse sopra e sotto a tutte".
-- **Causa**: tutti gli xf modulo (`ps_module_style_map.dart`, generati da `tools/rederive_ps_blank.py` con `border_id = 20`) e gli stili vuoti D..M del template hanno `borderId 20` (top medium) su OGNI riga; la colonna C (ORARIO) usa b20 solo sulla prima riga, b77 (tutto sottile) nelle intermedie, b25 (bottom medium) sull'ultima.
-- **Fix** (patch a runtime, template e generatore NON toccati): `PsOoxmlFiller.matchBordersToColumn(refCol, cols, startRow, endRow)` copia il `borderId` della cella C sulle celle D..M clonando l'xf (fill/font invariati, cache `(xf,border)`, nuovi xf appesi a `cellXfs` e `count` aggiornato in `encode()`). `ExcelExportService` la chiama per ogni blocco `_dayBlocks` dopo aver dipinto le lezioni. Test: `test/excel_ps_template_test.dart` "bordi celle lezione = bordi colonna ORARIO". N:O (LOCALITA'/AULA) non toccate. Excel COM (`tools/excel_open_check.py`) non funziona in questo ambiente (anche sul blank): verifica solo a livello XML. Vault: [[AVES Corsi/Excel programma settimanale bordi lezioni 2026-10-16]].
-- Build web: da Git Bash `--base-href "/corsi/"` viene convertito in path Windows (build fallito): usare PowerShell o `MSYS_NO_PATHCONV=1`. `build/web` è ignorato ma i file tracciati si staggiano con `git add -u build/web`.
+### [COMPRESSO s44] sessione 42 (2026-10-16) — bordi celle lezione Excel PS = bordi colonna ORARIO (`PsOoxmlFiller.matchBordersToColumn`). Vault: [[AVES Corsi/Excel programma settimanale bordi lezioni 2026-10-16]]. Build web da Git Bash: `MSYS_NO_PATHCONV=1` o PowerShell; `git add -u build/web`.
 
 ### [COMPRESSO s43] sessione 41 (2026-10-16, commit `6bd4366`) — admin apre il planner direttore (`DirectorScheduleTab` con `course:`, `IconButton` calendar_month in `courses_tab.dart`). Vault: [[AVES Corsi/Admin accede al planner direttore 2026-10-16]].
 
