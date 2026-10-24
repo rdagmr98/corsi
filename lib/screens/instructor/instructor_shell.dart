@@ -5,6 +5,7 @@ import '../../providers/auth_provider.dart';
 import '../../theme.dart';
 import '../../widgets/change_password_dialog.dart';
 import '../../widgets/notification_panel_widget.dart';
+import '../../widgets/push_banner.dart';
 import 'today_screen.dart';
 import 'my_schedule_screen.dart';
 import 'my_hours_screen.dart';
@@ -50,8 +51,10 @@ class _InstructorShellState extends ConsumerState<InstructorShell> {
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Istruttore', style: TextStyle(color: kAccent, fontSize: 11)),
-            Text(user?.fullName ?? '', style: const TextStyle(color: kText, fontSize: 15)),
+            const Text('Istruttore',
+                style: TextStyle(color: kAccent, fontSize: 11)),
+            Text(user?.fullName ?? '',
+                style: const TextStyle(color: kText, fontSize: 15)),
           ],
         ),
         actions: [
@@ -65,11 +68,17 @@ class _InstructorShellState extends ConsumerState<InstructorShell> {
               ),
               if (unreadCount > 0)
                 Positioned(
-                  top: 6, right: 6,
+                  top: 6,
+                  right: 6,
                   child: Container(
-                    width: 16, height: 16,
-                    decoration: const BoxDecoration(color: kError, shape: BoxShape.circle),
-                    child: Center(child: Text('$unreadCount', style: const TextStyle(color: Colors.white, fontSize: 9))),
+                    width: 16,
+                    height: 16,
+                    decoration: const BoxDecoration(
+                        color: kError, shape: BoxShape.circle),
+                    child: Center(
+                        child: Text('$unreadCount',
+                            style: const TextStyle(
+                                color: Colors.white, fontSize: 9))),
                   ),
                 ),
             ],
@@ -91,12 +100,19 @@ class _InstructorShellState extends ConsumerState<InstructorShell> {
           ),
         ],
       ),
-      body: switch (_tab) {
-        0 => InstructorTodayScreen(userId: userId),
-        1 => InstructorScheduleScreen(userId: userId),
-        2 => InstructorHoursScreen(userId: userId),
-        _ => const SizedBox(),
-      },
+      body: Column(
+        children: [
+          PushBanner(userId: userId),
+          Expanded(
+            child: switch (_tab) {
+              0 => InstructorTodayScreen(userId: userId),
+              1 => InstructorScheduleScreen(userId: userId),
+              2 => InstructorHoursScreen(userId: userId),
+              _ => const SizedBox(),
+            },
+          ),
+        ],
+      ),
       bottomNavigationBar: NavigationBar(
         backgroundColor: kSurface,
         selectedIndex: _tab,

@@ -5,7 +5,6 @@ import '../models/user_models.dart';
 import '../services/auth_service.dart';
 import '../services/gh_db_service.dart';
 import '../services/notification_service.dart';
-import '../services/web_notification_service.dart';
 
 final authProvider = ChangeNotifierProvider((ref) => AuthProvider());
 
@@ -115,7 +114,6 @@ class AuthProvider extends ChangeNotifier {
       await svc.pruneLegacy();
       _unreadCount = svc.getUnreadCount(userId);
       notifyListeners();
-      await WebNotificationService.requestPermission().catchError((_) => false);
       await svc.registerPushSubscription(userId);
       await svc.syncBrowserNotifications(userId);
     } catch (_) {}

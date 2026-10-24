@@ -91,10 +91,9 @@ class NotificationService {
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
   }
 
-  int getUnreadCount(String userId) =>
-      _db.notifications
-          .where((n) => n['user_id'] == userId && n['is_read'] != true)
-          .length;
+  int getUnreadCount(String userId) => _db.notifications
+      .where((n) => n['user_id'] == userId && n['is_read'] != true)
+      .length;
 
   Future<void> markAsRead(int id) async {
     final all = _db.notifications;
@@ -137,9 +136,11 @@ class NotificationService {
 
   // ── Web Push (app chiusa) ────────────────────────────────────────────────────
 
-  /// Sottoscrive questo browser al push e lo associa all'utente (idempotente).
+  /// Chiede il permesso, sottoscrive questo browser al push e lo associa
+  /// all'utente (idempotente: login, avvio e tocco su "Attiva").
   Future<void> registerPushSubscription(String userId) async {
-    if (!GhConfig.pushEnabled) return;
+    if (!GhConfig.pushEnabled ||
+        !await WebNotificationService.requestPermission()) return;
     final sub = await WebNotificationService.subscribe(GhConfig.vapidPublicKey);
     if (sub == null) return;
     final all = _db.pushSubscriptions;
@@ -160,7 +161,12 @@ class NotificationService {
     if (ids.isEmpty) return 0;
     final msg = 'Programma lezioni aggiornato: $courseTitle';
     await createNotifications(
-      ids.map((id) => (userId: id, type: 'PLANNER_PUBLISHED', message: msg, metadata: null)),
+      ids.map((id) => (
+            userId: id,
+            type: 'PLANNER_PUBLISHED',
+            message: msg,
+            metadata: null
+          )),
       dedupeUnread: true,
     );
     return ids.length;
@@ -170,7 +176,8 @@ class NotificationService {
   Future<void> pruneLegacy() async {
     final all = _db.notifications;
     final kept = all
-        .where((n) => n['type'] != 'LESSON_SCHEDULED' && n['type'] != 'LESSON_CHANGED')
+        .where((n) =>
+            n['type'] != 'LESSON_SCHEDULED' && n['type'] != 'LESSON_CHANGED')
         .toList();
     if (kept.length != all.length) await _db.saveNotifications(kept);
   }
@@ -187,11 +194,11 @@ class NotificationService {
         '$instructorName ha registrato la lezione: $moduleLabel – $dateLabel ($courseTitle)';
     await createNotifications(
       directorIds.map((id) => (
-        userId: id,
-        type: 'LESSON_VALIDATED',
-        message: msg,
-        metadata: null,
-      )),
+            userId: id,
+            type: 'LESSON_VALIDATED',
+            message: msg,
+            metadata: null,
+          )),
     );
   }
 
@@ -219,11 +226,11 @@ class NotificationService {
         '$instructorName ha inviato un aggiornamento da validare: $updateDescription';
     await createNotifications(
       _adminIds().map((id) => (
-        userId: id,
-        type: 'UPDATE_SUBMITTED',
-        message: msg,
-        metadata: null,
-      )),
+            userId: id,
+            type: 'UPDATE_SUBMITTED',
+            message: msg,
+            metadata: null,
+          )),
     );
   }
 
@@ -258,11 +265,14 @@ class NotificationService {
     final seenSet = seenList.toSet();
     final updatedSeen = [...seenList];
 
-    final fresh = unread.where((n) => !seenSet.contains(n.id.toString())).toList();
+    final fresh =
+        unread.where((n) => !seenSet.contains(n.id.toString())).toList();
     if (fresh.isEmpty) return;
     await WebNotificationService.showNotification(
       _appTitle,
-      fresh.length == 1 ? fresh.first.message : 'Hai ${fresh.length} nuove notifiche',
+      fresh.length == 1
+          ? fresh.first.message
+          : 'Hai ${fresh.length} nuove notifiche',
       tag: 'corsi-sync',
     );
     updatedSeen.addAll(fresh.map((n) => n.id.toString()));

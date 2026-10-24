@@ -4,11 +4,24 @@ import 'dart:convert';
 import 'dart:html' as html;
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
+
 /// Notifiche di sistema del browser: permesso, sottoscrizione Web Push e
 /// visualizzazione. Il service worker dedicato (`web/push/sw.js`, scope `push/`)
 /// riceve i push anche ad app chiusa; quello di Flutter non viene toccato.
 class WebNotificationService {
   static const String _icon = 'icons/Icon-192.png';
+
+  /// Questo browser è sottoscritto al push (si nasconde l'invito ad attivarlo).
+  static final pushActive = ValueNotifier<bool>(false);
+
+  /// Motivo dell'ultima sottoscrizione fallita, da mostrare all'utente.
+  static String? lastError;
+
+  /// iPhone/iPad da Safari: il push esiste solo con l'app nella schermata Home.
+  static bool get needsHomeScreen =>
+      permission == 'unsupported' &&
+      RegExp('iPhone|iPad').hasMatch(html.window.navigator.userAgent);
 
   static bool get supported {
     try {
@@ -26,7 +39,11 @@ class WebNotificationService {
     if (!supported) return false;
     if (permission == 'granted') return true;
     if (permission == 'denied') return false;
-    return await html.Notification.requestPermission() == 'granted';
+    try {
+      return await html.Notification.requestPermission() == 'granted';
+    } catch (_) {
+      return false; // Safari rifiuta la richiesta fuori da un tocco
+    }
   }
 
   /// Registra (una sola volta) il service worker push e attende che sia attivo.
@@ -41,38 +58,48 @@ class WebNotificationService {
     return reg.active == null ? null : reg;
   }
 
-  static String _b64u(ByteBuffer? b) => b == null
-      ? ''
-      : base64Url.encode(Uint8List.view(b)).replaceAll('=', '');
+  static String _b64u(ByteBuffer? b) =>
+      b == null ? '' : base64Url.encode(Uint8List.view(b)).replaceAll('=', '');
 
   /// Sottoscrive il browser al push e restituisce `{endpoint, keys:{p256dh,auth}}`
   /// (null se non supportato, permesso negato o errore).
   static Future<Map<String, dynamic>?> subscribe(String vapidPublicKey) async {
     try {
+      lastError = null;
       if (!supported || permission != 'granted') return null;
-      final reg = await _registration();
-      final pm = reg?.pushManager;
-      if (pm == null) return null;
+      final pm = (await _registration())?.pushManager;
+      if (pm == null) {
+        lastError = 'service worker push non attivo';
+        return null;
+      }
       // subscribe() restituisce la sottoscrizione esistente se c'è già (da spec).
       final sub = await pm.subscribe({
         'userVisibleOnly': true,
-        'applicationServerKey': base64Url.decode(base64.normalize(vapidPublicKey)),
+        // stringa base64url (ammessa dalla spec): un Uint8List nella mappa di
+        // dart:html arriva al browser come array di numeri -> InvalidCharacterError
+        'applicationServerKey': vapidPublicKey,
       });
       final endpoint = sub.endpoint;
       final p256dh = _b64u(sub.getKey('p256dh'));
       final auth = _b64u(sub.getKey('auth'));
-      if (endpoint == null || p256dh.isEmpty || auth.isEmpty) return null;
+      if (endpoint == null || p256dh.isEmpty || auth.isEmpty) {
+        lastError = 'sottoscrizione incompleta';
+        return null;
+      }
+      pushActive.value = true;
       return {
         'endpoint': endpoint,
         'keys': {'p256dh': p256dh, 'auth': auth},
       };
-    } catch (_) {
+    } catch (e) {
+      lastError = '$e';
       return null;
     }
   }
 
   /// Mostra una notifica locale (app aperta). Tag uguale = sostituisce la precedente.
-  static Future<void> showNotification(String title, String body, {String? tag}) async {
+  static Future<void> showNotification(String title, String body,
+      {String? tag}) async {
     if (permission != 'granted') return;
     try {
       final reg = await _registration();

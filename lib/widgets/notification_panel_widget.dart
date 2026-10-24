@@ -4,7 +4,7 @@ import 'package:intl/intl.dart';
 import '../models/notification_models.dart';
 import '../providers/auth_provider.dart';
 import '../services/notification_service.dart';
-import '../services/web_notification_service.dart';
+import 'push_banner.dart';
 import '../theme.dart';
 
 class NotificationPanelWidget extends ConsumerStatefulWidget {
@@ -25,13 +25,6 @@ class _NotificationPanelWidgetState
   void initState() {
     super.initState();
     _notifications = _service.getNotifications(widget.userId);
-  }
-
-  // Il permesso va chiesto da un gesto dell'utente (obbligatorio su iOS/Safari).
-  Future<void> _enableSystemNotifications() async {
-    final ok = await WebNotificationService.requestPermission();
-    if (ok) await _service.registerPushSubscription(widget.userId);
-    if (mounted) setState(() {});
   }
 
   Future<void> _markAsRead(int index) async {
@@ -135,23 +128,15 @@ class _NotificationPanelWidgetState
                   ),
                   IconButton(
                     onPressed: _notifications.isEmpty ? null : _deleteAll,
-                    icon: const Icon(Icons.delete_sweep_outlined, color: kError),
+                    icon:
+                        const Icon(Icons.delete_sweep_outlined, color: kError),
                     tooltip: 'Elimina tutte',
                   ),
                 ],
               ),
             ),
             const Divider(color: kBorder, height: 1),
-            if (WebNotificationService.permission == 'default')
-              ListTile(
-                dense: true,
-                leading: const Icon(Icons.notifications_active_outlined, color: kPrimary),
-                title: const Text('Attiva le notifiche di sistema',
-                    style: TextStyle(color: kText)),
-                subtitle: const Text('Per ricevere avvisi anche ad app chiusa',
-                    style: TextStyle(color: kTextDim)),
-                onTap: _enableSystemNotifications,
-              ),
+            PushBanner(userId: widget.userId),
             Expanded(
               child: _notifications.isEmpty
                   ? const Center(
@@ -219,9 +204,7 @@ class _NotificationPanelWidgetState
                                 ),
                               ),
                               trailing: Icon(
-                                item.isRead
-                                    ? Icons.done_all
-                                    : Icons.fiber_new,
+                                item.isRead ? Icons.done_all : Icons.fiber_new,
                                 size: 16,
                                 color: item.isRead ? kTextDim : kPrimary,
                               ),

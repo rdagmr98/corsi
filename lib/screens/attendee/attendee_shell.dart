@@ -5,6 +5,7 @@ import '../../providers/auth_provider.dart';
 import '../../theme.dart';
 import '../../widgets/change_password_dialog.dart';
 import '../../widgets/notification_panel_widget.dart';
+import '../../widgets/push_banner.dart';
 import 'attendee_schedule_screen.dart';
 import 'attendee_grades_screen.dart';
 import 'attendee_attendance_screen.dart';
@@ -50,8 +51,10 @@ class _AttendeeShellState extends ConsumerState<AttendeeShell> {
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Frequentatore', style: TextStyle(color: kWarning, fontSize: 11)),
-            Text(user?.fullName ?? '', style: const TextStyle(color: kText, fontSize: 15)),
+            const Text('Frequentatore',
+                style: TextStyle(color: kWarning, fontSize: 11)),
+            Text(user?.fullName ?? '',
+                style: const TextStyle(color: kText, fontSize: 15)),
           ],
         ),
         actions: [
@@ -65,11 +68,17 @@ class _AttendeeShellState extends ConsumerState<AttendeeShell> {
               ),
               if (unreadCount > 0)
                 Positioned(
-                  top: 6, right: 6,
+                  top: 6,
+                  right: 6,
                   child: Container(
-                    width: 16, height: 16,
-                    decoration: const BoxDecoration(color: kError, shape: BoxShape.circle),
-                    child: Center(child: Text('$unreadCount', style: const TextStyle(color: Colors.white, fontSize: 9))),
+                    width: 16,
+                    height: 16,
+                    decoration: const BoxDecoration(
+                        color: kError, shape: BoxShape.circle),
+                    child: Center(
+                        child: Text('$unreadCount',
+                            style: const TextStyle(
+                                color: Colors.white, fontSize: 9))),
                   ),
                 ),
             ],
@@ -91,12 +100,19 @@ class _AttendeeShellState extends ConsumerState<AttendeeShell> {
           ),
         ],
       ),
-      body: switch (_tab) {
-        0 => AttendeeScheduleScreen(userId: userId),
-        1 => AttendeeAttendanceScreen(userId: userId),
-        2 => AttendeeGradesScreen(userId: userId),
-        _ => const SizedBox(),
-      },
+      body: Column(
+        children: [
+          PushBanner(userId: userId),
+          Expanded(
+            child: switch (_tab) {
+              0 => AttendeeScheduleScreen(userId: userId),
+              1 => AttendeeAttendanceScreen(userId: userId),
+              2 => AttendeeGradesScreen(userId: userId),
+              _ => const SizedBox(),
+            },
+          ),
+        ],
+      ),
       bottomNavigationBar: NavigationBar(
         backgroundColor: kSurface,
         selectedIndex: _tab,
