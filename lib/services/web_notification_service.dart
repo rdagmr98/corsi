@@ -12,8 +12,9 @@ import 'package:flutter/foundation.dart';
 class WebNotificationService {
   static const String _icon = 'icons/Icon-192.png';
 
-  /// Questo browser è sottoscritto al push (si nasconde l'invito ad attivarlo).
-  static final pushActive = ValueNotifier<bool>(false);
+  /// Questo browser è sottoscritto al push; null finché il controllo
+  /// all'avvio non è finito (l'invito ad attivarlo resta nascosto, niente lampeggio).
+  static final pushActive = ValueNotifier<bool?>(null);
 
   /// Motivo dell'ultima sottoscrizione fallita, da mostrare all'utente.
   static String? lastError;
@@ -86,7 +87,6 @@ class WebNotificationService {
         lastError = 'sottoscrizione incompleta';
         return null;
       }
-      pushActive.value = true;
       return {
         'endpoint': endpoint,
         'keys': {'p256dh': p256dh, 'auth': auth},

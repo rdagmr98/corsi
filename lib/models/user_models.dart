@@ -18,6 +18,14 @@ extension UserRoleExt on UserRole {
   bool get isDesktop =>
       this == UserRole.adminMaster || this == UserRole.courseDirector;
 
+  /// Unica rotta (shell) consentita al ruolo.
+  String get home => switch (this) {
+    UserRole.adminMaster => '/master',
+    UserRole.courseDirector => '/director',
+    UserRole.instructor => '/instructor',
+    UserRole.attendee => '/attendee',
+  };
+
   static UserRole fromString(String s) => switch (s) {
     'admin_master' => UserRole.adminMaster,
     'course_director' => UserRole.courseDirector,

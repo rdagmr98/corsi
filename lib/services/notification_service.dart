@@ -139,9 +139,11 @@ class NotificationService {
   /// Chiede il permesso, sottoscrive questo browser al push e lo associa
   /// all'utente (idempotente: login, avvio e tocco su "Attiva").
   Future<void> registerPushSubscription(String userId) async {
-    if (!GhConfig.pushEnabled ||
-        !await WebNotificationService.requestPermission()) return;
-    final sub = await WebNotificationService.subscribe(GhConfig.vapidPublicKey);
+    final sub = GhConfig.pushEnabled &&
+            await WebNotificationService.requestPermission()
+        ? await WebNotificationService.subscribe(GhConfig.vapidPublicKey)
+        : null;
+    WebNotificationService.pushActive.value = sub != null;
     if (sub == null) return;
     final all = _db.pushSubscriptions;
     final i = all.indexWhere((s) => s['endpoint'] == sub['endpoint']);

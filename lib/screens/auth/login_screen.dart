@@ -50,18 +50,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     _goHome(auth.currentUser!);
   }
 
-  void _goHome(AppUser user) {
-    switch (user.userRole) {
-      case UserRole.adminMaster:
-        context.go('/master');
-      case UserRole.courseDirector:
-        context.go('/director');
-      case UserRole.instructor:
-        context.go('/instructor');
-      case UserRole.attendee:
-        context.go('/attendee');
-    }
-  }
+  void _goHome(AppUser user) => context.go(user.userRole.home);
 
   Future<void> _register() async {
     final nomeCtrl = TextEditingController();

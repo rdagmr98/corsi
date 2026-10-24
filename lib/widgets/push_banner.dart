@@ -26,7 +26,7 @@ class _PushBannerState extends State<PushBanner> {
     if (!mounted) return;
     setState(() => _busy = false);
     final err = WebNotificationService.lastError;
-    if (WebNotificationService.pushActive.value || err != null) {
+    if (WebNotificationService.pushActive.value == true || err != null) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(err == null
             ? 'Notifiche attivate'
@@ -41,11 +41,11 @@ class _PushBannerState extends State<PushBanner> {
         builder: (context, active, _) => _banner(active),
       );
 
-  Widget _banner(bool active) {
+  Widget _banner(bool? active) {
     final permission = WebNotificationService.permission;
     final install = WebNotificationService.needsHomeScreen;
     if (_hidden ||
-        active ||
+        active != false ||
         !GhConfig.pushEnabled ||
         (permission == 'unsupported' && !install)) {
       return const SizedBox.shrink();
