@@ -69,7 +69,14 @@ GitHub Actions (`.github/workflows/deploy.yml`) deploya automaticamente su push 
 
 ---
 
-## STATO SESSIONE — aggiornato 2026-10-24 (sessione 44)
+## STATO SESSIONE — aggiornato 2026-10-28 (sessione 45)
+
+### Ultime modifiche (2026-10-28) — sessione 45 — promemoria lezioni ad app chiusa (commit `b0f7151`, corsi-data `061b46eb`)
+Richiesta: i reminder delle lezioni di domani arrivavano solo aprendo l'app; servono il giorno prima e all'inizio della lezione, ad app chiusa.
+- Causa: il promemoria lo creava solo `today_screen.dart` all'apertura.
+- Fix: `push/reminders.mjs` lanciato dal cron `corsi-data/.github/workflows/reminders.yml` (ora di Roma). Alle 17:55 dom-gio manda a ogni istruttore le lezioni di domani; circa 10 min prima di ogni slot, a chi inizia una lezione. `notify.mjs` non manda più push per `LESSON_REMINDER`.
+- I cron ricalcano gli orari slot di `reference.json`. Test: `node push/reminders.test.mjs`.
+- Vault: [[AVES Corsi/Corsi promemoria lezioni ad app chiusa 2026-10-28]].
 
 ### Ultime modifiche (2026-10-24) — sessione 44 — banner notifiche senza lampeggio, indietro solo sulla shell del proprio ruolo (commit `d0529a2`)
 Richiesta: "in corsi smam vedo una schermata dove mi dice di attivare le notifiche poi cambia subito e ho anche notato che a volte quando vado indietro mi da delle schermate sctrane, come se fossero di altri profili".
@@ -78,11 +85,7 @@ Richiesta: "in corsi smam vedo una schermata dove mi dice di attivare le notific
 - Vault: [[AVES Corsi/Corsi banner notifiche e indietro per ruolo 2026-10-24]].
 
 
-### Ultime modifiche (2026-10-24) — sessione 43 — notifiche ad app chiusa funzionanti
-Richiesta: "abilita le notifiche ad app chiusa anche per corsi smam" (l'infrastruttura di `cd3ad25` c'era, ma nessun utente risultava sottoscritto: `push_subscriptions.json` assente su corsi-data).
-- **Causa**: in `web_notification_service.dart` la chiave VAPID passata come `Uint8List` nella mappa `dart:html` arrivava al browser come array di numeri, quindi `subscribe` falliva sempre e l'errore veniva inghiottito dal `catch`. Inoltre l'invito ad attivare compariva solo con permesso `default`, era nascosto nel pannello notifiche, e su iPhone il push esiste solo con l'app nella schermata Home.
-- **Fix**: `applicationServerKey` passata come stringa base64url; `lastError` + `pushActive` (`ValueNotifier`) + `needsHomeScreen`; `requestPermission` dentro `registerPushSubscription`. Nuovo `lib/widgets/push_banner.dart`, mostrato in cima alle shell istruttore/frequentatore e nel pannello notifiche (direttore/master), finché il browser non è sottoscritto.
-- Verifica reale da fare sul telefono: tocco su Consenti, poi controllare che compaia `push_subscriptions.json` su corsi-data.
+### [COMPRESSO s45] sessione 43 (2026-10-24) — notifiche ad app chiusa funzionanti: chiave VAPID come stringa base64url (non `Uint8List`), `PushBanner` nelle shell finché il browser non è sottoscritto. Vault: [[AVES Corsi/Corsi push app chiusa attivato 2026-10-24]].
 
 ### [COMPRESSO s44] sessione 42 (2026-10-16) — bordi celle lezione Excel PS = bordi colonna ORARIO (`PsOoxmlFiller.matchBordersToColumn`). Vault: [[AVES Corsi/Excel programma settimanale bordi lezioni 2026-10-16]]. Build web da Git Bash: `MSYS_NO_PATHCONV=1` o PowerShell; `git add -u build/web`.
 
