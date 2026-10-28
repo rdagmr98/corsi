@@ -13,6 +13,8 @@ assert.deepEqual(got([...before, n(3, "a"), n(4, "a"), n(5, "c")]), { a: ["m3", 
 assert.deepEqual(got([{ ...before[0], is_read: true }]), {});
 // già letta o vecchia (cache datata che la riscrive): nessun push
 assert.deepEqual(got([...before, n(6, "a", { is_read: true }), n(7, "a", { created_at: "2026-10-20T08:00:00.000" })]), {});
+// promemoria lezione: push solo da reminders.mjs
+assert.deepEqual(got([...before, n(8, "a", { type: "LESSON_REMINDER" })]), {});
 assert.equal(payload(["x"]).body, "x");
 assert.equal(payload(["x", "y"]).body, "Hai 2 nuove notifiche:\nx\ny");
 console.log("notify ok");
