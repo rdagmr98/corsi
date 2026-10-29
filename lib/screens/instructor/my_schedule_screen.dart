@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../models/schedule_models.dart';
+import '../../models/reference_models.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/course_service.dart';
 import '../../services/reference_service.dart';
@@ -49,12 +50,7 @@ class _InstructorScheduleScreenState extends ConsumerState<InstructorScheduleScr
     String normCode(String code) => ScheduleService.normalizeSubCode(code);
 
     final allCourses = _courseService.getAllCourses();
-    final courseTypeMap = <String, String>{
-      for (final c in allCourses) c.id: c.courseTypeId,
-    };
-    final courseNameMap = <String, String>{
-      for (final c in allCourses) c.id: c.title,
-    };
+    final courseById = {for (final c in allCourses) c.id: c};
     final distinctCourseIds = _lessons.map((l) => l.courseId).toSet().toList()..sort();
     final showCourseBadge = distinctCourseIds.length > 1;
     const courseBadgeColors = [kPrimary, kAccent, kWarning, Colors.purple, Colors.teal];
@@ -62,55 +58,62 @@ class _InstructorScheduleScreenState extends ConsumerState<InstructorScheduleScr
       for (var i = 0; i < distinctCourseIds.length; i++)
         distinctCourseIds[i]: courseBadgeColors[i % courseBadgeColors.length],
     };
-    final subNamesPerType = <String, Map<String, String>>{};
-    final taskNamesPerType = <String, Map<int, String>>{};
-    final subSchedTPerType = <String, Map<String, int>>{};
-    final subSchedPPerType = <String, Map<String, int>>{};
-    for (final l in _lessons) {
-      if (l.timeSlot == 0) continue;
-      final typeId = courseTypeMap[l.courseId] ?? '';
-      subNamesPerType.putIfAbsent(typeId, () {
-        final ti = _refService.getCourseType(typeId);
-        return <String, String>{
-          for (final m in ti?.modules ?? [])
-            for (final s in m.submodules) s.code: s.name,
-        };
-      });
-      taskNamesPerType.putIfAbsent(typeId, () {
-        final ti = _refService.getCourseType(typeId);
-        return <int, String>{
-          for (final m in ti?.modules ?? [])
+    // Per corso: tipo effettivo (base + estensione MIL/MAML, altrimenti i moduli
+    // dell'estensione restano senza monte ore) e ordinale progressivo di ogni
+    // lezione su tutto il corso, come nel calendario del direttore.
+    final typeInfoPerCourse = <String, CourseTypeInfo?>{};
+    final ordinals = <String, int>{};
+    final schedTotals = <String, int>{}; // corso|T/P|sottomodulo → ore calendarizzate
+    for (final cid in distinctCourseIds) {
+      final c = courseById[cid];
+      typeInfoPerCourse[cid] = c == null
+          ? null
+          : _refService.getEffectiveCourseType(c.courseTypeId, c.extensionTypeId, c.mamlCombinationId);
+      final sorted = _scheduleService.getLessonsForCourse(cid).where((l) => l.timeSlot > 0).toList()
+        ..sort((a, b) {
+          final dc = a.date.compareTo(b.date);
+          return dc != 0 ? dc : a.timeSlot.compareTo(b.timeSlot);
+        });
+      for (final l in sorted) {
+        final k = '$cid|${l.isTheory ? 'T' : 'P'}|${normCode(l.submoduleCode)}';
+        ordinals[l.id] = schedTotals[k] = (schedTotals[k] ?? 0) + 1;
+      }
+    }
+    final subNamesPerCourse = <String, Map<String, String>>{
+      for (final cid in distinctCourseIds)
+        cid: {
+          for (final m in typeInfoPerCourse[cid]?.modules ?? <ModuleInfo>[])
+            for (final s in m.submodules) normCode(s.code): s.name,
+        },
+    };
+    final taskNamesPerCourse = <String, Map<int, String>>{
+      for (final cid in distinctCourseIds)
+        cid: {
+          for (final m in typeInfoPerCourse[cid]?.modules ?? <ModuleInfo>[])
             for (final s in m.submodules)
               for (final t in s.practicalTasks)
                 if (t.name.isNotEmpty) t.id: t.name,
-        };
-      });
-      final nc = normCode(l.submoduleCode);
-      if (l.isTheory) {
-        subSchedTPerType.putIfAbsent(typeId, () => {});
-        subSchedTPerType[typeId]![nc] = (subSchedTPerType[typeId]![nc] ?? 0) + 1;
-      } else {
-        subSchedPPerType.putIfAbsent(typeId, () => {});
-        subSchedPPerType[typeId]![nc] = (subSchedPPerType[typeId]![nc] ?? 0) + 1;
+        },
+    };
+    final planPerCourse = <String, Map<String, int>>{};
+    for (final cid in distinctCourseIds) {
+      final plan = planPerCourse[cid] = <String, int>{};
+      for (final m in typeInfoPerCourse[cid]?.modules ?? <ModuleInfo>[]) {
+        for (final s in m.submodules) {
+          final nc = normCode(s.code);
+          plan['T|$nc'] = (plan['T|$nc'] ?? 0) + s.theoryHours;
+          plan['P|$nc'] = (plan['P|$nc'] ?? 0) + s.practicalHours;
+        }
       }
-    }
-    final subPlanPerType = <String, Map<String, ({int t, int p})>>{};
-    for (final typeId in subNamesPerType.keys) {
-      final ti = _refService.getCourseType(typeId);
-      subPlanPerType[typeId] = {
-        for (final m in ti?.modules ?? [])
-          for (final s in m.submodules)
-            s.code: (
-              t: s.theoryHours > 0    ? s.theoryHours    : (subSchedTPerType[typeId]?[s.code] ?? 0),
-              p: s.practicalHours > 0 ? s.practicalHours : (subSchedPPerType[typeId]?[s.code] ?? 0),
-            ),
-      };
     }
 
     final grouped = <String, List<ScheduledLesson>>{};
     for (final l in _lessons) {
       final key = DateFormat('yyyy-MM-dd').format(l.date);
       grouped.putIfAbsent(key, () => []).add(l);
+    }
+    for (final g in grouped.values) {
+      g.sort((a, b) => a.timeSlot.compareTo(b.timeSlot));
     }
     final notesByDate = <String, List<SlotNote>>{};
     for (final n in _notes) {
@@ -187,23 +190,23 @@ class _InstructorScheduleScreenState extends ConsumerState<InstructorScheduleScr
                     ...dayLessons.map((l) {
                       final isTheory = l.isTheory;
                       final color = moduleColor(l.moduleNumber);
-                      final typeId = courseTypeMap[l.courseId] ?? '';
                       final nc = normCode(l.submoduleCode);
-                      final subNames = subNamesPerType[typeId] ?? {};
-                      final taskNames = taskNamesPerType[typeId] ?? {};
-                      final planMap = subPlanPerType[typeId] ?? {};
-                      final plan = planMap[nc];
-                      final schedT = subSchedTPerType[typeId]?[nc] ?? 0;
-                      final schedP = subSchedPPerType[typeId]?[nc] ?? 0;
-                      final rawSched = isTheory ? schedT : schedP;
-                      final planCount = isTheory ? (plan?.t ?? 0) : (plan?.p ?? 0);
-                      // Ore oltre il piano = recuperi: il contatore non supera il piano.
-                      final schedCount =
-                          planCount > 0 && rawSched > planCount ? planCount : rawSched;
+                      final subNames = subNamesPerCourse[l.courseId] ?? {};
+                      final taskNames = taskNamesPerCourse[l.courseId] ?? {};
                       final typeLabel = isTheory ? 'T' : 'P';
-                      final hoursStr = planCount > 0
-                          ? '$typeLabel $schedCount/$planCount h'
-                          : '$typeLabel ${schedCount}h';
+                      final plan = planPerCourse[l.courseId]?['$typeLabel|$nc'] ?? 0;
+                      // Senza monte ore nel programma il totale è quanto calendarizzato.
+                      final total = plan > 0 ? plan : (schedTotals['${l.courseId}|$typeLabel|$nc'] ?? 0);
+                      final ord = ordinals[l.id];
+                      // Ore oltre il piano = recuperi: il contatore non supera il piano.
+                      final hoursStr = ord == null
+                          ? typeLabel
+                          : '$typeLabel ${ord > total ? total : ord}/$total h${ord > total ? ' (rec.)' : ''}';
+                      final slotTime = typeInfoPerCourse[l.courseId]
+                          ?.schedule
+                          .slotsForWeekday(l.date.weekday)
+                          .where((t) => t.slot == l.timeSlot)
+                          .firstOrNull;
 
                       String displayTopic = l.topic;
                       if (RegExp(r'^\d').hasMatch(l.topic) && l.topic.contains('.')) {
@@ -225,17 +228,24 @@ class _InstructorScheduleScreenState extends ConsumerState<InstructorScheduleScr
                         ),
                         child: ListTile(
                           leading: Container(
-                            width: 36,
-                            height: 36,
+                            width: 48,
+                            height: 40,
                             decoration: BoxDecoration(
                               color: color.withOpacity(0.15),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             alignment: Alignment.center,
-                            child: Text(
-                              '${l.timeSlot}ª',
-                              style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12),
-                            ),
+                            child: slotTime == null
+                                ? Text('${l.timeSlot}ª',
+                                    style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12))
+                                : Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(slotTime.start,
+                                          style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12)),
+                                      Text(slotTime.end, style: TextStyle(color: color, fontSize: 10)),
+                                    ],
+                                  ),
                           ),
                           title: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -245,7 +255,7 @@ class _InstructorScheduleScreenState extends ConsumerState<InstructorScheduleScr
                                 Padding(
                                   padding: const EdgeInsets.only(bottom: 2),
                                   child: Text(
-                                    courseNameMap[l.courseId] ?? '',
+                                    courseById[l.courseId]?.title ?? '',
                                     style: TextStyle(
                                       color: courseColor,
                                       fontWeight: FontWeight.bold,
