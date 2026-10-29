@@ -36,6 +36,16 @@ LUNCH_OFFSET = 5
 ATTENDEE_DATA_ROWS = range(50, 59)  # 50–58 inclusive
 # Column O style -> same style with borderId that adds R=medium (font/alignment equal).
 O_RIGHT_EDGE = {"1220": "1221", "1224": "1256", "1216": "1217"}
+# Lunch rows (pausa gialla): some 66_PS styles miss the top side (riga 39, C23)
+# or a vertical side (C31 right, N31 left). Same xf with all-thin border 77/90
+# (font/fill/alignment equal). Matters because the export copies C's border
+# onto D..M (matchBordersToColumn).
+LUNCH_FULL_BORDER = {
+    "550": "540", "583": "540",
+    "566": "567", "578": "567", "551": "568", "1254": "654",
+    "1236": "653", "1237": "653", "1238": "653",
+    "1249": "1230",
+}
 # Official empty-cell styles (from 66_PS EI lesson row) — keep if present.
 EMPTY_BY_COL = {
     "D": 1159,
@@ -172,6 +182,10 @@ def clear_week_data(sheet: str) -> str:
         # but keep style so D:F fill/chrome stays; D itself is never rewritten.
         if row in dispo and col in ("E", "F"):
             return f'<c r="{addr}" s="{EMPTY_BY_COL[col]}"/>'
+
+        if row in lunch_rows() and s_id in LUNCH_FULL_BORDER:
+            full = full.replace(f's="{s_id}"', f's="{LUNCH_FULL_BORDER[s_id]}"', 1)
+            s_id = LUNCH_FULL_BORDER[s_id]
 
         # Lunch (yellow): keep D–M chrome; blank LOCALITA' only.
         # N: keep source border style (not forced 1230/1278 — those break mid-block lines).

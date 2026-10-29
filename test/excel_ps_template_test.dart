@@ -259,6 +259,13 @@ void main() {
         expect(border('$c$r'), border('C$r'), reason: '$c$r vs C$r');
       }
     }
+    // Pausa pranzo lun–gio: stessa griglia sottile su tutti e 4 i giorni
+    // (prima riga 39 senza bordo sopra, C31/N31 senza lato).
+    for (final r in [23, 31, 39]) {
+      for (final c in ['C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N']) {
+        expect(border('$c$r'), border('${c}15'), reason: '$c$r vs ${c}15');
+      }
+    }
     // 1ª riga (Disposizione) spessa sopra, intermedie sottili, ultima spessa sotto.
     expect(border('C11'), isNot(border('C10')));
     expect(border('D11'), border('C11'));
