@@ -6,6 +6,7 @@ import '../../models/user_models.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/kpi_service.dart';
 import '../../theme.dart';
+import 'questionnaire_kpi_card.dart';
 
 /// Vista KPI corso: media voti + % insufficienze esami modulo.
 /// Periodo filtrabile (da–a) + selezione frequentatori. Admin e direttore.
@@ -352,6 +353,13 @@ class _KpiCourseTabState extends ConsumerState<KpiCourseTab> {
                     ),
                   ],
                 ],
+              ),
+              QuestionnaireKpiCard(
+                key: ValueKey(snap.course.id),
+                course: snap.course,
+                modules: snap.typeInfo?.modules ?? const [],
+                from: snap.periodFrom,
+                to: snap.periodTo,
               ),
             ],
           ),

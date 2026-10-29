@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../providers/auth_provider.dart';
+import '../../services/course_service.dart';
+import '../../services/questionnaire_service.dart';
 import '../../theme.dart';
 import '../../widgets/change_password_dialog.dart';
 import '../../widgets/notification_panel_widget.dart';
@@ -9,6 +11,7 @@ import '../../widgets/push_banner.dart';
 import 'attendee_schedule_screen.dart';
 import 'attendee_grades_screen.dart';
 import 'attendee_attendance_screen.dart';
+import 'questionnaire_screen.dart';
 
 class AttendeeShell extends ConsumerStatefulWidget {
   const AttendeeShell({super.key});
@@ -35,6 +38,43 @@ class _AttendeeShellState extends ConsumerState<AttendeeShell> {
         builder: (_, __) => NotificationPanelWidget(userId: userId),
       ),
     );
+  }
+
+  /// Un banner per ogni questionario aperto e non ancora compilato.
+  List<Widget> _questionnaireBanners(String userId) {
+    final courses = CourseService().getCoursesForAttendee(userId);
+    return [
+      for (final q in QuestionnaireService()
+          .pendingFor(userId, courses.map((c) => c.id)))
+        Material(
+          color: kWarning.withOpacity(0.12),
+          child: ListTile(
+            dense: true,
+            leading: const Icon(Icons.rate_review_outlined, color: kWarning),
+            title: const Text('Questionario di qualità percepita',
+                style: TextStyle(color: kText, fontSize: 13)),
+            subtitle: Text(
+                QuestionnaireService.moduleLabel(
+                    courses.firstWhere((c) => c.id == q.courseId), q.module),
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: kTextDim, fontSize: 12)),
+            trailing: const Icon(Icons.chevron_right, color: kTextDim),
+            onTap: () async {
+              final ok = await Navigator.push<bool>(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => QuestionnaireScreen(
+                    course: courses.firstWhere((c) => c.id == q.courseId),
+                    module: q.module,
+                    userId: userId,
+                  ),
+                ),
+              );
+              if (ok == true && mounted) setState(() {});
+            },
+          ),
+        ),
+    ];
   }
 
   @override
@@ -103,6 +143,7 @@ class _AttendeeShellState extends ConsumerState<AttendeeShell> {
       body: Column(
         children: [
           PushBanner(userId: userId),
+          ..._questionnaireBanners(userId),
           Expanded(
             child: switch (_tab) {
               0 => AttendeeScheduleScreen(userId: userId),

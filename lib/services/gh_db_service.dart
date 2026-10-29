@@ -121,6 +121,7 @@ class GhDbService {
     'notes.json',
     'notifications.json',
     'push_subscriptions.json',
+    'questionnaires.json',
   ];
 
   Future<void> init() async {
@@ -281,7 +282,10 @@ class GhDbService {
   /// (403/429/5xx, timeout, rete assente): con un token condiviso da tutti
   /// gli utenti un rate-limit momentaneo o un hiccup di rete non deve far
   /// fallire il salvataggio al primo colpo. Ritorna lo sha aggiornato.
-  Future<String> _putToGitHub(String fileName, dynamic data, String msg) async {
+  /// [merge]: sul 409 non sovrascrive ma lancia [ConflictException], così il
+  /// chiamante rilegge il file e riapplica la modifica.
+  Future<String> _putToGitHub(String fileName, dynamic data, String msg,
+      {bool merge = false}) async {
     for (var attempt = 1; attempt <= _maxWriteAttempts; attempt++) {
       final sha = _getSha(fileName);
       final body = <String, dynamic>{
@@ -320,7 +324,9 @@ class GhDbService {
           res.statusCode == 403 ||
           res.statusCode == 429 ||
           res.statusCode >= 500;
-      if (!retryable || attempt == _maxWriteAttempts) {
+      if (!retryable ||
+          attempt == _maxWriteAttempts ||
+          (merge && res.statusCode == 409)) {
         if (res.statusCode == 409) {
           throw ConflictException('Conflitto scrittura dopo $attempt tentativi.');
         }
@@ -392,9 +398,10 @@ class GhDbService {
     }
   }
 
-  Future<void> _writeFile(String fileName, dynamic data, String msg) async {
+  Future<void> _writeFile(String fileName, dynamic data, String msg,
+      {bool merge = false}) async {
     try {
-      final newSha = await _putToGitHub(fileName, data, msg);
+      final newSha = await _putToGitHub(fileName, data, msg, merge: merge);
       _cache[fileName] = {'data': data, 'sha': newSha};
       saveError.value = null;
     } catch (e) {
@@ -490,6 +497,30 @@ class GhDbService {
 
   Future<void> savePushSubscriptions(List<Map<String, dynamic>> data) async =>
       _enqueueWrite('push_subscriptions.json', data, 'aggiornamento sottoscrizioni push');
+
+  /// Sessioni questionario qualità percepita (una per corso+modulo).
+  List<Map<String, dynamic>> get questionnaires =>
+      List<Map<String, dynamic>>.from(_getData('questionnaires.json') as List? ?? []);
+
+  /// Read-modify-write con merge: a ogni conflitto rilegge il file remoto e
+  /// riapplica [edit], così le risposte inviate insieme da più frequentatori
+  /// non si sovrascrivono (gli altri file fanno last-writer-wins). [edit]
+  /// ritorna false se non c'è niente da scrivere, o lancia per annullare.
+  Future<void> editQuestionnaires(
+      bool Function(List<Map<String, dynamic>> all) edit) async {
+    const f = 'questionnaires.json';
+    for (var attempt = 1;; attempt++) {
+      _cache[f] = await _fetchFile(f);
+      final all = questionnaires;
+      if (!edit(all)) return;
+      try {
+        return await _writeFile(f, all, 'aggiornamento questionari', merge: true);
+      } on ConflictException {
+        if (attempt == _maxWriteAttempts) rethrow;
+        await _backoff(attempt);
+      }
+    }
+  }
 
   Future<void> updateUserPassword(String userId, String newHash) async {
     final all = users;
