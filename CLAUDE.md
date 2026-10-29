@@ -69,7 +69,14 @@ GitHub Actions (`.github/workflows/deploy.yml`) deploya automaticamente su push 
 
 ---
 
-## STATO SESSIONE — aggiornato 2026-10-28 (sessione 45)
+## STATO SESSIONE — aggiornato 2026-10-30 (sessione 46)
+
+### Ultime modifiche (2026-10-30) — sessione 46
+- `e69314b` + corsi-data: promemoria inizio lezione affidabili. Il cron di GitHub saltava o ritardava, ora c'è una sveglia nel repo pubblico (`.github/workflows/promemoria.yml` + `push/clock.mjs`) che dorme fino all'orario e lancia `reminders.yml` su corsi-data via `repository_dispatch`. **Notifiche solo con GitHub, mai Cloudflare** (decisione utente). Vault: [[AVES Corsi/Corsi sveglia promemoria GitHub 2026-10-30]].
+- `308bb6b`: calendario istruttore `T n/tot h` progressivo su tutto il corso (tipo effettivo con estensione), orario dello slot, ordinamento. Vault: [[AVES Corsi/Corsi calendario istruttore ore progressive 2026-10-30]].
+- DA FARE: bordo Excel PS riga pranzo giovedì (riga 39 top mancante, riga 31 C/N), questionario qualità percepita MTOE-F-2-7 + KPI MTOE-A-2-1(b). Specifica completa e prossimo passo: [[AVES Corsi/Corsi questionario qualità percepita e KPI 2026-10-30]].
+
+## STATO SESSIONE — [COMPRESSO s46] 2026-10-28 (sessione 45)
 
 ### Ultime modifiche (2026-10-28) — sessione 45 — promemoria lezioni ad app chiusa (commit `b0f7151`, corsi-data `061b46eb`)
 Richiesta: i reminder delle lezioni di domani arrivavano solo aprendo l'app; servono il giorno prima e all'inizio della lezione, ad app chiusa.
