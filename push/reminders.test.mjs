@@ -1,6 +1,7 @@
 // node push/reminders.test.mjs — quali promemoria partono e quando.
 import assert from "node:assert/strict";
 import { promemoria } from "./reminders.mjs";
+import { orari } from "./clock.mjs";
 
 const slot = (slot, start, end) => ({ slot, start, end });
 const types = [{ id: "b1", schedule: {
@@ -36,4 +37,12 @@ assert.equal(at(30, 9, 20).a.title, "Lezione alle 09:30");
 assert.deepEqual(at(29, 17, 55).a.body, "09:30-10:30 53.1 Surveillance · 3° BTC · aula 3");
 // fuori orario: niente
 assert.deepEqual(at(29, 7, 0), {});
+// sveglia: 10 min prima di ogni slot + 17:55, solo orari futuri entro la durata massima del job
+const hhmm = (d, h, m) => orari(types, new Date(2026, 9, d, h, m)).map((t) => t.toTimeString().slice(0, 5));
+assert.deepEqual(hhmm(29, 6, 7), ["08:50", "10:00", "11:10"]);
+assert.deepEqual(hhmm(29, 11, 10), ["12:20", "14:10", "15:20"]);
+assert.deepEqual(hhmm(29, 15, 23), ["17:55"]);
+assert.deepEqual(hhmm(30, 6, 7), ["08:10", "09:20", "10:40"]);
+assert.deepEqual(hhmm(31, 6, 7), []);
+assert.deepEqual(hhmm(25, 15, 23), ["17:55"]);
 console.log("reminders ok");

@@ -1,4 +1,4 @@
-// Promemoria lezioni ad app chiusa: lo esegue l'Action .github/workflows/reminders.yml di corsi-data (cron, ora di Roma).
+// Promemoria lezioni ad app chiusa: lo esegue l'Action .github/workflows/reminders.yml di corsi-data, lanciata all'orario giusto da clock.mjs.
 // Dalle 17 in poi: a ogni istruttore le sue lezioni di domani. Prima delle 17: a chi ha una lezione che inizia nello slot più vicino a ora.
 // Uso: node push/reminders.mjs <cartella checkout corsi-data>   (env TZ=Europe/Rome, VAPID_PUBLIC, VAPID_PRIVATE, DRY=true per non inviare)
 import { readFileSync } from "node:fs";
@@ -44,6 +44,9 @@ export function blocchi(lessons, courses, types, day) {
 
 const dettagli = (b) => `${b.label} · ${[...b.corsi].join(", ")}${b.aule.size ? ` · aula ${[...b.aule].join("/")}` : ""}`;
 
+/** Orari "HH:MM" di inizio slot del giorno, unione di tutti i tipi corso (venerdì ha i suoi). Usato anche da clock.mjs. */
+export const inizi = (types, day) => [...new Set(types.flatMap((t) => (day.getDay() === 5 ? t.schedule?.friday : t.schedule?.mondayThursday) || []).map((s) => s.start))];
+
 /** Map uid → payload push da mandare adesso. */
 export function promemoria(lessons, courses, types, now) {
   const domani = now.getHours() >= 17, day = new Date(now);
@@ -53,10 +56,9 @@ export function promemoria(lessons, courses, types, now) {
     for (const [uid, bl] of per) out.set(uid, { title: "Lezioni di domani", body: bl.map((b) => `${b.start}-${b.end} ${dettagli(b)}`).join("\n"), tag: `domani-${ymd(day)}` });
     return out;
   }
-  // ponytail: slot del giorno più vicino a ora (slot distanti ≥ 70 min), così ogni run copre un solo slot anche col cron in ritardo fino a ~35 min
+  // ponytail: slot del giorno più vicino a ora (slot distanti ≥ 70 min), così ogni run copre un solo slot anche se parte qualche minuto dopo
   const nowMin = now.getHours() * 60 + now.getMinutes();
-  const starts = [...new Set(types.flatMap((t) => (day.getDay() === 5 ? t.schedule?.friday : t.schedule?.mondayThursday) || []).map((s) => s.start))];
-  const target = starts.sort((a, b) => Math.abs(min(a) - nowMin) - Math.abs(min(b) - nowMin))[0];
+  const target = inizi(types, day).sort((a, b) => Math.abs(min(a) - nowMin) - Math.abs(min(b) - nowMin))[0];
   if (!target || Math.abs(min(target) - nowMin) > 35) return out;
   for (const [uid, bl] of per) {
     const b = bl.filter((x) => x.start === target);
