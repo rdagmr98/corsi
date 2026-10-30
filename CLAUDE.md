@@ -82,7 +82,7 @@ GitHub Actions (`.github/workflows/deploy.yml`) deploya automaticamente su push 
   - Promemoria: arrivano a -30 e -10 min, uno solo per ogni blocco di ore consecutive.
   - KPI: il periodo filtra per data di compilazione.
   - Vault: [[AVES Corsi/Corsi sveglia promemoria GitHub 2026-10-30]].
-- PROSSIMO PASSO: verificare il 30/10 la run `promemoria` (orari 08:30/08:50... nel log) e i push ricevuti. Poi ci sono i seguiti facoltativi del KPI (campi testuali MTOE-A-2-1, export).
+- PROSSIMO PASSO: verificare (dopo le 08:20 del 30/10) i run `promemoria`/`reminders` e i push ricevuti. Simulazione locale fatta, comandi e risultato atteso in [[AVES Corsi/Corsi sveglia promemoria GitHub 2026-10-30]] sezione "Verifica 30/10". Poi ci sono i seguiti facoltativi del KPI (campi testuali MTOE-A-2-1, export).
 
 ## STATO SESSIONE — [COMPRESSO s46] 2026-10-28 (sessione 45)
 
