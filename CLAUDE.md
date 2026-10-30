@@ -69,7 +69,13 @@ GitHub Actions (`.github/workflows/deploy.yml`) deploya automaticamente su push 
 
 ---
 
-## STATO SESSIONE — aggiornato 2026-10-30 (sessione 47)
+## STATO SESSIONE — aggiornato 2026-10-30 (sessione 49)
+
+### Ultime modifiche (2026-10-30) — sessione 49 — redesign vista mobile istruttore/frequentatore (commit `c65b83f`)
+Richiesta: "non mi piace graficamente la vista da mobile (quindi frequentatori e istruttori), migliorala in stile opus". Solo grafica, calcoli invariati, desktop non toccato.
+- Kit `lib/widgets/mobile_ui.dart` (`MobileShell`, `LessonCard`, `DayHeader`, `Pill`, `CourseSelector`, `EmptyState`, `mobileCard`); token `kTextSoft`/`kLine` in `theme.dart`; accento istruttore `kPrimary`, frequentatore `kWarning`. Nuove schermate mobile: usare questo kit.
+- Riscritte le 2 shell e le 6 schermate mobile (solo il blocco `return`), fix `moduleLabel` sul "Recuperata (M..)" in Presenze.
+- Verifica: analyze 0 errori, test 31/31, build ok; non provato nel browser. Vault: [[AVES Corsi/Corsi redesign mobile istruttore frequentatore 2026-10-30]].
 
 ### Ultime modifiche (2026-10-30) — sessione 47 — reset password da admin e richiesta dal login (commit `302a631`)
 Richiesta: "dai la possibilità agli admin di resettare la password ad un utente che non la ricoprda più. facciamo che anche il singolo utente può mandare richiesta di reset se non la ricorda più".
