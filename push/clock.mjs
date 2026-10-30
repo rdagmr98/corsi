@@ -10,10 +10,10 @@ const API = "https://api.github.com/repos/rdagmr98/corsi-data";
 const FINESTRA = 345 * 60e3;
 const hm = (s) => +s.slice(0, 2) * 60 + +s.slice(3);
 
-/** Orari di oggi ancora da lanciare: 10 min prima di ogni inizio slot (lun-ven) e 17:55 (dom-gio) per le lezioni di domani. */
+/** Orari di oggi ancora da lanciare: 30 e 10 min prima di ogni inizio slot (lun-ven) e 17:55 (dom-gio) per le lezioni di domani. */
 export function orari(types, now) {
   const d = now.getDay();
-  const min = [...(d >= 1 && d <= 5 ? inizi(types, now).map((s) => hm(s) - 10) : []), ...(d <= 4 ? [17 * 60 + 55] : [])];
+  const min = [...(d >= 1 && d <= 5 ? inizi(types, now).flatMap((s) => [hm(s) - 30, hm(s) - 10]) : []), ...(d <= 4 ? [17 * 60 + 55] : [])];
   return [...new Set(min)].sort((a, b) => a - b)
     .map((m) => { const t = new Date(now); t.setHours(0, m, 0, 0); return t; })
     .filter((t) => t > now && t - now < FINESTRA);

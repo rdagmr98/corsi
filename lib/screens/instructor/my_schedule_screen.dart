@@ -228,8 +228,8 @@ class _InstructorScheduleScreenState extends ConsumerState<InstructorScheduleScr
                         ),
                         child: ListTile(
                           leading: Container(
-                            width: 48,
-                            height: 40,
+                            width: 52,
+                            height: slotTime == null ? 40 : 50,
                             decoration: BoxDecoration(
                               color: color.withOpacity(0.15),
                               borderRadius: BorderRadius.circular(8),
@@ -241,8 +241,9 @@ class _InstructorScheduleScreenState extends ConsumerState<InstructorScheduleScr
                                 : Column(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      Text(slotTime.start,
-                                          style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12)),
+                                      Text('${l.timeSlot}ª ora',
+                                          style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 11)),
+                                      Text(slotTime.start, style: TextStyle(color: color, fontSize: 10)),
                                       Text(slotTime.end, style: TextStyle(color: color, fontSize: 10)),
                                     ],
                                   ),

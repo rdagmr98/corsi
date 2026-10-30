@@ -18,31 +18,31 @@ const lessons = [
 ];
 const at = (d, h, m) => Object.fromEntries(promemoria(lessons, courses, types, new Date(2026, 9, d, h, m)));
 
-// giorno prima, 17:55 di mercoledì
+// giorno prima, 17:55 di mercoledì: ora e orario, blocchi per materia
 assert.deepEqual(at(28, 17, 55), {
-  a: { title: "Lezioni di domani", tag: "domani-2026-10-29", body: "09:00-13:30 53.1 Surveillance · 3° BTC, VFI · aula 3\n14:20-15:20 53.1 Surveillance · 3° BTC, VFI · aula 3\n15:30-16:30 7.3 (pratica) · 3° BTC" },
-  b: { title: "Lezioni di domani", tag: "domani-2026-10-29", body: "15:30-16:30 7.3 (pratica) · 3° BTC" },
+  a: { title: "Lezioni di domani", tag: "domani-2026-10-29", body: "1ª-4ª ora 09:00-13:30 53.1 Surveillance · 3° BTC, VFI · aula 3\n5ª ora 14:20-15:20 53.1 Surveillance · 3° BTC, VFI · aula 3\n6ª ora 15:30-16:30 7.3 (pratica) · 3° BTC" },
+  b: { title: "Lezioni di domani", tag: "domani-2026-10-29", body: "6ª ora 15:30-16:30 7.3 (pratica) · 3° BTC" },
 });
-// inizio lezione: 10 min prima, anche col cron in ritardo
-assert.equal(at(29, 8, 50).a.body, "53.1 Surveillance · 3° BTC, VFI · aula 3 (fino alle 13:30)");
-assert.deepEqual(Object.keys(at(29, 9, 25)), ["a"]);
-// lezione che continua: nessun nuovo push
+// inizio lezione: 30 e 10 min prima (tag distinti), tollerati pochi minuti di ritardo
+assert.deepEqual(at(29, 8, 30).a, { title: "1ª-4ª ora alle 09:00", body: "09:00-13:30 53.1 Surveillance · 3° BTC, VFI · aula 3", tag: "lezione-2026-10-29-09:00-30" });
+assert.equal(at(29, 8, 50).a.tag, "lezione-2026-10-29-09:00-10");
+assert.deepEqual(Object.keys(at(29, 9, 3)), ["a"]);
+// ore consecutive: solo la prima, anche se cambia materia
 assert.deepEqual(at(29, 10, 0), {});
-// dopo pranzo e cambio materia: nuovo inizio
-assert.equal(at(29, 14, 10).a.title, "Lezione alle 14:20");
-assert.deepEqual(Object.keys(at(29, 15, 20)).sort(), ["a", "b"]);
+assert.deepEqual(at(29, 13, 50).a, { title: "5ª-6ª ora alle 14:20", body: "14:20-16:30 53.1 Surveillance / 7.3 (pratica) · 3° BTC, VFI · aula 3", tag: "lezione-2026-10-29-14:20-30" });
+assert.deepEqual(Object.keys(at(29, 15, 20)), ["b"]);
 // venerdì: orari del venerdì, validate/archiviate escluse
 assert.deepEqual(at(30, 8, 10), {});
-assert.equal(at(30, 9, 20).a.title, "Lezione alle 09:30");
-assert.deepEqual(at(29, 17, 55).a.body, "09:30-10:30 53.1 Surveillance · 3° BTC · aula 3");
+assert.equal(at(30, 9, 20).a.title, "2ª ora alle 09:30");
+assert.deepEqual(at(29, 17, 55).a.body, "2ª ora 09:30-10:30 53.1 Surveillance · 3° BTC · aula 3");
 // fuori orario: niente
 assert.deepEqual(at(29, 7, 0), {});
-// sveglia: 10 min prima di ogni slot + 17:55, solo orari futuri entro la durata massima del job
+// sveglia: 30 e 10 min prima di ogni slot + 17:55, solo orari futuri entro la durata massima del job
 const hhmm = (d, h, m) => orari(types, new Date(2026, 9, d, h, m)).map((t) => t.toTimeString().slice(0, 5));
-assert.deepEqual(hhmm(29, 6, 7), ["08:50", "10:00", "11:10"]);
-assert.deepEqual(hhmm(29, 11, 10), ["12:20", "14:10", "15:20"]);
+assert.deepEqual(hhmm(29, 6, 7), ["08:30", "08:50", "09:40", "10:00", "10:50", "11:10"]);
+assert.deepEqual(hhmm(29, 11, 10), ["12:00", "12:20", "13:50", "14:10", "15:00", "15:20"]);
 assert.deepEqual(hhmm(29, 15, 23), ["17:55"]);
-assert.deepEqual(hhmm(30, 6, 7), ["08:10", "09:20", "10:40"]);
+assert.deepEqual(hhmm(30, 6, 7), ["07:50", "08:10", "09:00", "09:20", "10:20", "10:40"]);
 assert.deepEqual(hhmm(31, 6, 7), []);
 assert.deepEqual(hhmm(25, 15, 23), ["17:55"]);
 console.log("reminders ok");

@@ -16,8 +16,8 @@ Color _bandColor(double v) => switch (iqBand(v)) {
     };
 
 /// Questionari qualità percepita (MTOE-F-2-7) per modulo: apertura/chiusura,
-/// IQ MTOE-A-2-1 (b) e analisi delle risposte. Con periodo impostato mostra
-/// solo i moduli il cui questionario è stato aperto nel periodo (semestre).
+/// IQ MTOE-A-2-1 (b) e analisi delle risposte. Con periodo impostato (semestre)
+/// conta solo i questionari compilati nel periodo e mostra solo quei moduli.
 class QuestionnaireKpiCard extends StatefulWidget {
   final Course course;
   final List<ModuleInfo> modules;
@@ -41,11 +41,10 @@ class _QuestionnaireKpiCardState extends State<QuestionnaireKpiCard> {
   final _fmt = DateFormat('dd/MM/yyyy');
   int? _busy;
 
-  bool _inPeriod(QSession? s) {
-    if (widget.from == null && widget.to == null) return true;
-    if (s == null) return false;
-    final d = s.openedAt;
-    final f = widget.from, t = widget.to;
+  bool get _period => widget.from != null || widget.to != null;
+
+  bool _inPeriod(QResponse r) {
+    final d = r.date, f = widget.from, t = widget.to;
     if (f != null && d.isBefore(DateTime(f.year, f.month, f.day))) return false;
     if (t != null && d.isAfter(DateTime(t.year, t.month, t.day))) return false;
     return true;
@@ -87,11 +86,12 @@ class _QuestionnaireKpiCardState extends State<QuestionnaireKpiCard> {
   @override
   Widget build(BuildContext context) {
     final total = widget.course.attendeeIds.length;
-    final rows = [
-      for (final m in widget.modules)
-        if (_inPeriod(_svc.session(widget.course.id, m.number)))
-          (m, _svc.session(widget.course.id, m.number)),
-    ];
+    final rows = <(ModuleInfo, QSession?, List<QResponse>)>[];
+    for (final m in widget.modules) {
+      final s = _svc.session(widget.course.id, m.number);
+      final rs = [...?s?.responses.where(_inPeriod)];
+      if (!_period || rs.isNotEmpty) rows.add((m, s, rs));
+    }
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
@@ -107,7 +107,9 @@ class _QuestionnaireKpiCardState extends State<QuestionnaireKpiCard> {
               style: TextStyle(
                   color: kText, fontWeight: FontWeight.w600, fontSize: 15)),
           const SizedBox(height: 4),
-          const Text(
+          Text(
+            '${_period ? 'Periodo impostato: solo i questionari compilati nel periodo '
+                '(per aprirne uno nuovo togli il periodo). ' : ''}'
             'Apri il questionario a fine modulo: i frequentatori ricevono una '
             'notifica e lo compilano una sola volta, anonimi o con il nome. '
             'Indice = totale/35; IQ = Σ indici / n. ≤1,80 NON ACCETTABILE, '
@@ -116,9 +118,9 @@ class _QuestionnaireKpiCardState extends State<QuestionnaireKpiCard> {
           ),
           const SizedBox(height: 12),
           if (rows.isEmpty)
-            const Text('Nessun questionario aperto nel periodo',
+            const Text('Nessun questionario compilato nel periodo',
                 style: TextStyle(color: kTextDim, fontSize: 12)),
-          for (final (m, s) in rows)
+          for (final (m, s, rs) in rows)
             Padding(
               padding: const EdgeInsets.only(bottom: 6),
               child: Row(children: [
@@ -145,29 +147,29 @@ class _QuestionnaireKpiCardState extends State<QuestionnaireKpiCard> {
                 ),
                 SizedBox(
                   width: 60,
-                  child: Text(s == null ? '' : '${s.responses.length}/$total',
+                  child: Text(s == null ? '' : '${rs.length}/$total',
                       style: const TextStyle(color: kText, fontSize: 12)),
                 ),
                 SizedBox(
                   width: 150,
-                  child: s?.iq == null
+                  child: rs.isEmpty
                       ? const SizedBox()
-                      : Text('IQ ${_n2(s!.iq!)} ${iqBand(s.iq!)}',
+                      : Text('IQ ${_n2(iqOf(rs)!)} ${iqBand(iqOf(rs)!)}',
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                              color: _bandColor(s.iq!),
+                              color: _bandColor(iqOf(rs)!),
                               fontSize: 12,
                               fontWeight: FontWeight.w600)),
                 ),
                 SizedBox(
                   width: 40,
-                  child: s == null || s.responses.isEmpty
+                  child: rs.isEmpty
                       ? null
                       : IconButton(
                           tooltip: 'Analisi risposte',
                           icon: const Icon(Icons.analytics_outlined,
                               size: 18, color: kPrimary),
-                          onPressed: () => _showAnalysis(m, s),
+                          onPressed: () => _showAnalysis(m, rs),
                         ),
                 ),
                 SizedBox(
@@ -192,22 +194,22 @@ class _QuestionnaireKpiCardState extends State<QuestionnaireKpiCard> {
     );
   }
 
-  void _showAnalysis(ModuleInfo m, QSession s) {
-    final n = s.responses.length;
+  void _showAnalysis(ModuleInfo m, List<QResponse> rs) {
+    final n = rs.length;
     final users = UserService();
     final means = [
       for (var i = 0; i < qItems.length; i++)
-        s.responses.map((r) => r.answers[i]).reduce((a, b) => a + b) / n
+        rs.map((r) => r.answers[i]).reduce((a, b) => a + b) / n
     ];
     final weak = [
       for (var i = 0; i < qItems.length; i++)
         if (iqBand(means[i]) == 'NON ACCETTABILE') i
     ];
-    final dates = s.responses.map((r) => r.date).toList()..sort();
-    final named = s.responses.where((r) => r.attendeeId != null).length;
-    final sugg = s.responses.where((r) => r.suggestions.isNotEmpty).toList()
+    final dates = rs.map((r) => r.date).toList()..sort();
+    final named = rs.where((r) => r.attendeeId != null).length;
+    final sugg = rs.where((r) => r.suggestions.isNotEmpty).toList()
       ..sort((a, b) => a.date.compareTo(b.date));
-    final iq = s.iq!;
+    final iq = iqOf(rs)!;
 
     Widget h(String t) => Padding(
           padding: const EdgeInsets.fromLTRB(0, 16, 0, 6),
@@ -266,9 +268,13 @@ class _QuestionnaireKpiCardState extends State<QuestionnaireKpiCard> {
             kv('Questionari',
                 '$n su ${widget.course.attendeeIds.length} frequentatori '
                     '($named nominativi, ${n - named} anonimi)'),
+            if (_period)
+              kv('Periodo',
+                  '${widget.from == null ? '…' : _fmt.format(widget.from!)} → '
+                      '${widget.to == null ? '…' : _fmt.format(widget.to!)}'),
             kv('Compilati',
                 '${_fmt.format(dates.first)} → ${_fmt.format(dates.last)}'),
-            kv('Somma indici', _n2(s.responses.fold(0.0, (a, r) => a + r.index))),
+            kv('Somma indici', _n2(rs.fold(0.0, (a, r) => a + r.index))),
             kv('IQ', _n2(iq), _bandColor(iq)),
             kv('Valutazione', iqBand(iq), _bandColor(iq)),
             h('Voci critiche (media ≤ 1,80)'),
@@ -294,7 +300,7 @@ class _QuestionnaireKpiCardState extends State<QuestionnaireKpiCard> {
                 ]),
               ),
               for (final (label, v) in qItems[i].opts)
-                bar(label, s.responses.where((r) => r.answers[i] == v).length),
+                bar(label, rs.where((r) => r.answers[i] == v).length),
             ],
             h('Servizi (senza punteggio)'),
             for (var k = 0; k < qServices.length; k++) ...[
@@ -305,9 +311,9 @@ class _QuestionnaireKpiCardState extends State<QuestionnaireKpiCard> {
               ),
               for (var v = 0; v < qServiceScale.length; v++)
                 bar(qServiceScale[v],
-                    s.responses.where((r) => r.services[k] == v).length),
+                    rs.where((r) => r.services[k] == v).length),
               bar('Non risposto',
-                  s.responses.where((r) => r.services[k] == null).length),
+                  rs.where((r) => r.services[k] == null).length),
             ],
             h('Suggerimenti (${sugg.length})'),
             if (sugg.isEmpty)

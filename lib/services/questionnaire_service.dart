@@ -222,12 +222,13 @@ class QSession {
             QResponse.fromJson(Map<String, dynamic>.from(r as Map))
         ];
 
-  /// IQ del modulo = Σ indici / n questionari.
-  double? get iq => responses.isEmpty
-      ? null
-      : responses.map((r) => r.index).reduce((a, b) => a + b) /
-          responses.length;
+  double? get iq => iqOf(responses);
 }
+
+/// IQ = Σ indici / n questionari.
+double? iqOf(List<QResponse> rs) => rs.isEmpty
+    ? null
+    : rs.map((r) => r.index).reduce((a, b) => a + b) / rs.length;
 
 /// Fascia MTOE-A-2-1 (b) sull'IQ arrotondato a 2 decimali.
 String iqBand(double iq) {
