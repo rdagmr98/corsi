@@ -77,6 +77,7 @@ Richiesta: "dai la possibilità agli admin di resettare la password ad un utente
 - Admin (`users_tab.dart`): password temporanea generata e mostrata una volta, da comunicare di persona, nessuna email. Cambio obbligatorio al primo accesso (`change_password_dialog.dart`).
 - Limite noto: il gate è un dialog al login, si aggira cambiando URL a mano durante il dialog (il router non ha `refreshListenable`).
 - Verifica: `flutter test` 31/31, build web e deploy ok. Flusso non provato nel browser: da provare in produzione con un utente di prova. Vault: [[AVES Corsi/Reset password admin e richiesta utente 2026-10-30]].
+- `2c65d48`: "Password dimenticata?" anche nel dialog Cambia password a login effettuato (e nella versione forzata), stessa richiesta + notifica admin del login, conferma inline. Non provato nel browser.
 
 ### Ultime modifiche (2026-10-30) — sessione 46
 - `e69314b` + corsi-data: promemoria inizio lezione affidabili. Il cron di GitHub saltava o ritardava, ora c'è una sveglia nel repo pubblico (`.github/workflows/promemoria.yml` + `push/clock.mjs`) che dorme fino all'orario e lancia `reminders.yml` su corsi-data via `repository_dispatch`. **Notifiche solo con GitHub, mai Cloudflare** (decisione utente). Vault: [[AVES Corsi/Corsi sveglia promemoria GitHub 2026-10-30]].
