@@ -71,11 +71,12 @@ GitHub Actions (`.github/workflows/deploy.yml`) deploya automaticamente su push 
 
 ## STATO SESSIONE — aggiornato 2026-10-30 (sessione 49)
 
-### Ultime modifiche (2026-10-30) — sessione 49 — redesign vista mobile istruttore/frequentatore (commit `c65b83f`)
-Richiesta: "non mi piace graficamente la vista da mobile (quindi frequentatori e istruttori), migliorala in stile opus". Solo grafica, calcoli invariati, desktop non toccato.
-- Kit `lib/widgets/mobile_ui.dart` (`MobileShell`, `LessonCard`, `DayHeader`, `Pill`, `CourseSelector`, `EmptyState`, `mobileCard`); token `kTextSoft`/`kLine` in `theme.dart`; accento istruttore `kPrimary`, frequentatore `kWarning`. Nuove schermate mobile: usare questo kit.
-- Riscritte le 2 shell e le 6 schermate mobile (solo il blocco `return`), fix `moduleLabel` sul "Recuperata (M..)" in Presenze.
-- Verifica: analyze 0 errori, test 31/31, build ok; non provato nel browser. Vault: [[AVES Corsi/Corsi redesign mobile istruttore frequentatore 2026-10-30]].
+### Ultime modifiche (2026-10-30) — sessione 49 — vista mobile istruttore/frequentatore riorganizzata (commit `0aeca9f`)
+Il redesign completo `c65b83f` è stato bocciato dall'utente ("molto meglio prima, ora non si capisce nulla") e revertito (`815de27`). Per questo utente "migliorare la grafica" vuol dire riorganizzare, mantenendo lo stile esistente.
+- `lib/widgets/collapsible_day.dart` (`CollapsibleDay`): nei calendari `my_schedule_screen.dart` e `attendee_schedule_screen.dart` ogni giorno è una riga con data, ore, moduli e icone note/validate, che si apre al tap. All'avvio è aperto solo il primo giorno da oggi in poi.
+- `my_hours_screen.dart`: le 2 condizioni di currency (6h/anno, 35h/2 anni) affiancate in `IntrinsicHeight`+`Row`, come in AVES Tecnici. Il numero delle ore sta in un `FittedBox`, perché a mezza larghezza sforava.
+- Card frequentatore con l'orario dello slot; `moduleLabel` sul "Recuperata (M..)" in Presenze.
+- Verifica: analyze senza errori/warning nei file toccati, test 31/31, test di layout a 360 px senza overflow, build ok. Non provato nel browser. Vault: [[AVES Corsi/Corsi redesign mobile istruttore frequentatore 2026-10-30]].
 
 ### Ultime modifiche (2026-10-30) — sessione 47 — reset password da admin e richiesta dal login (commit `302a631`)
 Richiesta: "dai la possibilità agli admin di resettare la password ad un utente che non la ricoprda più. facciamo che anche il singolo utente può mandare richiesta di reset se non la ricorda più".
