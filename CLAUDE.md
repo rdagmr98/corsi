@@ -61,6 +61,8 @@ GitHub Actions (`.github/workflows/deploy.yml`) deploya automaticamente su push 
 | `lib/screens/instructor/home_screen.dart` | home istruttore: currency GO/NO GO, oggi, prossime lezioni |
 | `lib/screens/instructor/history_screens.dart` | storico ore svolte e storico/aggiunta aggiornamenti |
 | `lib/screens/attendee/attendee_home_screen.dart` | home frequentatore: presenze, voti, oggi, prossime lezioni |
+| `lib/app.dart` | rotte go_router, redirect per ruolo, dettagli mobile come sotto-rotte |
+| `lib/utils/web_back.dart` | `webBack`: indietro dai dettagli via cronologia del browser |
 
 ## Recuperi (recovery records)
 - ID sintetico: `recovery:{courseId8}:{attendeeId8}:YYYY-MM-DD:m{modulo}` (+ `:{tipo}` se tipizzato)
@@ -71,7 +73,14 @@ GitHub Actions (`.github/workflows/deploy.yml`) deploya automaticamente su push 
 
 ---
 
-## STATO SESSIONE — aggiornato 2026-10-31 (sessione 50)
+## STATO SESSIONE — aggiornato 2026-10-31 (sessione 51)
+
+### Ultime modifiche (2026-10-31) — sessione 51 — card nello stile dell'app, indietro, numero dell'ora (commit `230b2db`)
+Richiesta: "quel gradient sulle card [...] falle in stile dell'app [...] non funziona il tasto indietro (esce direttamente dall'app). oltre all'orario voglio anche il numero ordinale dell'ora!!! il testo deve essere sempre visibile [...] mostra compatto solo con poche info e al tap si apre e mostra i dettagli".
+- `lib/widgets/status_card.dart`: Card kCard, valore e badge GO/NO GO, footer. Niente gradient né anello.
+- Indietro: dettagli come rotte go_router annidate in `lib/app.dart`, aperte con `context.go`. Freccia e fine questionario con `webBack` (`lib/utils/web_back.dart`). `QuestionnaireScreen` riceve `onClose`, perché `dart:html` non compila sotto `flutter test`. **Nuovi dettagli mobile: sempre rotta, mai `Navigator.push`.**
+- `lib/widgets/lesson_tile.dart` e `attendee_attendance_screen.dart`: righe `ExpansionTile` con `Nª ora`, dettagli al tap. Testi senza `maxLines`/ellipsis.
+- Verifica: analyze senza errori, test 33/33, deploy ok. Indietro provato in Edge headless su build di prova, senza login. Schermate vere con dati reali non provate. `_openPlanner` in `lib/screens/master/courses_tab.dart` resta con `Navigator.push`. Vault: [[AVES Corsi/Corsi redesign mobile istruttore frequentatore 2026-10-30]].
 
 ### Ultime modifiche (2026-10-31) — sessione 50 — home unica mobile istruttore e frequentatore, modello AVES Tecnici
 Richiesta: "in una schermata vedo i due stati di currency, se premo su uno accedo allo storico di tutte le ore svolte (suddivise per corso, collassate, magari raggrupparle anche per modulo) e sull'altro allo storico degli aggiornamenti e per aggiungere nuove registrazioni, poi sotto la registrazione presenze e validazione [...] calendario con le prossime lezioni [...] poi cerca di pulire/riorganizzare anche la visual frequentatore".
