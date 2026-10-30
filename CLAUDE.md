@@ -69,7 +69,14 @@ GitHub Actions (`.github/workflows/deploy.yml`) deploya automaticamente su push 
 
 ---
 
-## STATO SESSIONE — aggiornato 2026-10-30 (sessione 46)
+## STATO SESSIONE — aggiornato 2026-10-30 (sessione 47)
+
+### Ultime modifiche (2026-10-30) — sessione 47 — reset password da admin e richiesta dal login (commit `302a631`)
+Richiesta: "dai la possibilità agli admin di resettare la password ad un utente che non la ricoprda più. facciamo che anche il singolo utente può mandare richiesta di reset se non la ricorda più".
+- Login, "Password dimenticata?": `UserService.requestPasswordReset` marca la riga con `password_reset_requested_at`; la notifica agli admin parte da `login_screen.dart`, perché `notification_service` in `user_service` porta `dart:html` nei test.
+- Admin (`users_tab.dart`): password temporanea generata e mostrata una volta, da comunicare di persona, nessuna email. Cambio obbligatorio al primo accesso (`change_password_dialog.dart`).
+- Limite noto: il gate è un dialog al login, si aggira cambiando URL a mano durante il dialog (il router non ha `refreshListenable`).
+- Verifica: `flutter test` 31/31, build web e deploy ok. Flusso non provato nel browser: da provare in produzione con un utente di prova. Vault: [[AVES Corsi/Reset password admin e richiesta utente 2026-10-30]].
 
 ### Ultime modifiche (2026-10-30) — sessione 46
 - `e69314b` + corsi-data: promemoria inizio lezione affidabili. Il cron di GitHub saltava o ritardava, ora c'è una sveglia nel repo pubblico (`.github/workflows/promemoria.yml` + `push/clock.mjs`) che dorme fino all'orario e lancia `reminders.yml` su corsi-data via `repository_dispatch`. **Notifiche solo con GitHub, mai Cloudflare** (decisione utente). Vault: [[AVES Corsi/Corsi sveglia promemoria GitHub 2026-10-30]].
