@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/auth_provider.dart';
 import '../services/gh_db_service.dart';
+import '../services/notification_service.dart';
+import '../services/user_service.dart';
 import '../theme.dart';
 
 class ChangePasswordDialog extends ConsumerStatefulWidget {
@@ -23,12 +25,27 @@ class _ChangePasswordDialogState extends ConsumerState<ChangePasswordDialog> {
   bool _obscureNew  = true;
   bool _obscureConf = true;
   bool _loading = false;
+  bool _resetRequested = false;
   String? _error;
 
   @override
   void dispose() {
     _oldCtrl.dispose(); _newCtrl.dispose(); _confCtrl.dispose();
     super.dispose();
+  }
+
+  /// Stessa richiesta del login, con l'utente già noto.
+  Future<void> _requestReset() async {
+    final user = ref.read(authProvider).currentUser;
+    if (user == null) return;
+    setState(() { _loading = true; _error = null; });
+    try {
+      final name = await UserService().requestPasswordReset(user.username ?? '');
+      if (name != null) await NotificationService().notifyPasswordResetRequested(name);
+      if (mounted) setState(() { _loading = false; _resetRequested = true; });
+    } catch (_) {
+      if (mounted) setState(() { _error = 'Impossibile contattare il server. Riprova.'; _loading = false; });
+    }
   }
 
   Future<void> _save() async {
@@ -87,6 +104,21 @@ class _ChangePasswordDialogState extends ConsumerState<ChangePasswordDialog> {
           children: [
             _pwdField(widget.forced ? 'Password temporanea' : 'Password attuale', _oldCtrl, _obscureOld,
                 () => setState(() => _obscureOld = !_obscureOld)),
+            Align(
+              alignment: Alignment.centerRight,
+              child: _resetRequested
+                  ? const Padding(
+                      padding: EdgeInsets.only(top: 8),
+                      child: Text(
+                        'Richiesta inviata: gli amministratori ti daranno una password temporanea.',
+                        style: TextStyle(color: kTextDim, fontSize: 12),
+                      ),
+                    )
+                  : TextButton(
+                      onPressed: _loading ? null : _requestReset,
+                      child: const Text('Password dimenticata?', style: TextStyle(fontSize: 12)),
+                    ),
+            ),
             const SizedBox(height: 12),
             _pwdField('Nuova password', _newCtrl, _obscureNew,
                 () => setState(() => _obscureNew = !_obscureNew)),
