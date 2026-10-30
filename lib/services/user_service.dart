@@ -1,5 +1,6 @@
 import '../models/user_models.dart';
 import 'gh_db_service.dart';
+import 'password_reset.dart';
 
 class UserService {
   final _db = GhDbService();
@@ -83,15 +84,34 @@ class UserService {
     await _db.saveUsers(users);
   }
 
-  Future<void> updatePassword(String userId, String newPassword) async {
+  Future<void> updatePassword(String userId, String newPassword, {bool mustChange = false}) =>
+      _db.updateUserPassword(userId, GhDbService.hashPassword(newPassword), mustChange: mustChange);
+
+  /// Dal login: marca la riga e avvisa gli admin. Non dice se l'utente esiste.
+  /// Restituisce il nome del richiedente da notificare, null se non c'è nulla da fare.
+  Future<String?> requestPasswordReset(String username) async {
+    await _db.refresh();
+    final users = _db.users.toList();
+    final idx = resetRequestIndex(users, username);
+    if (idx < 0) return null;
+    users[idx] = {...users[idx], 'password_reset_requested_at': DateTime.now().toIso8601String()};
+    await _db.saveUsers(users);
+    return AppUser.fromJson(users[idx]).fullName;
+  }
+
+  /// L'admin imposta [tempPassword], da cambiare al primo accesso.
+  Future<void> resetPassword(String userId, String tempPassword) async {
+    await _db.refresh();
+    await updatePassword(userId, tempPassword, mustChange: true);
+  }
+
+  /// Chiude una richiesta senza toccare la password (chiunque può inviarne una).
+  Future<void> dismissPasswordResetRequest(String userId) async {
+    await _db.refresh();
     final users = _db.users.toList();
     final idx = users.indexWhere((u) => u['id'] == userId);
     if (idx < 0) return;
-    users[idx] = {
-      ...users[idx],
-      'password_hash': GhDbService.hashPassword(newPassword),
-      'updated_at': DateTime.now().toIso8601String(),
-    };
+    users[idx] = {...users[idx]}..remove('password_reset_requested_at');
     await _db.saveUsers(users);
   }
 

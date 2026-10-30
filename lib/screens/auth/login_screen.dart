@@ -5,8 +5,10 @@ import '../../models/course_models.dart';
 import '../../models/user_models.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/course_service.dart';
+import '../../services/notification_service.dart';
 import '../../services/user_service.dart';
 import '../../theme.dart';
+import '../../widgets/change_password_dialog.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -50,7 +52,77 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     _goHome(auth.currentUser!);
   }
 
-  void _goHome(AppUser user) => context.go(user.userRole.home);
+  Future<void> _goHome(AppUser user) async {
+    // Vale anche per la sessione ripristinata: restore e login passano entrambi da qui.
+    if (user.mustChangePassword) {
+      final changed = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const ChangePasswordDialog(forced: true),
+      );
+      if (!mounted) return;
+      if (changed != true) {
+        await ref.read(authProvider).signOut();
+        if (mounted) setState(() => _restoring = false);
+        return;
+      }
+    }
+    context.go(user.userRole.home);
+  }
+
+  Future<void> _forgotPassword() async {
+    final ctrl = TextEditingController(text: _usernameCtrl.text.trim());
+    final send = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: kCard,
+        title: const Text('Password dimenticata', style: TextStyle(color: kText, fontSize: 16)),
+        content: SizedBox(
+          width: 340,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'La richiesta arriva agli amministratori, che ti daranno una password temporanea.',
+                style: TextStyle(color: kTextDim, fontSize: 13),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: ctrl,
+                decoration: const InputDecoration(labelText: 'Username', isDense: true),
+                style: const TextStyle(color: kText),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Annulla', style: TextStyle(color: kTextDim)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (ctrl.text.trim().isNotEmpty) Navigator.pop(ctx, true);
+            },
+            child: const Text('Invia richiesta'),
+          ),
+        ],
+      ),
+    );
+    final username = ctrl.text.trim();
+    ctrl.dispose();
+    if (send != true || !mounted) return;
+    var message = 'Se l\'utente esiste, la richiesta è stata inviata agli amministratori.';
+    try {
+      await ref.read(authProvider).initDb();
+      final name = await _userService.requestPasswordReset(username);
+      if (name != null) await NotificationService().notifyPasswordResetRequested(name);
+    } catch (_) {
+      message = 'Impossibile contattare il server. Riprova.';
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
 
   Future<void> _register() async {
     final nomeCtrl = TextEditingController();
@@ -336,6 +408,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       : const Text('Accedi'),
                 ),
                 const SizedBox(height: 12),
+                TextButton(
+                  onPressed: auth.isLoading ? null : _forgotPassword,
+                  child: const Text(
+                    'Password dimenticata?',
+                    style: TextStyle(color: kTextDim, fontSize: 13),
+                  ),
+                ),
                 TextButton(
                   onPressed: auth.isLoading ? null : _register,
                   child: const Text(

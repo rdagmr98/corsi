@@ -47,6 +47,7 @@ class AppNotification {
     if (type.contains('LESSON_REMINDER')) return Icons.alarm;
     if (type.contains('UPDATE_SUBMITTED')) return Icons.pending_actions;
     if (type.contains('UPDATE_APPROVED')) return Icons.check_circle;
+    if (type.contains('PASSWORD_RESET')) return Icons.lock_reset;
     return Icons.notifications;
   }
 }

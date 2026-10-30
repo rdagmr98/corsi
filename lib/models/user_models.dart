@@ -59,6 +59,10 @@ class AppUser {
   final String? licenza;
   /// Forza armata per PS PERSONALE: `EI` (sinistra) o `CC` (destra). Null = EI.
   final String? forza;
+  // Sola lettura dalla riga: fuori da toJson, così una modifica con dati
+  // vecchi non riapre una richiesta già chiusa.
+  final bool passwordResetRequested;
+  final bool mustChangePassword;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -81,6 +85,8 @@ class AppUser {
     this.titolo,
     this.licenza,
     this.forza,
+    this.passwordResetRequested = false,
+    this.mustChangePassword = false,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -138,6 +144,8 @@ class AppUser {
     titolo: j['titolo'] as String?,
     licenza: j['licenza'] as String?,
     forza: j['forza'] as String?,
+    passwordResetRequested: j['password_reset_requested_at'] != null,
+    mustChangePassword: j['must_change_password'] == true,
     createdAt: DateTime.parse(
       j['created_at'] as String? ?? DateTime.now().toIso8601String(),
     ),
@@ -213,6 +221,8 @@ class AppUser {
     titolo: identical(titolo, _s) ? this.titolo : titolo as String?,
     licenza: identical(licenza, _s) ? this.licenza : licenza as String?,
     forza: identical(forza, _s) ? this.forza : forza as String?,
+    passwordResetRequested: passwordResetRequested,
+    mustChangePassword: mustChangePassword,
     createdAt: createdAt,
     updatedAt: DateTime.now(),
   );

@@ -5,7 +5,11 @@ import '../services/gh_db_service.dart';
 import '../theme.dart';
 
 class ChangePasswordDialog extends ConsumerStatefulWidget {
-  const ChangePasswordDialog({super.key});
+  /// [forced]: password temporanea dell'admin, si esce solo cambiandola o
+  /// dall'account (pop senza `true`).
+  const ChangePasswordDialog({super.key, this.forced = false});
+
+  final bool forced;
 
   @override
   ConsumerState<ChangePasswordDialog> createState() => _ChangePasswordDialogState();
@@ -54,6 +58,10 @@ class _ChangePasswordDialogState extends ConsumerState<ChangePasswordDialog> {
       setState(() => _error = 'Le password non coincidono.');
       return;
     }
+    if (widget.forced && newPwd == _oldCtrl.text) {
+      setState(() => _error = 'Scegli una password diversa da quella temporanea.');
+      return;
+    }
 
     setState(() { _loading = true; _error = null; });
     try {
@@ -66,15 +74,18 @@ class _ChangePasswordDialogState extends ConsumerState<ChangePasswordDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return PopScope(
+      canPop: !widget.forced,
+      child: AlertDialog(
       backgroundColor: kCard,
-      title: const Text('Cambia password', style: TextStyle(color: kText)),
+      title: Text(widget.forced ? 'Scegli una nuova password' : 'Cambia password',
+          style: const TextStyle(color: kText)),
       content: SizedBox(
         width: 320,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _pwdField('Password attuale', _oldCtrl, _obscureOld,
+            _pwdField(widget.forced ? 'Password temporanea' : 'Password attuale', _oldCtrl, _obscureOld,
                 () => setState(() => _obscureOld = !_obscureOld)),
             const SizedBox(height: 12),
             _pwdField('Nuova password', _newCtrl, _obscureNew,
@@ -92,7 +103,7 @@ class _ChangePasswordDialogState extends ConsumerState<ChangePasswordDialog> {
       actions: [
         TextButton(
           onPressed: _loading ? null : () => Navigator.pop(context),
-          child: const Text('Annulla', style: TextStyle(color: kTextDim)),
+          child: Text(widget.forced ? 'Esci' : 'Annulla', style: const TextStyle(color: kTextDim)),
         ),
         ElevatedButton(
           onPressed: _loading ? null : _save,
@@ -102,6 +113,7 @@ class _ChangePasswordDialogState extends ConsumerState<ChangePasswordDialog> {
               : const Text('Salva'),
         ),
       ],
+      ),
     );
   }
 

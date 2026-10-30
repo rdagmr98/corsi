@@ -522,12 +522,17 @@ class GhDbService {
     }
   }
 
-  Future<void> updateUserPassword(String userId, String newHash) async {
+  /// Ogni cambio password chiude la richiesta di reset; [mustChange] obbliga
+  /// a sceglierne una nuova al prossimo accesso (password temporanea dell'admin).
+  Future<void> updateUserPassword(String userId, String newHash,
+      {bool mustChange = false}) async {
     final all = users;
     final idx = all.indexWhere((u) => u['id'] == userId);
     if (idx == -1) throw Exception('Utente non trovato');
     all[idx] = {...all[idx], 'password_hash': newHash,
-      'updated_at': DateTime.now().toUtc().toIso8601String()};
+      'must_change_password': mustChange,
+      'updated_at': DateTime.now().toUtc().toIso8601String()}
+      ..remove('password_reset_requested_at');
     await saveUsers(all);
   }
 }

@@ -4,9 +4,11 @@ import '../../models/reference_models.dart';
 import '../../models/user_models.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/amc_service.dart';
+import '../../services/password_reset.dart';
 import '../../services/reference_service.dart';
 import '../../services/user_service.dart';
 import '../../theme.dart';
+import '../../utils/snackbar.dart';
 
 class UsersTab extends ConsumerStatefulWidget {
   const UsersTab({super.key});
@@ -41,9 +43,79 @@ class _UsersTabState extends ConsumerState<UsersTab> {
     UserRole.attendee => kWarning,
   };
 
-  List<AppUser> get _filtered => _filterRole == null
-      ? _users
-      : _users.where((u) => u.userRole == _filterRole).toList();
+  /// Chi ha chiesto il reset della password sta in cima alla lista.
+  List<AppUser> get _filtered {
+    final list = _filterRole == null
+        ? _users
+        : _users.where((u) => u.userRole == _filterRole).toList();
+    return [
+      ...list.where((u) => u.passwordResetRequested),
+      ...list.where((u) => !u.passwordResetRequested),
+    ];
+  }
+
+  Future<void> _resetPassword(AppUser u) async {
+    final temp = generateTempPassword();
+    final action = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: kCard,
+        title: const Text('Reimposta password', style: TextStyle(color: kText)),
+        content: SizedBox(
+          width: 440,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                u.passwordResetRequested
+                    ? '${u.fullName} ha chiesto il reset della password.'
+                    : 'Reimpostare la password di ${u.fullName}?',
+                style: const TextStyle(color: kText),
+              ),
+              const SizedBox(height: 12),
+              const Text('Password temporanea', style: TextStyle(color: kTextDim, fontSize: 12)),
+              SelectableText(temp,
+                  style: const TextStyle(color: kAccent, fontSize: 22, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 12),
+              const Text(
+                'Annotala e comunicala di persona dopo aver verificato l\'identità: '
+                'al primo accesso dovrà sceglierne una nuova.',
+                style: TextStyle(color: kTextDim, fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Annulla', style: TextStyle(color: kTextDim)),
+          ),
+          if (u.passwordResetRequested)
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, 'dismiss'),
+              child: const Text('Ignora richiesta', style: TextStyle(color: kTextDim)),
+            ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, 'reset'),
+            child: const Text('Reimposta'),
+          ),
+        ],
+      ),
+    );
+    if (action == null) return;
+    try {
+      if (action == 'reset') {
+        await _userService.resetPassword(u.id, temp);
+      } else {
+        await _userService.dismissPasswordResetRequest(u.id);
+      }
+    } catch (e) {
+      showAppError('Operazione non riuscita: $e');
+      return;
+    }
+    if (mounted) _load();
+  }
 
   Future<void> _showUserDialog({AppUser? user}) async {
     final nomeCtrl = TextEditingController(text: user?.nome ?? '');
@@ -407,6 +479,17 @@ class _UsersTabState extends ConsumerState<UsersTab> {
                           padding: EdgeInsets.only(right: 8),
                           child: Text('Disattivo', style: TextStyle(color: kError, fontSize: 11)),
                         ),
+                      if (u.passwordResetRequested)
+                        const Padding(
+                          padding: EdgeInsets.only(right: 4),
+                          child: Text('Reset richiesto', style: TextStyle(color: kWarning, fontSize: 11)),
+                        ),
+                      IconButton(
+                        tooltip: 'Reimposta password',
+                        icon: Icon(Icons.lock_reset,
+                            color: u.passwordResetRequested ? kWarning : kTextDim, size: 20),
+                        onPressed: () => _resetPassword(u),
+                      ),
                       IconButton(
                         icon: const Icon(Icons.edit_outlined, color: kTextDim, size: 20),
                         onPressed: () => _showUserDialog(user: u),

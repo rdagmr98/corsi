@@ -52,6 +52,9 @@ class AuthProvider extends ChangeNotifier {
       if (!_dbInitialized) {
         await _db.init();
         _dbInitialized = true;
+      } else {
+        // La password reimpostata da un admin deve valere anche con il login già aperto.
+        await _db.refresh();
       }
       final user = _auth.login(username, password);
       if (user == null) {
