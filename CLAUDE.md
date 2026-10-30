@@ -76,6 +76,13 @@ GitHub Actions (`.github/workflows/deploy.yml`) deploya automaticamente su push 
 - `308bb6b`: calendario istruttore `T n/tot h` progressivo su tutto il corso (tipo effettivo con estensione), orario dello slot, ordinamento. Vault: [[AVES Corsi/Corsi calendario istruttore ore progressive 2026-10-30]].
 - `3109d4c`: bordi Excel PS sulle righe pranzo, con `LUNCH_FULL_BORDER` in `tools/rederive_ps_blank.py`, template rigenerato e test in `excel_ps_template_test.dart`.
 - `d7826c1`: questionario qualità percepita MTOE-F-2-7 + KPI MTOE-A-2-1(b). File dati `db/questionnaires.json` con scrittura merge (`GhDbService.editQuestionnaires`). Il frequentatore ha banner + form anonimo/nominativo. Direttore/admin hanno la card nel tab KPI (`questionnaire_kpi_card.dart`): apri/chiudi per modulo, IQ, analisi per voce, servizi, suggerimenti. Vault: [[AVES Corsi/Corsi questionario qualità percepita e KPI 2026-10-30]].
+- `18894f2`: le modifiche sono queste.
+  - Deploy: la CI è passata a Flutter 3.38.5 come il locale (con 3.32 il deploy di `d7826c1` era fallito).
+  - Calendario istruttore: ora mostra `Nª ora` insieme all'orario.
+  - Promemoria: arrivano a -30 e -10 min, uno solo per ogni blocco di ore consecutive.
+  - KPI: il periodo filtra per data di compilazione.
+  - Vault: [[AVES Corsi/Corsi sveglia promemoria GitHub 2026-10-30]].
+- PROSSIMO PASSO: verificare il 30/10 la run `promemoria` (orari 08:30/08:50... nel log) e i push ricevuti. Poi ci sono i seguiti facoltativi del KPI (campi testuali MTOE-A-2-1, export).
 
 ## STATO SESSIONE — [COMPRESSO s46] 2026-10-28 (sessione 45)
 
