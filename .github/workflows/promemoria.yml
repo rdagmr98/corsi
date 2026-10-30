@@ -10,7 +10,9 @@ on:
     - cron: '53 9 * * 1-4'
     - cron: '23 14 * * 0-4'
     - cron: '3 15 * * 0-4'
-  workflow_dispatch: # prova: un lancio subito a vuoto (DRY) su corsi-data
+  workflow_dispatch: # prova: un lancio subito a vuoto (DRY) su corsi-data; dry=false avvia la sveglia vera (se il cron salta)
+    inputs:
+      dry: { type: boolean, default: true }
 concurrency: { group: promemoria, cancel-in-progress: false }
 permissions:
   contents: read
@@ -24,5 +26,5 @@ jobs:
       - run: node push/clock.mjs
         env:
           TZ: Europe/Rome
-          DRY: ${{ github.event_name == 'workflow_dispatch' }}
+          DRY: ${{ github.event_name == 'workflow_dispatch' && inputs.dry }}
           GH_TOKEN: ${{ secrets.READ_PAT }}
