@@ -1,0 +1,311 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
+import '../../models/grade_models.dart';
+import '../../providers/auth_provider.dart';
+import '../../services/grade_service.dart';
+import '../../services/notification_service.dart';
+import '../../services/user_service.dart';
+import '../../theme.dart';
+import '../../widgets/instructor_lessons_by_course.dart';
+
+/// Storico insegnamento (dalla card currency della home): lezioni confermate
+/// per corso e modulo, più le ore di insegnamento esterno registrate.
+class TeachingHistoryScreen extends ConsumerStatefulWidget {
+  final String userId;
+  const TeachingHistoryScreen({super.key, required this.userId});
+
+  @override
+  ConsumerState<TeachingHistoryScreen> createState() => _TeachingHistoryScreenState();
+}
+
+class _TeachingHistoryScreenState extends ConsumerState<TeachingHistoryScreen> {
+  final _gradeService = GradeService();
+
+  @override
+  Widget build(BuildContext context) {
+    final lessonH = _gradeService.getConfirmedLessonHoursRollingYear(widget.userId);
+    final manualH = _gradeService.getManualTeachingHoursRollingYear(widget.userId);
+    final external = _gradeService.getUpdatesForInstructor(widget.userId).where((u) => u.isTeaching).toList();
+    return Scaffold(
+      backgroundColor: kBg,
+      appBar: AppBar(backgroundColor: kSurface, title: const Text('Ore di insegnamento')),
+      body: RefreshIndicator(
+        onRefresh: () async {
+          await ref.read(authProvider).reloadDb();
+          setState(() {});
+        },
+        color: kPrimary,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(16),
+          children: [
+            _total(lessonH + manualH, 6, 'negli ultimi 365 giorni',
+                manualH > 0 ? '${_fmt(lessonH)} h a calendario + ${_fmt(manualH)} h esterne' : null,
+                _grace(widget.userId).teach),
+            const SizedBox(height: 16),
+            InstructorLessonsByCourse(instructorId: widget.userId),
+            if (external.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              const Text('Insegnamento esterno', style: TextStyle(color: kText, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 8),
+              for (final u in external.reversed) _updateTile(u),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Storico aggiornamenti (dalla card currency della home) con l'invio di
+/// nuove registrazioni al direttore.
+class UpdatesHistoryScreen extends ConsumerStatefulWidget {
+  final String userId;
+  const UpdatesHistoryScreen({super.key, required this.userId});
+
+  @override
+  ConsumerState<UpdatesHistoryScreen> createState() => _UpdatesHistoryScreenState();
+}
+
+class _UpdatesHistoryScreenState extends ConsumerState<UpdatesHistoryScreen> {
+  final _gradeService = GradeService();
+  final _userService = UserService();
+  final _notifService = NotificationService();
+
+  Future<void> _reload() async {
+    await ref.read(authProvider).reloadDb();
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final profH = _gradeService.getProfessionalUpdateHoursLast2Years(widget.userId);
+    final updates = _gradeService.getUpdatesForInstructor(widget.userId);
+    return Scaffold(
+      backgroundColor: kBg,
+      appBar: AppBar(backgroundColor: kSurface, title: const Text('Aggiornamenti')),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _showAddUpdateDialog,
+        backgroundColor: kPrimary,
+        icon: const Icon(Icons.add),
+        label: const Text('Aggiungi'),
+      ),
+      body: RefreshIndicator(
+        onRefresh: _reload,
+        color: kPrimary,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+          children: [
+            _total(profH, 35, 'di aggiornamento negli ultimi 2 anni', null, _grace(widget.userId).prof),
+            const SizedBox(height: 16),
+            const Text('Registrazioni', style: TextStyle(color: kText, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            if (updates.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(24),
+                child: Text('Nessun record', style: TextStyle(color: kTextDim)),
+              )
+            else
+              for (final u in updates.reversed) _updateTile(u),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showAddUpdateDialog() async {
+    String type = 'professional';
+    final descCtrl = TextEditingController();
+    final hoursCtrl = TextEditingController();
+    DateTime date = DateTime.now();
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialog) => AlertDialog(
+          backgroundColor: kCard,
+          title: const Text('Aggiungi aggiornamento', style: TextStyle(color: kText)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Tipo', style: TextStyle(color: kTextDim, fontSize: 12)),
+              const SizedBox(height: 4),
+              DropdownButtonFormField<String>(
+                value: type,
+                dropdownColor: kSurface,
+                style: const TextStyle(color: kText, fontSize: 13),
+                items: const [
+                  DropdownMenuItem(value: 'professional', child: Text('Aggiornamento professionale')),
+                  DropdownMenuItem(value: 'teaching', child: Text('Insegnamento esterno')),
+                ],
+                onChanged: (v) => setDialog(() => type = v!),
+              ),
+              const SizedBox(height: 12),
+              const Text('Descrizione', style: TextStyle(color: kTextDim, fontSize: 12)),
+              const SizedBox(height: 4),
+              TextField(
+                controller: descCtrl,
+                style: const TextStyle(color: kText, fontSize: 13),
+                decoration: const InputDecoration(
+                  hintText: 'Es. Corso sicurezza volo',
+                  hintStyle: TextStyle(color: kTextDim),
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text('Ore', style: TextStyle(color: kTextDim, fontSize: 12)),
+              const SizedBox(height: 4),
+              TextField(
+                controller: hoursCtrl,
+                keyboardType: TextInputType.number,
+                style: const TextStyle(color: kText, fontSize: 13),
+                decoration: const InputDecoration(hintText: '0', hintStyle: TextStyle(color: kTextDim)),
+              ),
+              const SizedBox(height: 12),
+              const Text('Data', style: TextStyle(color: kTextDim, fontSize: 12)),
+              const SizedBox(height: 4),
+              InkWell(
+                onTap: () async {
+                  final picked = await showDatePicker(
+                    context: ctx,
+                    initialDate: date,
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime.now(),
+                  );
+                  if (picked != null) setDialog(() => date = picked);
+                },
+                child: Text(
+                  DateFormat('dd/MM/yyyy').format(date),
+                  style: const TextStyle(color: kPrimary, fontSize: 13),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annulla', style: TextStyle(color: kTextDim)),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final desc = descCtrl.text.trim();
+                final hours = double.tryParse(hoursCtrl.text.replaceAll(',', '.')) ?? 0;
+                if (desc.isEmpty || hours <= 0) return;
+                Navigator.pop(ctx);
+                await _gradeService.addPendingUpdate(
+                  instructorId: widget.userId,
+                  type: type,
+                  hours: hours,
+                  description: desc,
+                  date: date,
+                );
+                final me = _userService.findById(widget.userId);
+                await _notifService.notifyUpdateSubmitted(
+                  instructorName: me?.fullName ?? widget.userId,
+                  updateDescription: desc,
+                );
+                _reload();
+              },
+              child: const Text('Invia'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+({bool teach, bool prof}) _grace(String userId) {
+  final me = UserService().findById(userId);
+  return me == null ? (teach: false, prof: false) : GradeService().ojtGrace(me);
+}
+
+String _fmt(double h) => h == h.roundToDouble() ? h.toStringAsFixed(0) : h.toStringAsFixed(1);
+
+/// Totale in testa alla pagina: ore fatte sul minimo e barra di avanzamento.
+Widget _total(double hours, double required, String period, String? detail, bool grace) {
+  final ok = hours >= required || grace; // in OJT la currency resta GO
+  final color = ok ? kAccent : kError;
+  return Card(
+    color: kCard,
+    margin: EdgeInsets.zero,
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(12),
+      side: BorderSide(color: color.withOpacity(0.3)),
+    ),
+    child: Padding(
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text.rich(
+            TextSpan(children: [
+              TextSpan(
+                  text: '${_fmt(hours)} h',
+                  style: TextStyle(color: color, fontSize: 22, fontWeight: FontWeight.bold)),
+              TextSpan(text: ' su ${_fmt(required)} h $period'),
+            ]),
+            style: const TextStyle(color: kText, fontSize: 13),
+          ),
+          if (detail != null)
+            Text(detail, style: const TextStyle(color: kTextDim, fontSize: 11)),
+          const SizedBox(height: 8),
+          LinearProgressIndicator(
+            value: (hours / required).clamp(0.0, 1.0),
+            backgroundColor: kSurface,
+            color: color,
+            minHeight: 6,
+            borderRadius: BorderRadius.circular(3),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+Widget _updateTile(InstructorUpdate u) {
+  final IconData icon;
+  final Color iconColor;
+  if (u.isCurrencyLoss) {
+    icon = Icons.event_busy;
+    iconColor = kError;
+  } else if (u.isOjt) {
+    icon = Icons.how_to_reg;
+    iconColor = kWarning;
+  } else if (u.isTeaching) {
+    icon = Icons.school;
+    iconColor = kPrimary;
+  } else {
+    icon = Icons.update;
+    iconColor = kAccent;
+  }
+  return Card(
+    color: kCard,
+    margin: const EdgeInsets.only(bottom: 6),
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(8),
+      side: u.isPending ? BorderSide(color: kWarning.withOpacity(0.4)) : BorderSide.none,
+    ),
+    child: ListTile(
+      leading: Icon(icon, color: iconColor, size: 20),
+      title: Text(u.description,
+          style: const TextStyle(color: kText, fontSize: 13), maxLines: 2, overflow: TextOverflow.ellipsis),
+      subtitle: Text(DateFormat('dd/MM/yyyy').format(u.date), style: const TextStyle(color: kTextDim, fontSize: 11)),
+      trailing: u.isPending
+          ? Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+              decoration: BoxDecoration(
+                color: kWarning.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Text('In attesa',
+                  style: TextStyle(color: kWarning, fontSize: 10, fontWeight: FontWeight.bold)),
+            )
+          : (u.isCurrencyLoss || u.isOjt)
+              ? const SizedBox.shrink()
+              : Text('${_fmt(u.hours)}h', style: const TextStyle(color: kText, fontWeight: FontWeight.bold)),
+    ),
+  );
+}

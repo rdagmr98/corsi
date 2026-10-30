@@ -58,7 +58,9 @@ GitHub Actions (`.github/workflows/deploy.yml`) deploya automaticamente su push 
 | `lib/screens/master/courses_tab.dart` | lista corsi admin + pulsante +MIL + pulsante planner settimanale per corso |
 | `lib/screens/master/course_detail_screen.dart` | dettaglio corso admin (lezioni/presenze/voti) |
 | `lib/screens/attendee/attendee_attendance_screen.dart` | presenze frequentatore + filtri |
-| `lib/screens/instructor/my_hours_screen.dart` | valuta GO/NO GO istruttore |
+| `lib/screens/instructor/home_screen.dart` | home istruttore: currency GO/NO GO, oggi, prossime lezioni |
+| `lib/screens/instructor/history_screens.dart` | storico ore svolte e storico/aggiunta aggiornamenti |
+| `lib/screens/attendee/attendee_home_screen.dart` | home frequentatore: presenze, voti, oggi, prossime lezioni |
 
 ## Recuperi (recovery records)
 - ID sintetico: `recovery:{courseId8}:{attendeeId8}:YYYY-MM-DD:m{modulo}` (+ `:{tipo}` se tipizzato)
@@ -69,12 +71,19 @@ GitHub Actions (`.github/workflows/deploy.yml`) deploya automaticamente su push 
 
 ---
 
-## STATO SESSIONE — aggiornato 2026-10-30 (sessione 49)
+## STATO SESSIONE — aggiornato 2026-10-31 (sessione 50)
 
-### Ultime modifiche (2026-10-30) — sessione 49 — vista mobile istruttore/frequentatore riorganizzata (commit `0aeca9f`)
+### Ultime modifiche (2026-10-31) — sessione 50 — home unica mobile istruttore e frequentatore, modello AVES Tecnici
+Richiesta: "in una schermata vedo i due stati di currency, se premo su uno accedo allo storico di tutte le ore svolte (suddivise per corso, collassate, magari raggrupparle anche per modulo) e sull'altro allo storico degli aggiornamenti e per aggiungere nuove registrazioni, poi sotto la registrazione presenze e validazione [...] calendario con le prossime lezioni [...] poi cerca di pulire/riorganizzare anche la visual frequentatore".
+- Niente più barra di navigazione nelle due shell: una home sola, a sezioni.
+- Istruttore (`lib/screens/instructor/home_screen.dart`, ex `today_screen.dart`): currency, oggi con registra presenze, prossime lezioni. Le card aprono `history_screens.dart` (ex `my_hours_screen.dart`): ore per corso e modulo collassate; aggiornamenti con "Aggiungi".
+- Frequentatore (`lib/screens/attendee/attendee_home_screen.dart`, ex `attendee_schedule_screen.dart`): presenze e voti, oggi, prossime lezioni. Le card aprono Presenze e Voti del corso scelto in home.
+- Comuni: `lib/widgets/status_card.dart` (card di stato) e `lib/widgets/lesson_tile.dart` (riga lezione): orario in `kText`/`kTextDim`, colore del modulo solo sul pallino.
+- Verifica: analyze senza errori/warning nei file toccati, `flutter test` incluso `test/status_card_test.dart` (2 card a 320 px), build ok. Le home complete non sono state provate a 360 px né nel browser. Vault: [[AVES Corsi/Corsi redesign mobile istruttore frequentatore 2026-10-30]].
+
+### Ultime modifiche (2026-10-30) — sessione 49 — vista mobile istruttore/frequentatore riorganizzata (commit `0aeca9f`), struttura superata da s50
 Il redesign completo `c65b83f` è stato bocciato dall'utente ("molto meglio prima, ora non si capisce nulla") e revertito (`815de27`). Per questo utente "migliorare la grafica" vuol dire riorganizzare, mantenendo lo stile esistente.
-- `lib/widgets/collapsible_day.dart` (`CollapsibleDay`): nei calendari `my_schedule_screen.dart` e `attendee_schedule_screen.dart` ogni giorno è una riga con data, ore, moduli e icone note/validate, che si apre al tap. All'avvio è aperto solo il primo giorno da oggi in poi.
-- `my_hours_screen.dart`: le 2 condizioni di currency (6h/anno, 35h/2 anni) affiancate in `IntrinsicHeight`+`Row`, come in AVES Tecnici. Il numero delle ore sta in un `FittedBox`, perché a mezza larghezza sforava.
+- `lib/widgets/collapsible_day.dart` (`CollapsibleDay`): ogni giorno è una riga con data, ore, moduli e icone note/validate, che si apre al tap.
 - Card frequentatore con l'orario dello slot; `moduleLabel` sul "Recuperata (M..)" in Presenze.
 - Verifica: analyze senza errori/warning nei file toccati, test 31/31, test di layout a 360 px senza overflow, build ok. Non provato nel browser. Vault: [[AVES Corsi/Corsi redesign mobile istruttore frequentatore 2026-10-30]].
 

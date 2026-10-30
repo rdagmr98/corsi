@@ -11,7 +11,8 @@ import '../../theme.dart';
 
 class AttendeeGradesScreen extends ConsumerStatefulWidget {
   final String userId;
-  const AttendeeGradesScreen({super.key, required this.userId});
+  final String courseId;
+  const AttendeeGradesScreen({super.key, required this.userId, required this.courseId});
 
   @override
   ConsumerState<AttendeeGradesScreen> createState() => _AttendeeGradesScreenState();
@@ -34,7 +35,7 @@ class _AttendeeGradesScreenState extends ConsumerState<AttendeeGradesScreen> {
   void _load() {
     setState(() {
       _courses = _courseService.getCoursesForAttendee(widget.userId);
-      if (_selected == null && _courses.isNotEmpty) _selected = _courses.first;
+      _selected = _courses.where((c) => c.id == widget.courseId).firstOrNull;
     });
   }
 
@@ -76,20 +77,6 @@ class _AttendeeGradesScreenState extends ConsumerState<AttendeeGradesScreen> {
             sliver: SliverToBoxAdapter(
               child: Column(
                 children: [
-                  if (_courses.length > 1)
-                    DropdownButton<String>(
-                      value: _selected?.id,
-                      dropdownColor: kSurface,
-                      style: const TextStyle(color: kText),
-                      isExpanded: true,
-                      underline: const SizedBox(),
-                      items: _courses
-                          .map((c) => DropdownMenuItem(value: c.id, child: Text(c.title)))
-                          .toList(),
-                      onChanged: (id) => setState(() {
-                        _selected = _courses.firstWhere((c) => c.id == id);
-                      }),
-                    ),
                   const SizedBox(height: 12),
                   if (globalAvg != null)
                     Card(

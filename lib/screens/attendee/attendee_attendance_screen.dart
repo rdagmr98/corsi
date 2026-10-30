@@ -12,7 +12,8 @@ import '../../theme.dart';
 
 class AttendeeAttendanceScreen extends ConsumerStatefulWidget {
   final String userId;
-  const AttendeeAttendanceScreen({super.key, required this.userId});
+  final String courseId;
+  const AttendeeAttendanceScreen({super.key, required this.userId, required this.courseId});
 
   @override
   ConsumerState<AttendeeAttendanceScreen> createState() => _AttendeeAttendanceScreenState();
@@ -37,7 +38,7 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
   void _load() {
     setState(() {
       _courses = _courseService.getCoursesForAttendee(widget.userId);
-      if (_selected == null && _courses.isNotEmpty) _selected = _courses.first;
+      _selected = _courses.where((c) => c.id == widget.courseId).firstOrNull;
     });
   }
 
@@ -178,21 +179,6 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (_courses.length > 1)
-                    DropdownButton<String>(
-                      value: _selected?.id,
-                      dropdownColor: kSurface,
-                      style: const TextStyle(color: kText),
-                      isExpanded: true,
-                      underline: const SizedBox(),
-                      items: _courses
-                          .map((c) => DropdownMenuItem(value: c.id, child: Text(c.title)))
-                          .toList(),
-                      onChanged: (id) => setState(() {
-                        _selected = _courses.firstWhere((c) => c.id == id);
-                        _filterMode = 'to_recover';
-                      }),
-                    ),
                   const SizedBox(height: 12),
 
                   // Global summary card

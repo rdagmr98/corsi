@@ -158,9 +158,9 @@ class GradeService {
   /// Tutte le lezioni confermate (1h ciascuna) dell'istruttore, per corso,
   /// dalla più recente. Stessi criteri di [getConfirmedLessonHoursByCourse]
   /// ma senza limite di 365 giorni: la UI separa quelle dentro/fuori finestra.
-  Map<String, List<({DateTime date, String code, String topic, String type})>>
+  Map<String, List<({DateTime date, int module, String code, String topic, String type})>>
       getConfirmedLessonsByCourse(String instructorId) {
-    final map = <String, List<({DateTime date, String code, String topic, String type})>>{};
+    final map = <String, List<({DateTime date, int module, String code, String topic, String type})>>{};
     for (final raw in _db.schedules) {
       if (raw['instructor_id'] != instructorId) continue;
       if (raw['confirmed'] != true) continue;
@@ -169,6 +169,7 @@ class GradeService {
       if (d == null) continue;
       (map[raw['course_id'] as String? ?? ''] ??= []).add((
         date: d,
+        module: (raw['module_number'] as num?)?.toInt() ?? 0,
         code: raw['submodule_code'] as String? ?? '${raw['module_number'] ?? ''}',
         topic: raw['topic'] as String? ?? '',
         type: raw['type'] as String? ?? '',

@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../models/reference_models.dart';
 import '../services/course_service.dart';
 import '../services/grade_service.dart';
+import '../services/reference_service.dart';
 import '../theme.dart';
 
-/// Ore di lezione confermate di un istruttore, un blocco espandibile per corso.
-/// Le ore degli ultimi 365 giorni sono quelle che contano per la currency;
-/// le lezioni più vecchie si vedono in fondo, attenuate.
+/// Ore di lezione confermate di un istruttore: un blocco espandibile per
+/// corso, dentro un blocco espandibile per modulo. Le ore degli ultimi 365
+/// giorni sono quelle che contano per la currency; le più vecchie restano
+/// in elenco, attenuate.
 class InstructorLessonsByCourse extends StatelessWidget {
   final String instructorId;
   const InstructorLessonsByCourse({super.key, required this.instructorId});
@@ -20,82 +23,102 @@ class InstructorLessonsByCourse extends StatelessWidget {
     }
     final cutoff = DateTime.now().subtract(const Duration(days: 365));
     final courses = CourseService();
+    final refs = ReferenceService();
     final fmt = DateFormat('dd/MM/yyyy');
     final entries = byCourse.entries.toList()
       ..sort((a, b) => b.value.first.date.compareTo(a.value.first.date));
 
-    return Column(
-      children: entries.map((e) {
-        final recent = e.value.where((l) => l.date.isAfter(cutoff)).toList();
-        final older = e.value.where((l) => !l.date.isAfter(cutoff)).toList();
-        Widget row(({DateTime date, String code, String topic, String type}) l, bool dim) =>
-            Padding(
-              padding: const EdgeInsets.only(bottom: 3),
-              child: Row(children: [
-                SizedBox(
-                  width: 92,
-                  child: Text(fmt.format(l.date),
-                      softWrap: false,
-                      style: TextStyle(color: dim ? kTextDim : kText, fontSize: 11)),
-                ),
-                SizedBox(
-                  width: 54,
-                  child: Text(l.type == 'pratica' ? 'Pratica' : 'Teoria',
-                      style: TextStyle(
-                          color: l.type == 'pratica' ? kAccent : kPrimary, fontSize: 10)),
-                ),
-                Expanded(
-                  child: Text(
-                    l.topic.isEmpty || l.topic == l.code ? l.code : '${l.code}  ${l.topic}',
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: dim ? kTextDim : kText, fontSize: 11),
-                  ),
-                ),
-              ]),
-            );
-        return Card(
-          color: kCard,
-          margin: const EdgeInsets.only(bottom: 6),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          clipBehavior: Clip.antiAlias,
-          child: Theme(
-            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-            child: ExpansionTile(
-              leading: const Icon(Icons.menu_book, color: kPrimary, size: 20),
-              title: Text(courses.findById(e.key)?.title ?? 'Corso',
-                  style: const TextStyle(color: kText, fontSize: 13)),
-              subtitle: Text(
-                older.isEmpty
-                    ? 'Ultimi 365 giorni'
-                    : 'Ultimi 365 giorni · ${older.length}h precedenti',
-                style: const TextStyle(color: kTextDim, fontSize: 11),
-              ),
-              trailing: Text('${recent.length}h',
-                  style: const TextStyle(color: kText, fontWeight: FontWeight.bold)),
-              childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              expandedCrossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (recent.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.only(bottom: 4),
-                    child: Text('Nessuna lezione negli ultimi 365 giorni',
-                        style: TextStyle(color: kWarning, fontSize: 11)),
-                  ),
-                ...recent.map((l) => row(l, false)),
-                if (older.isNotEmpty) ...[
-                  const Padding(
-                    padding: EdgeInsets.only(top: 8, bottom: 4),
-                    child: Text('Oltre 365 giorni (non contano per la currency)',
-                        style: TextStyle(
-                            color: kTextDim, fontSize: 10, fontStyle: FontStyle.italic)),
-                  ),
-                  ...older.map((l) => row(l, true)),
-                ],
-              ],
+    Widget row(({DateTime date, int module, String code, String topic, String type}) l) {
+      final dim = !l.date.isAfter(cutoff);
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 3),
+        child: Row(children: [
+          SizedBox(
+            width: 80,
+            child: Text(fmt.format(l.date),
+                softWrap: false,
+                style: TextStyle(color: dim ? kTextDim : kText, fontSize: 11)),
+          ),
+          SizedBox(
+            width: 50,
+            child: Text(l.type == 'pratica' ? 'Pratica' : 'Teoria',
+                style: TextStyle(color: l.type == 'pratica' ? kAccent : kPrimary, fontSize: 10)),
+          ),
+          Expanded(
+            child: Text(
+              l.topic.isEmpty || l.topic == l.code ? l.code : '${l.code}  ${l.topic}',
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: dim ? kTextDim : kText, fontSize: 11),
             ),
           ),
-        );
-      }).toList(),
+        ]),
+      );
+    }
+
+    return Theme(
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      child: Column(
+        children: entries.map((e) {
+          final course = courses.findById(e.key);
+          final type = course == null
+              ? null
+              : refs.getEffectiveCourseType(course.courseTypeId, course.extensionTypeId, course.mamlCombinationId);
+          final moduleNames = {for (final m in type?.modules ?? <ModuleInfo>[]) m.number: m.name};
+          final recent = e.value.where((l) => l.date.isAfter(cutoff)).length;
+          final older = e.value.length - recent;
+          final byModule = <int, List<({DateTime date, int module, String code, String topic, String type})>>{};
+          for (final l in e.value) {
+            byModule.putIfAbsent(l.module, () => []).add(l);
+          }
+          final modules = byModule.keys.toList()..sort();
+          return Card(
+            color: kCard,
+            margin: const EdgeInsets.only(bottom: 6),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            clipBehavior: Clip.antiAlias,
+            child: ExpansionTile(
+              leading: const Icon(Icons.menu_book, color: kPrimary, size: 20),
+              title: Text(course?.title ?? 'Corso',
+                  style: const TextStyle(color: kText, fontSize: 13),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis),
+              subtitle: Text(
+                older == 0
+                    ? 'Ultimi 365 giorni'
+                    : 'Ultimi 365 giorni · ${older}h precedenti in grigio',
+                style: const TextStyle(color: kTextDim, fontSize: 11),
+              ),
+              trailing: Text('${recent}h', style: const TextStyle(color: kText, fontWeight: FontWeight.bold)),
+              childrenPadding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+              children: [
+                for (final m in modules)
+                  ExpansionTile(
+                    dense: true,
+                    tilePadding: const EdgeInsets.symmetric(horizontal: 8),
+                    leading: Container(
+                      width: 10,
+                      height: 10,
+                      decoration: BoxDecoration(color: moduleColor(m), shape: BoxShape.circle),
+                    ),
+                    title: Text(
+                      m == 0 ? 'Altro' : 'M${refs.moduleLabel(m)}  ${moduleNames[m] ?? ''}',
+                      style: const TextStyle(color: kText, fontSize: 12),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    trailing: Text(
+                      '${byModule[m]!.where((l) => l.date.isAfter(cutoff)).length}h',
+                      style: const TextStyle(color: kText, fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                    childrenPadding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+                    expandedCrossAxisAlignment: CrossAxisAlignment.start,
+                    children: byModule[m]!.map(row).toList(),
+                  ),
+              ],
+            ),
+          );
+        }).toList(),
+      ),
     );
   }
 }

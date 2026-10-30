@@ -8,9 +8,7 @@ import '../../theme.dart';
 import '../../widgets/change_password_dialog.dart';
 import '../../widgets/notification_panel_widget.dart';
 import '../../widgets/push_banner.dart';
-import 'attendee_schedule_screen.dart';
-import 'attendee_grades_screen.dart';
-import 'attendee_attendance_screen.dart';
+import 'attendee_home_screen.dart';
 import 'questionnaire_screen.dart';
 
 class AttendeeShell extends ConsumerStatefulWidget {
@@ -21,8 +19,6 @@ class AttendeeShell extends ConsumerStatefulWidget {
 }
 
 class _AttendeeShellState extends ConsumerState<AttendeeShell> {
-  int _tab = 0;
-
   void _openNotifications(BuildContext context, String userId) {
     showModalBottomSheet(
       context: context,
@@ -144,37 +140,7 @@ class _AttendeeShellState extends ConsumerState<AttendeeShell> {
         children: [
           PushBanner(userId: userId),
           ..._questionnaireBanners(userId),
-          Expanded(
-            child: switch (_tab) {
-              0 => AttendeeScheduleScreen(userId: userId),
-              1 => AttendeeAttendanceScreen(userId: userId),
-              2 => AttendeeGradesScreen(userId: userId),
-              _ => const SizedBox(),
-            },
-          ),
-        ],
-      ),
-      bottomNavigationBar: NavigationBar(
-        backgroundColor: kSurface,
-        selectedIndex: _tab,
-        onDestinationSelected: (i) => setState(() => _tab = i),
-        indicatorColor: kWarning.withOpacity(0.15),
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.calendar_today, color: kTextDim),
-            selectedIcon: Icon(Icons.calendar_today, color: kWarning),
-            label: 'Calendario',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.fact_check_outlined, color: kTextDim),
-            selectedIcon: Icon(Icons.fact_check_outlined, color: kWarning),
-            label: 'Presenze',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.grade_outlined, color: kTextDim),
-            selectedIcon: Icon(Icons.grade_outlined, color: kWarning),
-            label: 'Voti',
-          ),
+          Expanded(child: AttendeeHomeScreen(userId: userId)),
         ],
       ),
     );

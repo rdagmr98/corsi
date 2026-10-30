@@ -6,9 +6,7 @@ import '../../theme.dart';
 import '../../widgets/change_password_dialog.dart';
 import '../../widgets/notification_panel_widget.dart';
 import '../../widgets/push_banner.dart';
-import 'today_screen.dart';
-import 'my_schedule_screen.dart';
-import 'my_hours_screen.dart';
+import 'home_screen.dart';
 
 class InstructorShell extends ConsumerStatefulWidget {
   const InstructorShell({super.key});
@@ -18,8 +16,6 @@ class InstructorShell extends ConsumerStatefulWidget {
 }
 
 class _InstructorShellState extends ConsumerState<InstructorShell> {
-  int _tab = 0;
-
   void _openNotifications(BuildContext context, String userId) {
     showModalBottomSheet(
       context: context,
@@ -100,40 +96,11 @@ class _InstructorShellState extends ConsumerState<InstructorShell> {
           ),
         ],
       ),
+      // Una sola schermata (currency, oggi, prossime lezioni), come AVES Tecnici.
       body: Column(
         children: [
           PushBanner(userId: userId),
-          Expanded(
-            child: switch (_tab) {
-              0 => InstructorTodayScreen(userId: userId),
-              1 => InstructorScheduleScreen(userId: userId),
-              2 => InstructorHoursScreen(userId: userId),
-              _ => const SizedBox(),
-            },
-          ),
-        ],
-      ),
-      bottomNavigationBar: NavigationBar(
-        backgroundColor: kSurface,
-        selectedIndex: _tab,
-        onDestinationSelected: (i) => setState(() => _tab = i),
-        indicatorColor: kPrimary.withOpacity(0.15),
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.today, color: kTextDim),
-            selectedIcon: Icon(Icons.today, color: kPrimary),
-            label: 'Oggi',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.calendar_month, color: kTextDim),
-            selectedIcon: Icon(Icons.calendar_month, color: kPrimary),
-            label: 'Calendario',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.timer_outlined, color: kTextDim),
-            selectedIcon: Icon(Icons.timer_outlined, color: kPrimary),
-            label: 'Le mie ore',
-          ),
+          Expanded(child: InstructorHomeScreen(userId: userId)),
         ],
       ),
     );
