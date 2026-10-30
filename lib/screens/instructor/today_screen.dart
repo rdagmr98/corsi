@@ -10,6 +10,7 @@ import '../../services/reference_service.dart';
 import '../../services/schedule_service.dart';
 import '../../services/user_service.dart';
 import '../../theme.dart';
+import '../../widgets/mobile_ui.dart';
 
 class InstructorTodayScreen extends ConsumerStatefulWidget {
   final String userId;
@@ -186,44 +187,51 @@ class _InstructorTodayScreenState extends ConsumerState<InstructorTodayScreen> {
   @override
   Widget build(BuildContext context) {
     final today = DateTime.now();
+    final day = DateFormat('EEEE d MMMM yyyy', 'it').format(today);
+    final toRegister = _todayLessons.where((l) => !l.confirmed).length;
+    final count = _todayLessons.length;
     return RefreshIndicator(
       onRefresh: _reload,
       color: kPrimary,
       child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
           SliverPadding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 20, 16, 12),
             sliver: SliverToBoxAdapter(
-              child: Text(
-                DateFormat('EEEE d MMMM yyyy', 'it').format(today),
-                style: const TextStyle(color: kTextDim, fontSize: 13),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('${day[0].toUpperCase()}${day.substring(1)}',
+                      style: const TextStyle(
+                          color: kText, fontSize: 22, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 4),
+                  Text(
+                    count == 0
+                        ? 'Nessuna lezione in programma'
+                        : '$count ${count == 1 ? 'lezione' : 'lezioni'} · '
+                            '${toRegister == 0 ? 'tutte registrate' : '$toRegister da registrare'}',
+                    style: TextStyle(
+                        color: toRegister > 0 ? kWarning : kTextSoft, fontSize: 14),
+                  ),
+                ],
               ),
             ),
           ),
           if (_todayLessons.isEmpty)
             SliverFillRemaining(
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      _todayNotes.isEmpty ? Icons.check_circle_outline : Icons.event_busy,
-                      color: kAccent,
-                      size: 48,
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      _todayNotes.isEmpty ? 'Nessuna lezione oggi' : 'Nessuna lezione: ${_todayNotes.map((n) => n.text).join(', ')}',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: kTextDim),
-                    ),
-                  ],
-                ),
+              hasScrollBody: false,
+              child: EmptyState(
+                _todayNotes.isEmpty ? Icons.check_circle_outline : Icons.event_busy,
+                _todayNotes.isEmpty
+                    ? 'Nessuna lezione oggi'
+                    : 'Nessuna lezione: ${_todayNotes.map((n) => n.text).join(', ')}',
+                color: kAccent,
               ),
             )
           else
             SliverPadding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
               sliver: SliverList(
                 delegate: SliverChildBuilderDelegate(
                   (_, i) {
@@ -231,96 +239,48 @@ class _InstructorTodayScreenState extends ConsumerState<InstructorTodayScreen> {
                     final isTheory = lesson.isTheory;
                     final color = isTheory ? kPrimary : kAccent;
                     final course = _courseService.findById(lesson.courseId);
+                    final typeInfo = course == null
+                        ? null
+                        : _refService.getEffectiveCourseType(
+                            course.courseTypeId, course.extensionTypeId, course.mamlCombinationId);
                     final task = lesson.taskId == null
                         ? null
-                        : _refService.findTask(
-                            course == null
-                                ? null
-                                : _refService.getEffectiveCourseType(
-                                    course.courseTypeId, course.extensionTypeId, course.mamlCombinationId),
-                            lesson.taskId);
+                        : _refService.findTask(typeInfo, lesson.taskId);
                     final taskLabel = task != null
                         ? (task.name.isNotEmpty ? task.name : '${task.programTaskId}')
                         : lesson.taskId;
+                    final slotTime = typeInfo?.schedule
+                        .slotsForWeekday(lesson.date.weekday)
+                        .where((t) => t.slot == lesson.timeSlot)
+                        .firstOrNull;
 
-                    return Card(
-                      color: kCard,
-                      margin: const EdgeInsets.only(bottom: 10),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        side: BorderSide(
-                          color: lesson.confirmed ? kAccent.withOpacity(0.4) : color.withOpacity(0.3),
-                        ),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(14),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                  decoration: BoxDecoration(
-                                    color: color.withOpacity(0.15),
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: Text(
-                                    isTheory ? 'TEORIA' : 'PRATICA',
-                                    style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Text('M${_refService.moduleLabel(lesson.moduleNumber)}', style: const TextStyle(color: kTextDim, fontSize: 12)),
-                                if (lesson.taskId != null) ...[
-                                  const SizedBox(width: 6),
-                                  Flexible(
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: kAccent.withOpacity(0.15),
-                                        borderRadius: BorderRadius.circular(4),
-                                      ),
-                                      child: Text('Task $taskLabel',
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(color: kAccent, fontSize: 10, fontWeight: FontWeight.bold)),
-                                    ),
-                                  ),
-                                ],
-                                const Spacer(),
-                                Text('${lesson.timeSlot}ª ora', style: const TextStyle(color: kTextDim, fontSize: 12)),
-                                if (lesson.confirmed)
-                                  const Padding(
-                                    padding: EdgeInsets.only(left: 6),
-                                    child: Icon(Icons.check_circle, color: kAccent, size: 16),
-                                  ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            Text(lesson.topic, style: const TextStyle(color: kText, fontWeight: FontWeight.w500)),
-                            if (course != null) ...[
-                              const SizedBox(height: 4),
-                              Text(course.title, style: const TextStyle(color: kTextDim, fontSize: 12)),
-                            ],
-                            if (!lesson.confirmed) ...[
-                              const SizedBox(height: 12),
-                              SizedBox(
-                                width: double.infinity,
-                                child: ElevatedButton.icon(
-                                  onPressed: () => _confirmLesson(lesson),
-                                  icon: const Icon(Icons.how_to_reg, size: 16),
-                                  label: const Text('Registra presenze'),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: color,
-                                    padding: const EdgeInsets.symmetric(vertical: 10),
-                                  ),
+                    return LessonCard(
+                      color: moduleColor(lesson.moduleNumber),
+                      slot: lesson.timeSlot,
+                      isTheory: isTheory,
+                      module: 'M${_refService.moduleLabel(lesson.moduleNumber)}',
+                      topic: lesson.topic,
+                      start: slotTime?.start,
+                      end: slotTime?.end,
+                      task: lesson.taskId == null ? null : '$taskLabel',
+                      overline: course?.title,
+                      confirmed: lesson.confirmed,
+                      action: lesson.confirmed
+                          ? null
+                          : SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton.icon(
+                                onPressed: () => _confirmLesson(lesson),
+                                icon: const Icon(Icons.how_to_reg, size: 18),
+                                label: const Text('Registra presenze'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: color,
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12)),
                                 ),
                               ),
-                            ],
-                          ],
-                        ),
-                      ),
+                            ),
                     );
                   },
                   childCount: _todayLessons.length,

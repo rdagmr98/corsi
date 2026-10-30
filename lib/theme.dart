@@ -25,6 +25,9 @@ const kError = Color(0xFFEF4444);
 const kText = Color(0xFFE5E7EB);
 const kTextDim = Color(0xFF6B7280);
 const kBorder = Color(0xFF1F2937);
+// Viste mobile (istruttore/frequentatore): testo secondario leggibile e bordo visibile su kCard.
+const kTextSoft = Color(0xFF9CA3AF);
+const kLine = Color(0xFF283349);
 
 ThemeData buildTheme() => ThemeData.dark().copyWith(
   scaffoldBackgroundColor: kBg,

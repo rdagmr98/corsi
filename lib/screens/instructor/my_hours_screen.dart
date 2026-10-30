@@ -8,6 +8,7 @@ import '../../services/notification_service.dart';
 import '../../services/user_service.dart';
 import '../../theme.dart';
 import '../../widgets/instructor_lessons_by_course.dart';
+import '../../widgets/mobile_ui.dart';
 
 class InstructorHoursScreen extends ConsumerStatefulWidget {
   final String userId;
@@ -54,68 +55,61 @@ class _InstructorHoursScreenState extends ConsumerState<InstructorHoursScreen> {
       color: kPrimary,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            const SectionTitle('Currency istruttore'),
             _currencyCard(
-              'Ore insegnamento (ultimi 365 giorni)',
+              'Ore insegnamento',
+              'ultimi 365 giorni',
               teachH,
               6,
               teachOk,
               Icons.school,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             _currencyCard(
-              'Aggiornamento professionale (ultimi 2 anni)',
+              'Aggiornamento professionale',
+              'ultimi 2 anni',
               profH,
               35,
               profOk,
               Icons.update,
             ),
             if (daaExpiry != null) ...[
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
               _daaCard(daaExpiry, daaOk),
             ],
             if (me?.goOverride == true ||
                 me?.currencyLostAt != null ||
                 me?.ojtKind != null) ...[
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
               _serviceStatusCard(me!),
             ],
             if (hasLessons) ...[
-              const SizedBox(height: 24),
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Text('Ore per corso (tocca per il dettaglio)',
-                    style: TextStyle(color: kText, fontWeight: FontWeight.w600)),
-              ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
+              const SectionTitle('Ore per corso · tocca per il dettaglio'),
               InstructorLessonsByCourse(instructorId: widget.userId),
             ],
-            const SizedBox(height: 24),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('Storico registrazioni', style: TextStyle(color: kText, fontWeight: FontWeight.w600)),
-                OutlinedButton.icon(
-                  onPressed: () => _showAddUpdateDialog(),
-                  icon: const Icon(Icons.add, size: 16),
-                  label: const Text('Aggiungi'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: kPrimary,
-                    side: const BorderSide(color: kPrimary),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    textStyle: const TextStyle(fontSize: 12),
-                  ),
+            const SizedBox(height: 12),
+            SectionTitle(
+              'Storico registrazioni',
+              trailing: TextButton.icon(
+                onPressed: () => _showAddUpdateDialog(),
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('Aggiungi'),
+                style: TextButton.styleFrom(
+                  foregroundColor: kPrimary,
+                  backgroundColor: kPrimary.withValues(alpha: 0.12),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  shape: const StadiumBorder(),
+                  textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
                 ),
-              ],
+              ),
             ),
-            const SizedBox(height: 8),
             if (updates.isEmpty)
-              const Padding(
-                padding: EdgeInsets.all(24),
-                child: Text('Nessun record', style: TextStyle(color: kTextDim)),
-              )
+              const EmptyState(Icons.history, 'Nessun record')
             else
               ...updates.reversed.map((u) {
                 final IconData icon;
@@ -133,38 +127,38 @@ class _InstructorHoursScreenState extends ConsumerState<InstructorHoursScreen> {
                   icon = Icons.update;
                   iconColor = kAccent;
                 }
-                return Card(
-                color: kCard,
-                margin: const EdgeInsets.only(bottom: 6),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  side: u.isPending
-                      ? BorderSide(color: kWarning.withOpacity(0.4))
-                      : BorderSide.none,
-                ),
-                child: ListTile(
-                  leading: Icon(icon, color: iconColor, size: 20),
-                  title: Text(u.description, style: const TextStyle(color: kText, fontSize: 13)),
-                  subtitle: Text(DateFormat('dd/MM/yyyy').format(u.date),
-                      style: const TextStyle(color: kTextDim, fontSize: 11)),
-                  trailing: u.isPending
-                      ? Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: kWarning.withOpacity(0.15),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Text('In attesa',
-                              style: TextStyle(color: kWarning, fontSize: 10, fontWeight: FontWeight.bold)),
-                        )
-                      : (u.isCurrencyLoss || u.isOjt)
-                          ? const SizedBox.shrink()
-                          : Text(
-                              '${u.hours}h',
-                              style: const TextStyle(color: kText, fontWeight: FontWeight.bold),
-                            ),
-                ),
-              );
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.all(12),
+                  decoration: mobileCard(tint: u.isPending ? kWarning : null),
+                  child: Row(
+                    children: [
+                      _iconBadge(icon, iconColor),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(u.description,
+                                style: const TextStyle(color: kText, fontSize: 14)),
+                            const SizedBox(height: 2),
+                            Text(DateFormat('dd/MM/yyyy').format(u.date),
+                                style: const TextStyle(color: kTextSoft, fontSize: 12)),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      if (u.isPending)
+                        const Pill('In attesa', kWarning)
+                      else if (!u.isCurrencyLoss && !u.isOjt)
+                        Text(
+                          '${u.hours}h',
+                          style: const TextStyle(
+                              color: kText, fontSize: 16, fontWeight: FontWeight.w700),
+                        ),
+                    ],
+                  ),
+                );
               }),
           ],
         ),
@@ -273,143 +267,142 @@ class _InstructorHoursScreenState extends ConsumerState<InstructorHoursScreen> {
     );
   }
 
+  Widget _iconBadge(IconData icon, Color color) => Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.14),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Icon(icon, color: color, size: 20),
+      );
+
   Widget _serviceStatusCard(AppUser me) {
     final ojt = me.ojtSummary;
-    return Card(
-      color: kCard,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(
-          color: (me.goOverride ? kWarning : kError).withOpacity(0.3),
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Stato di servizio',
-                style: TextStyle(color: kText, fontSize: 13, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 8),
-            if (me.currencyLostAt != null)
-              Text(
-                'Perdita currency: ${DateFormat('dd/MM/yyyy').format(me.currencyLostAt!)}',
-                style: const TextStyle(color: kError, fontSize: 12),
-              ),
-            if (ojt != null) ...[
-              if (me.currencyLostAt != null) const SizedBox(height: 4),
-              Text(
-                '$ojt${me.goOverride ? ' (GO attivo)' : ''}',
-                style: const TextStyle(color: kWarning, fontSize: 12),
-              ),
-              if (me.ojtNote?.trim().isNotEmpty == true)
-                Text(me.ojtNote!,
-                    style: const TextStyle(color: kTextDim, fontSize: 11)),
-            ],
-          ],
-        ),
+    final color = me.goOverride ? kWarning : kError;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: mobileCard(tint: color),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _iconBadge(Icons.assignment_ind_outlined, color),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Stato di servizio',
+                    style: TextStyle(color: kText, fontSize: 15, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 6),
+                if (me.currencyLostAt != null)
+                  Text(
+                    'Perdita currency: ${DateFormat('dd/MM/yyyy').format(me.currencyLostAt!)}',
+                    style: const TextStyle(color: kError, fontSize: 13),
+                  ),
+                if (ojt != null) ...[
+                  if (me.currencyLostAt != null) const SizedBox(height: 4),
+                  Text(
+                    '$ojt${me.goOverride ? ' (GO attivo)' : ''}',
+                    style: const TextStyle(color: kWarning, fontSize: 13),
+                  ),
+                  if (me.ojtNote?.trim().isNotEmpty == true)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(me.ojtNote!,
+                          style: const TextStyle(color: kTextSoft, fontSize: 12)),
+                    ),
+                ],
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _daaCard(DateTime expiry, bool ok) {
     final color = ok ? kAccent : kError;
-    return Card(
-      color: kCard,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: color.withOpacity(0.3)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(children: [
-          Icon(Icons.verified_user, color: color, size: 20),
-          const SizedBox(width: 12),
-          Expanded(child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Aggiornamento biennale DAAA (M10)',
-                  style: TextStyle(color: kText, fontSize: 13)),
-              const SizedBox(height: 4),
-              Text(
-                'Scade: ${DateFormat('dd/MM/yyyy').format(expiry)}',
-                style: TextStyle(color: color, fontSize: 12),
-              ),
-            ],
-          )),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.12),
-              borderRadius: BorderRadius.circular(12),
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: mobileCard(tint: color),
+      child: Row(children: [
+        _iconBadge(Icons.verified_user, color),
+        const SizedBox(width: 12),
+        Expanded(child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Aggiornamento biennale DAAA (M10)',
+                style: TextStyle(color: kText, fontSize: 15, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 4),
+            Text(
+              'Scade: ${DateFormat('dd/MM/yyyy').format(expiry)}',
+              style: TextStyle(color: color, fontSize: 13),
             ),
-            child: Text(
-              ok ? 'GO' : 'SCADUTA',
-              style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold),
-            ),
-          ),
-        ]),
-      ),
+          ],
+        )),
+        const SizedBox(width: 8),
+        Pill(ok ? 'GO' : 'SCADUTA', color, filled: true),
+      ]),
     );
   }
 
-  Widget _currencyCard(String label, double current, double required, bool ok, IconData icon) {
+  Widget _currencyCard(String label, String period, double current, double required,
+      bool ok, IconData icon) {
     final color = ok ? kAccent : kError;
     final pct = (current / required).clamp(0.0, 1.0);
-    return Card(
-      color: kCard,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: color.withOpacity(0.3)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(icon, color: color, size: 20),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(label, style: const TextStyle(color: kText, fontSize: 13)),
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: mobileCard(tint: color),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              _iconBadge(icon, color),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(label,
+                        style: const TextStyle(
+                            color: kText, fontSize: 15, fontWeight: FontWeight.w600)),
+                    Text(period, style: const TextStyle(color: kTextSoft, fontSize: 12)),
+                  ],
                 ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: color.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    ok ? 'GO' : 'NO GO',
-                    style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Text(
-                  '${current.toStringAsFixed(1)}h',
-                  style: TextStyle(color: color, fontSize: 24, fontWeight: FontWeight.bold),
-                ),
-                Text(
-                  ' / ${required.toStringAsFixed(0)}h',
-                  style: const TextStyle(color: kTextDim, fontSize: 16),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            LinearProgressIndicator(
-              value: pct,
-              backgroundColor: kSurface,
-              color: color,
-              minHeight: 6,
-              borderRadius: BorderRadius.circular(3),
-            ),
-          ],
-        ),
+              ),
+              const SizedBox(width: 8),
+              Pill(ok ? 'GO' : 'NO GO', color, filled: true),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                '${current.toStringAsFixed(1)}h',
+                style: TextStyle(color: color, fontSize: 28, fontWeight: FontWeight.w800),
+              ),
+              Text(
+                ' / ${required.toStringAsFixed(0)}h',
+                style: const TextStyle(color: kTextSoft, fontSize: 16),
+              ),
+              const Spacer(),
+              Text('${(pct * 100).toStringAsFixed(0)}%',
+                  style: const TextStyle(color: kTextSoft, fontSize: 13)),
+            ],
+          ),
+          const SizedBox(height: 10),
+          LinearProgressIndicator(
+            value: pct,
+            backgroundColor: kSurface,
+            color: color,
+            minHeight: 8,
+            borderRadius: BorderRadius.circular(4),
+          ),
+        ],
       ),
     );
   }

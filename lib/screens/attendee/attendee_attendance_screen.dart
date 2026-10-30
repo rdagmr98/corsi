@@ -9,6 +9,7 @@ import '../../services/course_service.dart';
 import '../../services/reference_service.dart';
 import '../../services/schedule_service.dart';
 import '../../theme.dart';
+import '../../widgets/mobile_ui.dart';
 
 class AttendeeAttendanceScreen extends ConsumerStatefulWidget {
   final String userId;
@@ -49,7 +50,7 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
   @override
   Widget build(BuildContext context) {
     if (_courses.isEmpty) {
-      return const Center(child: Text('Nessun corso attivo', style: TextStyle(color: kTextDim)));
+      return const EmptyState(Icons.school_outlined, 'Nessun corso attivo');
     }
 
     final course = _selected;
@@ -167,111 +168,108 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
       return true;
     }).toList();
 
+    final complColor = completionPct >= 0.75 ? kAccent : kWarning;
+
     return RefreshIndicator(
       onRefresh: _reload,
-      color: kWarning,
+      color: kAttendeeAccent,
       child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
           SliverPadding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
             sliver: SliverToBoxAdapter(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (_courses.length > 1)
-                    DropdownButton<String>(
-                      value: _selected?.id,
-                      dropdownColor: kSurface,
-                      style: const TextStyle(color: kText),
-                      isExpanded: true,
-                      underline: const SizedBox(),
-                      items: _courses
-                          .map((c) => DropdownMenuItem(value: c.id, child: Text(c.title)))
-                          .toList(),
-                      onChanged: (id) => setState(() {
-                        _selected = _courses.firstWhere((c) => c.id == id);
+                  if (_courses.length > 1) ...[
+                    CourseSelector(
+                      courses: _courses,
+                      selectedId: _selected?.id,
+                      onSelected: (c) => setState(() {
+                        _selected = c;
                         _filterMode = 'to_recover';
                       }),
                     ),
-                  const SizedBox(height: 12),
+                    const SizedBox(height: 12),
+                  ],
 
                   // Global summary card
-                  Card(
-                    color: kCard,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      side: BorderSide(
-                        color: anyWarn
-                            ? kError.withValues(alpha: 0.4)
-                            : kAccent.withValues(alpha: 0.3),
-                      ),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceAround,
-                            children: [
-                              Expanded(child: _stat('$totalConfirmed', 'Lezioni', kTextDim)),
-                              Expanded(child: _stat('$totalAbsent', 'Assenze', totalAbsent > 0 ? kError : kAccent)),
-                              Expanded(child: _stat('$totalRecovered', 'Recuperate', kPrimary)),
-                              Expanded(
-                                child: _stat(
-                                  '${(completionPct * 100).toStringAsFixed(0)}%',
-                                  'Completamento',
-                                  completionPct >= 0.75 ? kAccent : kWarning,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          LinearProgressIndicator(
-                            value: completionPct,
-                            backgroundColor: kSurface,
-                            color: completionPct >= 0.75 ? kAccent : kWarning,
-                            minHeight: 6,
-                            borderRadius: BorderRadius.circular(3),
-                          ),
-                        ],
-                      ),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: mobileCard(tint: anyWarn ? kError : kAccent),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.baseline,
+                          textBaseline: TextBaseline.alphabetic,
+                          children: [
+                            Text('${(completionPct * 100).toStringAsFixed(0)}%',
+                                style: TextStyle(
+                                    color: complColor, fontSize: 32, fontWeight: FontWeight.w800)),
+                            const SizedBox(width: 8),
+                            const Expanded(
+                              child: Text('Completamento',
+                                  style: TextStyle(color: kTextSoft, fontSize: 14)),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        LinearProgressIndicator(
+                          value: completionPct,
+                          backgroundColor: kSurface,
+                          color: complColor,
+                          minHeight: 8,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        const SizedBox(height: 16),
+                        Row(
+                          children: [
+                            Expanded(child: _stat('$totalConfirmed', 'Lezioni', kText)),
+                            Expanded(child: _stat('$totalAbsent', 'Assenze', totalAbsent > 0 ? kError : kAccent)),
+                            Expanded(child: _stat('$totalRecovered', 'Recuperate', kPrimary)),
+                          ],
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 12),
 
                   // Recovery window alert
                   if (recoveryWindow.isNotEmpty) ...[
+                    const SizedBox(height: 12),
                     // Titolo sempre visibile; regola e dettaglio per modulo al tocco.
-                    Container(
-                      decoration: BoxDecoration(
-                        color: kError.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: kError.withValues(alpha: 0.35)),
+                    Material(
+                      color: kError.withValues(alpha: 0.08),
+                      clipBehavior: Clip.antiAlias,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        side: BorderSide(color: kError.withValues(alpha: 0.4)),
                       ),
                       child: ExpansionTile(
                         shape: const Border(),
                         collapsedShape: const Border(),
                         iconColor: kError,
                         collapsedIconColor: kError,
-                        tilePadding: const EdgeInsets.symmetric(horizontal: 12),
-                        childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+                        tilePadding: const EdgeInsets.symmetric(horizontal: 14),
+                        childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
                         expandedCrossAxisAlignment: CrossAxisAlignment.start,
                         title: Row(children: [
-                          const Icon(Icons.warning_amber, color: kError, size: 16),
-                          const SizedBox(width: 6),
+                          const Icon(Icons.warning_amber, color: kError, size: 18),
+                          const SizedBox(width: 8),
                           Flexible(
                             child: Text(
                                 'Ore da recuperare: ${totalToRecover}h'
                                 '${totalToRecoverP > 0 ? ' · ${totalToRecoverP}h pratica' : ''}'
                                 '${totalToRecoverT > 0 ? ' · ${totalToRecoverT}h teoria' : ''}',
-                                style: const TextStyle(color: kError, fontSize: 12, fontWeight: FontWeight.w600)),
+                                style: const TextStyle(color: kError, fontSize: 14, fontWeight: FontWeight.w600)),
                           ),
                         ]),
                         children: [
                           const Text(
                               'Pratica: 100% delle assenze · Teoria: solo le ore oltre il 10%',
-                              style: TextStyle(color: kError, fontSize: 10)),
-                          const SizedBox(height: 2),
+                              style: TextStyle(color: kTextSoft, fontSize: 12)),
+                          const SizedBox(height: 4),
                           ...recoveryWindow.entries.map((e) {
                             final tT = modStats[e.key]?['toRecoverT'] ?? 0;
                             final tP = modStats[e.key]?['toRecoverP'] ?? 0;
@@ -283,31 +281,29 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
                               padding: const EdgeInsets.only(top: 4),
                               child: Text(
                                 '• M${_refService.moduleLabel(e.key)}: ${e.value}h da recuperare ($parts)',
-                                style: const TextStyle(color: kError, fontSize: 11),
+                                style: const TextStyle(color: kError, fontSize: 13),
                               ),
                             );
                           }),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 12),
                   ],
 
                   // Per-module stats
                   if (modStats.isNotEmpty) ...[
-                    const Text('Dettaglio per modulo',
-                        style: TextStyle(color: kTextDim, fontSize: 12, fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 4),
+                    const SectionTitle('Dettaglio per modulo'),
                     ..._buildModuleRows(modStats, modNames, {
                       for (final m in typeInfo?.modules ?? []) m.number: m.totalHours,
                     }),
-                    const SizedBox(height: 12),
                   ],
 
-                  // Filter chips
+                  const SizedBox(height: 4),
+                  const SectionTitle('Registro lezioni'),
                   Wrap(
                     spacing: 8,
-                    runSpacing: 6,
+                    runSpacing: 8,
                     children: [
                       _filterChip('Da recuperare', 'to_recover'),
                       _filterChip('Tutte', null),
@@ -316,7 +312,7 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
                       if (totalRecovered > 0) _filterChip('Recuperi', 'recovery'),
                     ],
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 12),
                 ],
               ),
             ),
@@ -325,11 +321,10 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
           // Lesson / recovery list
           if (_filterMode == 'recovery')
             SliverPadding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
               sliver: recoveryRecords.isEmpty
                   ? const SliverToBoxAdapter(
-                      child: Center(child: Text('Nessun recupero registrato',
-                          style: TextStyle(color: kTextDim, fontSize: 13))))
+                      child: EmptyState(Icons.replay, 'Nessun recupero registrato'))
                   : SliverList(
                       delegate: SliverChildBuilderDelegate(
                         (_, i) {
@@ -345,41 +340,34 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
                               ? _refService.taskLabelFor(
                                   typeInfo, recoveryLessonByRec[r.id]?.taskId)
                               : null;
-                          return Card(
-                            color: kCard,
-                            margin: const EdgeInsets.only(bottom: 6),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                            child: ListTile(
-                              dense: true,
-                              leading: const Icon(Icons.replay, color: kPrimary, size: 20),
-                              title: Text(
-                                modNum != null
-                                    ? 'Recupero M${_refService.moduleLabel(modNum)}'
-                                        '${sub != null ? ' $sub' : ''}'
-                                        '${typLabel.isNotEmpty ? ' ($typLabel)' : ''}'
-                                        '${taskLabel != null ? ' · $taskLabel' : ''}'
-                                        ' – ${modNames[modNum] ?? ''}'
-                                    : 'Recupero',
-                                style: const TextStyle(color: kText, fontSize: 12),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              subtitle: date != null
-                                  ? Text(DateFormat('dd/MM/yyyy').format(date),
-                                      style: const TextStyle(color: kTextDim, fontSize: 11))
-                                  : null,
-                              trailing: const Text('Recuperata',
-                                  style: TextStyle(color: kPrimary, fontSize: 11)),
-                            ),
+                          return _row(
+                            icon: Icons.replay,
+                            color: kPrimary,
+                            title: modNum != null
+                                ? 'Recupero M${_refService.moduleLabel(modNum)}'
+                                    '${sub != null ? ' $sub' : ''}'
+                                    '${typLabel.isNotEmpty ? ' ($typLabel)' : ''}'
+                                    '${taskLabel != null ? ' · $taskLabel' : ''}'
+                                    ' – ${modNames[modNum] ?? ''}'
+                                : 'Recupero',
+                            subtitle: date != null ? DateFormat('dd/MM/yyyy').format(date) : null,
+                            status: 'Recuperata',
                           );
                         },
                         childCount: recoveryRecords.length,
                       ),
                     ),
             )
+          else if (visibleLessons.isEmpty)
+            SliverToBoxAdapter(
+              child: _filterMode == 'to_recover'
+                  ? const EmptyState(Icons.check_circle_outline, 'Nessuna lezione da recuperare',
+                      color: kAccent)
+                  : const EmptyState(Icons.event_note, 'Nessuna lezione'),
+            )
           else
             SliverPadding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
               sliver: SliverList(
                 delegate: SliverChildBuilderDelegate(
                   (_, i) {
@@ -415,13 +403,13 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
                       statusIcon  = Icons.check_circle;
                       statusText  = 'Presente';
                     } else if (r == null) {
-                      statusColor = kTextDim;
+                      statusColor = kTextSoft;
                       statusIcon  = Icons.schedule;
                       statusText  = 'Non registrata';
                     } else if (isRecovery) {
                       statusColor = kPrimary;
                       statusIcon  = Icons.replay;
-                      statusText  = 'Recuperata (M${r.recoveredModule ?? l.moduleNumber})';
+                      statusText  = 'Recuperata (M${_refService.moduleLabel(r.recoveredModule ?? l.moduleNumber)})';
                     } else if (isPresent) {
                       statusColor = kAccent;
                       statusIcon  = Icons.check_circle;
@@ -440,29 +428,13 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
                       statusText  = 'Assente';
                     }
 
-                    return Card(
-                      color: kCard,
-                      margin: const EdgeInsets.only(bottom: 6),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      child: ListTile(
-                        dense: true,
-                        leading: Icon(statusIcon, color: statusColor, size: 20),
-                        title: Text(
-                            'M${_refService.moduleLabel(l.moduleNumber)} $displayTopic'
-                            '${taskLabel != null ? ' · $taskLabel' : ''}',
-                            style: const TextStyle(color: kText, fontSize: 12),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis),
-                        subtitle: Text(
-                            '${DateFormat('dd/MM/yyyy').format(l.date)} $hoursStr',
-                            style: const TextStyle(color: kTextDim, fontSize: 11)),
-                        trailing: SizedBox(
-                            width: 96,
-                            child: Text(statusText,
-                                textAlign: TextAlign.right,
-                                maxLines: 2,
-                                style: TextStyle(color: statusColor, fontSize: 11))),
-                      ),
+                    return _row(
+                      icon: statusIcon,
+                      color: statusColor,
+                      title: 'M${_refService.moduleLabel(l.moduleNumber)} $displayTopic'
+                          '${taskLabel != null ? ' · $taskLabel' : ''}',
+                      subtitle: '${DateFormat('dd/MM/yyyy').format(l.date)} $hoursStr',
+                      status: statusText,
                     );
                   },
                   childCount: visibleLessons.length,
@@ -474,21 +446,68 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
     );
   }
 
+  Widget _row({
+    required IconData icon,
+    required Color color,
+    required String title,
+    String? subtitle,
+    required String status,
+  }) =>
+      Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(12),
+        decoration: mobileCard(),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, color: color, size: 18),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          color: kText, fontSize: 14, fontWeight: FontWeight.w500)),
+                  if (subtitle != null) ...[
+                    const SizedBox(height: 2),
+                    Text(subtitle, style: const TextStyle(color: kTextSoft, fontSize: 12)),
+                  ],
+                  const SizedBox(height: 6),
+                  Pill(status, color),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+
   Widget _filterChip(String label, String? mode) {
     final active = _filterMode == mode;
     return FilterChip(
       label: Text(label),
       selected: active,
+      showCheckmark: false,
       onSelected: (_) => setState(() => _filterMode = mode),
-      selectedColor: kPrimary.withValues(alpha: 0.25),
-      checkmarkColor: kPrimary,
+      selectedColor: kAttendeeAccent.withValues(alpha: 0.2),
       labelStyle: TextStyle(
-        color: active ? kPrimary : kTextDim,
-        fontSize: 12,
+        color: active ? kAttendeeAccent : kTextSoft,
+        fontSize: 13,
         fontWeight: active ? FontWeight.w600 : FontWeight.normal,
       ),
-      backgroundColor: kSurface,
-      side: BorderSide(color: active ? kPrimary : kBorder),
+      backgroundColor: kCard,
+      shape: const StadiumBorder(),
+      side: BorderSide(color: active ? kAttendeeAccent : kLine),
       padding: const EdgeInsets.symmetric(horizontal: 4),
     );
   }
@@ -540,70 +559,69 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
       ].where((s) => s.isNotEmpty).join('\n');
       final hasActivity = absent > 0 || rec > 0;
 
-      return Card(
-        color: kSurface,
-        margin: const EdgeInsets.only(bottom: 4),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
-          side: BorderSide(color: warn ? kError.withValues(alpha: 0.4) : kBorder),
-        ),
-        // Riga pulita (modulo + nome + %); statistiche dettagliate al tocco.
-        child: ExpansionTile(
-          shape: const Border(),
-          collapsedShape: const Border(),
-          tilePadding: const EdgeInsets.symmetric(horizontal: 12),
-          childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-          expandedCrossAxisAlignment: CrossAxisAlignment.start,
-          title: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(6),
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Material(
+          color: kCard,
+          clipBehavior: Clip.antiAlias,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+            side: BorderSide(color: warn ? kError.withValues(alpha: 0.45) : kLine),
+          ),
+          // Riga pulita (modulo + nome + %); statistiche dettagliate al tocco.
+          child: ExpansionTile(
+            shape: const Border(),
+            collapsedShape: const Border(),
+            iconColor: kTextSoft,
+            collapsedIconColor: kTextSoft,
+            tilePadding: const EdgeInsets.symmetric(horizontal: 12),
+            childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            expandedCrossAxisAlignment: CrossAxisAlignment.start,
+            title: Row(
+              children: [
+                Pill('M${_refService.moduleLabel(mod)}', moduleColor(mod)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(modNames[mod] ?? '',
+                      style: const TextStyle(color: kText, fontSize: 13),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis),
                 ),
-                child: Text('M${_refService.moduleLabel(mod)}',
-                    style: TextStyle(
-                        color: color, fontSize: 11, fontWeight: FontWeight.bold)),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(modNames[mod] ?? '',
-                    style: const TextStyle(color: kText, fontSize: 11),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis),
-              ),
-              const SizedBox(width: 8),
+                const SizedBox(width: 8),
+                Text(
+                  '${(pct * 100).toStringAsFixed(0)}%',
+                  style: TextStyle(
+                      color: color, fontSize: 15, fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
+            children: [
               Text(
-                '${(pct * 100).toStringAsFixed(0)}%',
-                style: TextStyle(
-                    color: color, fontSize: 14, fontWeight: FontWeight.bold),
+                !hasActivity
+                    ? 'Pres. 100% · Ass. 0% — nessuna assenza su $plan ore prev.'
+                    : 'Pres. $presPct% · Ass. $absPct% — $absent ass. · $rec rec. · $unrec non rec. / $plan ore prev.',
+                style: TextStyle(color: warn ? kError : kTextSoft, fontSize: 12),
               ),
+              if (breakdown.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    breakdown,
+                    style: TextStyle(color: warn ? kError : kTextSoft, fontSize: 12),
+                  ),
+                ),
+              if (warn)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                      'DA RECUPERARE: ${toRec}h'
+                      '${toRecP > 0 ? ' · ${toRecP}h pratica' : ''}'
+                      '${toRecT > 0 ? ' · ${toRecT}h teoria' : ''}',
+                      style: const TextStyle(
+                          color: kError, fontSize: 12, fontWeight: FontWeight.bold)),
+                ),
             ],
           ),
-          children: [
-            Text(
-              !hasActivity
-                  ? 'Pres. 100% · Ass. 0% — nessuna assenza su $plan ore prev.'
-                  : 'Pres. $presPct% · Ass. $absPct% — $absent ass. · $rec rec. · $unrec non rec. / $plan ore prev.',
-              style: TextStyle(color: warn ? kError : kTextDim, fontSize: 10),
-            ),
-            if (breakdown.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 2),
-                child: Text(
-                  breakdown,
-                  style: TextStyle(color: warn ? kError : kTextDim, fontSize: 10),
-                ),
-              ),
-            if (warn)
-              Text(
-                  'DA RECUPERARE: ${toRec}h'
-                  '${toRecP > 0 ? ' · ${toRecP}h pratica' : ''}'
-                  '${toRecT > 0 ? ' · ${toRecT}h teoria' : ''}',
-                  style: const TextStyle(
-                      color: kError, fontSize: 10, fontWeight: FontWeight.bold)),
-          ],
         ),
       );
     }).toList();
@@ -616,12 +634,12 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
           textAlign: TextAlign.center,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: TextStyle(color: color, fontSize: 22, fontWeight: FontWeight.bold)),
+          style: TextStyle(color: color, fontSize: 22, fontWeight: FontWeight.w700)),
       Text(label,
           textAlign: TextAlign.center,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: const TextStyle(color: kTextDim, fontSize: 11)),
+          style: const TextStyle(color: kTextSoft, fontSize: 12)),
     ],
   );
 }
