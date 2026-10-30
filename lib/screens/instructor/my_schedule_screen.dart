@@ -8,6 +8,7 @@ import '../../services/course_service.dart';
 import '../../services/reference_service.dart';
 import '../../services/schedule_service.dart';
 import '../../theme.dart';
+import '../../widgets/collapsible_day.dart';
 
 class InstructorScheduleScreen extends ConsumerStatefulWidget {
   final String userId;
@@ -23,6 +24,7 @@ class _InstructorScheduleScreenState extends ConsumerState<InstructorScheduleScr
   final _refService      = ReferenceService();
   List<ScheduledLesson> _lessons = [];
   List<SlotNote> _notes = [];
+  Set<String>? _open; // giorni espansi (yyyy-MM-dd)
 
   @override
   void initState() {
@@ -121,6 +123,9 @@ class _InstructorScheduleScreenState extends ConsumerState<InstructorScheduleScr
       notesByDate.putIfAbsent(key, () => []).add(n);
     }
     final dates = {...grouped.keys, ...notesByDate.keys}.toList()..sort();
+    // Aperto all'avvio solo il primo giorno da oggi in poi, gli altri al tap.
+    final todayKey = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    final open = _open ??= {dates.firstWhere((d) => d.compareTo(todayKey) >= 0, orElse: () => '')};
 
     return RefreshIndicator(
       onRefresh: _reload,
@@ -135,35 +140,22 @@ class _InstructorScheduleScreenState extends ConsumerState<InstructorScheduleScr
                 final dayLessons = grouped[dates[i]] ?? [];
                 final dayNotes = notesByDate[dates[i]] ?? [];
                 final isToday = _isToday(date);
+                final modules = dayLessons.map((l) => 'M${_refService.moduleLabel(l.moduleNumber)}').toSet();
 
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                return CollapsibleDay(
+                  date: date,
+                  isToday: isToday,
+                  accent: kPrimary,
+                  summary: dayLessons.isEmpty
+                      ? ''
+                      : '${dayLessons.length} ${dayLessons.length == 1 ? 'ora' : 'ore'} · ${modules.join(' · ')}',
+                  hasNotes: dayNotes.isNotEmpty,
+                  allConfirmed: dayLessons.isNotEmpty && dayLessons.every((l) => l.confirmed),
+                  expanded: open.contains(dates[i]),
+                  onToggle: () => setState(() {
+                    if (!open.remove(dates[i])) open.add(dates[i]);
+                  }),
                   children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      child: Row(
-                        children: [
-                          if (isToday)
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: kPrimary,
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: const Text('OGGI', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
-                            )
-                          else
-                            Text(
-                              DateFormat('EEEE d MMMM', 'it').format(date),
-                              style: TextStyle(
-                                color: date.isBefore(DateTime.now()) ? kTextDim : kText,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 13,
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
                     if (dayNotes.isNotEmpty)
                       Container(
                         margin: const EdgeInsets.only(bottom: 6),
@@ -283,7 +275,6 @@ class _InstructorScheduleScreenState extends ConsumerState<InstructorScheduleScr
                         ),
                       );
                     }),
-                    const SizedBox(height: 4),
                   ],
                 );
               },

@@ -8,6 +8,7 @@ import '../../services/course_service.dart';
 import '../../services/reference_service.dart';
 import '../../services/schedule_service.dart';
 import '../../theme.dart';
+import '../../widgets/collapsible_day.dart';
 
 class AttendeeScheduleScreen extends ConsumerStatefulWidget {
   final String userId;
@@ -26,6 +27,7 @@ class _AttendeeScheduleScreenState extends ConsumerState<AttendeeScheduleScreen>
   Course? _selected;
   List<ScheduledLesson> _lessons = [];
   List<SlotNote> _notes = [];
+  Set<String>? _open; // giorni espansi (yyyy-MM-dd)
 
   @override
   void initState() {
@@ -71,6 +73,9 @@ class _AttendeeScheduleScreenState extends ConsumerState<AttendeeScheduleScreen>
       notesByDate.putIfAbsent(key, () => []).add(n);
     }
     final dates = {...grouped.keys, ...notesByDate.keys}.toList()..sort();
+    // Aperto all'avvio solo il primo giorno da oggi in poi, gli altri al tap.
+    final todayKey = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    final open = _open ??= {dates.firstWhere((d) => d.compareTo(todayKey) >= 0, orElse: () => '')};
 
     final effectiveType = _selected == null
         ? null
@@ -98,6 +103,7 @@ class _AttendeeScheduleScreenState extends ConsumerState<AttendeeScheduleScreen>
                   .toList(),
               onChanged: (id) => setState(() {
                 _selected = _courses.firstWhere((c) => c.id == id);
+                _open = null;
                 _load();
               }),
             ),
@@ -116,26 +122,21 @@ class _AttendeeScheduleScreenState extends ConsumerState<AttendeeScheduleScreen>
                       final dayLessons = grouped[dates[i]] ?? [];
                       final dayNotes = notesByDate[dates[i]] ?? [];
                       final isToday = _isToday(date);
+                      final modules = dayLessons.map((l) => 'M${_refService.moduleLabel(l.moduleNumber)}').toSet();
 
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      return CollapsibleDay(
+                        date: date,
+                        isToday: isToday,
+                        accent: kWarning,
+                        summary: dayLessons.isEmpty
+                            ? ''
+                            : '${dayLessons.length} ${dayLessons.length == 1 ? 'ora' : 'ore'} · ${modules.join(' · ')}',
+                        hasNotes: dayNotes.isNotEmpty,
+                        expanded: open.contains(dates[i]),
+                        onToggle: () => setState(() {
+                          if (!open.remove(dates[i])) open.add(dates[i]);
+                        }),
                         children: [
-                          Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 8),
-                            child: isToday
-                                ? Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                                    decoration: BoxDecoration(
-                                      color: kWarning,
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: const Text('OGGI', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 11)),
-                                  )
-                                : Text(
-                                    DateFormat('EEEE d MMMM', 'it').format(date),
-                                    style: const TextStyle(color: kTextDim, fontSize: 13, fontWeight: FontWeight.w500),
-                                  ),
-                          ),
                           if (dayNotes.isNotEmpty)
                             Container(
                               margin: const EdgeInsets.only(bottom: 6),
@@ -162,6 +163,10 @@ class _AttendeeScheduleScreenState extends ConsumerState<AttendeeScheduleScreen>
                           ...dayLessons.map((l) {
                             final isTheory = l.isTheory;
                             final color = moduleColor(l.moduleNumber);
+                            final slotTime = effectiveType?.schedule
+                                .slotsForWeekday(l.date.weekday)
+                                .where((t) => t.slot == l.timeSlot)
+                                .firstOrNull;
                             return Card(
                               color: kCard,
                               margin: const EdgeInsets.only(bottom: 6),
@@ -175,6 +180,8 @@ class _AttendeeScheduleScreenState extends ConsumerState<AttendeeScheduleScreen>
                                   children: [
                                     Text('${l.timeSlot}ª', style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12)),
                                     Text(isTheory ? 'T' : 'P', style: TextStyle(color: color, fontSize: 10)),
+                                    if (slotTime != null)
+                                      Text(slotTime.start, style: TextStyle(color: color, fontSize: 10)),
                                   ],
                                 ),
                                 title: Text(l.topic,

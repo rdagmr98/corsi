@@ -57,20 +57,20 @@ class _InstructorHoursScreenState extends ConsumerState<InstructorHoursScreen> {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            _currencyCard(
-              'Ore insegnamento (ultimi 365 giorni)',
-              teachH,
-              6,
-              teachOk,
-              Icons.school,
-            ),
-            const SizedBox(height: 12),
-            _currencyCard(
-              'Aggiornamento professionale (ultimi 2 anni)',
-              profH,
-              35,
-              profOk,
-              Icons.update,
+            // Le due condizioni di currency affiancate, come in AVES Tecnici.
+            IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: _currencyCard('Insegnamento\nultimi 365 giorni', teachH, 6, teachOk, Icons.school),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _currencyCard('Aggiornamento\nultimi 2 anni', profH, 35, profOk, Icons.update),
+                  ),
+                ],
+              ),
             ),
             if (daaExpiry != null) ...[
               const SizedBox(height: 12),
@@ -358,22 +358,20 @@ class _InstructorHoursScreenState extends ConsumerState<InstructorHoursScreen> {
     final pct = (current / required).clamp(0.0, 1.0);
     return Card(
       color: kCard,
+      margin: EdgeInsets.zero,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(color: color.withOpacity(0.3)),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
                 Icon(icon, color: color, size: 20),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(label, style: const TextStyle(color: kText, fontSize: 13)),
-                ),
+                const Spacer(),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
@@ -387,18 +385,26 @@ class _InstructorHoursScreenState extends ConsumerState<InstructorHoursScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Text(
-                  '${current.toStringAsFixed(1)}h',
-                  style: TextStyle(color: color, fontSize: 24, fontWeight: FontWeight.bold),
-                ),
-                Text(
-                  ' / ${required.toStringAsFixed(0)}h',
-                  style: const TextStyle(color: kTextDim, fontSize: 16),
-                ),
-              ],
+            const SizedBox(height: 8),
+            Text(label, style: const TextStyle(color: kText, fontSize: 13)),
+            const Spacer(),
+            const SizedBox(height: 8),
+            // Mezza larghezza su telefono: rimpicciolisce invece di sforare.
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Row(
+                children: [
+                  Text(
+                    '${current.toStringAsFixed(1)}h',
+                    style: TextStyle(color: color, fontSize: 24, fontWeight: FontWeight.bold),
+                  ),
+                  Text(
+                    ' / ${required.toStringAsFixed(0)}h',
+                    style: const TextStyle(color: kTextDim, fontSize: 16),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 8),
             LinearProgressIndicator(

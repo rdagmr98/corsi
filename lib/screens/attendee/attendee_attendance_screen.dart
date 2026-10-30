@@ -421,7 +421,7 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
                     } else if (isRecovery) {
                       statusColor = kPrimary;
                       statusIcon  = Icons.replay;
-                      statusText  = 'Recuperata (M${r.recoveredModule ?? l.moduleNumber})';
+                      statusText  = 'Recuperata (M${_refService.moduleLabel(r.recoveredModule ?? l.moduleNumber)})';
                     } else if (isPresent) {
                       statusColor = kAccent;
                       statusIcon  = Icons.check_circle;
