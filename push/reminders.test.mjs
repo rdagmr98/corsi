@@ -1,7 +1,7 @@
 // node push/reminders.test.mjs — quali promemoria partono e quando.
 import assert from "node:assert/strict";
 import { promemoria } from "./reminders.mjs";
-import { orari } from "./clock.mjs";
+import { orari, serveCatena } from "./clock.mjs";
 
 const slot = (slot, start, end) => ({ slot, start, end });
 const types = [{ id: "b1", schedule: {
@@ -45,4 +45,14 @@ assert.deepEqual(hhmm(29, 15, 23), ["17:55"]);
 assert.deepEqual(hhmm(30, 6, 7), ["07:50", "08:10", "09:00", "09:20", "10:20", "10:40"]);
 assert.deepEqual(hhmm(31, 6, 7), []);
 assert.deepEqual(hhmm(25, 15, 23), ["17:55"]);
+// passaggio di consegne: l'orario caduto tra la fine del run precedente e l'avvio di questo parte subito, senza doppioni col run precedente
+const conDa = orari(types, new Date(2026, 9, 29, 8, 32), new Date(2026, 9, 29, 8, 30)).map((t) => t.toTimeString().slice(0, 5));
+assert.deepEqual(conDa, ["08:30", "08:50", "09:40", "10:00", "10:50", "11:10", "12:00", "12:20", "13:50", "14:10"]);
+// catena: viva dom-gio, il venerdì fino all'ultimo orario (10:40), ferma il sabato
+const catena = (d, h, m) => serveCatena(types, new Date(2026, 9, d, h, m));
+assert.equal(catena(25, 0, 0), true);
+assert.equal(catena(29, 23, 0), true);
+assert.equal(catena(30, 10, 39), true);
+assert.equal(catena(30, 10, 41), false);
+assert.equal(catena(31, 12, 0), false);
 console.log("reminders ok");

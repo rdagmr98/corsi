@@ -1,21 +1,19 @@
 # Sveglia dei promemoria lezioni ad app chiusa (Web Push): push/clock.mjs dorme fino all'orario esatto e lancia reminders.yml su corsi-data.
-# Il cron di GitHub arriva in ritardo o salta, quindi i run partono ore prima (orari UTC: 07:07/11:13/16:23 di Roma d'estate, un'ora prima d'inverno).
-# Due cron per fascia: se uno salta copre l'altro; concurrency li mette in fila e chi parte dopo prende solo gli orari ancora futuri.
+# Catena dom-ven: ogni run a fine finestra rilancia se stesso (workflow_dispatch con GITHUB_TOKEN). Il cron di GitHub arriva con ~6 h di ritardo, quindi serve solo a riavviare la catena se si spezza.
+# Domenica mattina la fa ripartire dopo la pausa del fine settimana (primo orario: 17:55 di domenica). Concurrency: un solo run alla volta, un cron in attesa viene sostituito dal rilancio, quindi niente catene doppie.
 name: promemoria
 on:
   schedule:
-    - cron: '7 5 * * 1-5'
-    - cron: '47 5 * * 1-5'
-    - cron: '13 9 * * 1-4'
-    - cron: '53 9 * * 1-4'
-    - cron: '23 14 * * 0-4'
-    - cron: '3 15 * * 0-4'
-  workflow_dispatch: # prova: un lancio subito a vuoto (DRY) su corsi-data; dry=false avvia la sveglia vera (se il cron salta)
+    - cron: '7 */3 * * 1-5'
+    - cron: '7 6,8,10 * * 0'
+  workflow_dispatch: # prova: un lancio subito a vuoto (DRY) su corsi-data; dry=false avvia la sveglia vera
     inputs:
       dry: { type: boolean, default: true }
-concurrency: { group: promemoria, cancel-in-progress: false }
+      da: { type: string, required: false } # fine finestra del run precedente, lo passa clock.mjs
+concurrency: { group: "promemoria-${{ inputs.dry && 'dry' || 'run' }}", cancel-in-progress: false } # le prove DRY non devono sostituire il rilancio in attesa
 permissions:
   contents: read
+  actions: write
 jobs:
   sveglia:
     runs-on: ubuntu-latest
@@ -27,4 +25,6 @@ jobs:
         env:
           TZ: Europe/Rome
           DRY: ${{ github.event_name == 'workflow_dispatch' && inputs.dry }}
+          DA: ${{ inputs.da }}
           GH_TOKEN: ${{ secrets.READ_PAT }}
+          GITHUB_TOKEN: ${{ github.token }}
