@@ -89,7 +89,8 @@ Richiesta: "dai la possibilità agli admin di resettare la password ad un utente
   - Promemoria: arrivano a -30 e -10 min, uno solo per ogni blocco di ore consecutive.
   - KPI: il periodo filtra per data di compilazione.
   - Vault: [[AVES Corsi/Corsi sveglia promemoria GitHub 2026-10-30]].
-- PROSSIMO PASSO: verificare (dopo le 08:20 del 30/10) i run `promemoria`/`reminders` e i push ricevuti. Simulazione locale fatta, comandi e risultato atteso in [[AVES Corsi/Corsi sveglia promemoria GitHub 2026-10-30]] sezione "Verifica 30/10". Poi ci sono i seguiti facoltativi del KPI (campi testuali MTOE-A-2-1, export).
+- `b74c6ce`: verifica del 30/10 fallita (cron con ~6 h di ritardo, nessun push), quindi la sveglia ora è una catena di run che si rilancia da sola; il cron serve solo a riavviarla. Vault: [[AVES Corsi/Corsi sveglia promemoria GitHub 2026-10-30]].
+- PROSSIMO PASSO: verificare la catena dopo le 18:00 di domenica 1/11 e lunedì 2/11 dopo le 09:00 (comandi e atteso nella stessa nota, sezione "PROSSIMO PASSO"). Poi ci sono i seguiti facoltativi del KPI (campi testuali MTOE-A-2-1, export).
 
 ## STATO SESSIONE — [COMPRESSO s46] 2026-10-28 (sessione 45)
 
