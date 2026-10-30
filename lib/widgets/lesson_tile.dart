@@ -7,8 +7,8 @@ import '../services/reference_service.dart';
 import '../services/schedule_service.dart';
 import '../theme.dart';
 
-/// Righe lezione (istruttore e frequentatore): orario in chiaro, argomento per esteso e
-/// avanzamento "T n/tot h" del sottomodulo, come nel calendario del direttore.
+/// Righe lezione (istruttore e frequentatore): compatte con numero dell'ora, orario e
+/// modulo; al tap argomento per esteso e avanzamento "T n/tot h" del sottomodulo.
 class LessonDescriber {
   final _scheduleService = ScheduleService();
   final _refService = ReferenceService();
@@ -80,83 +80,86 @@ class LessonDescriber {
     if (RegExp(r'^\d').hasMatch(topic) && topic.contains('.')) {
       topic = _subNames['$cid|${_norm(topic)}'] ?? _subNames['$cid|$nc'] ?? topic;
     }
-    final task = l.taskId == null ? '' : ' · Task ${_taskNames['$cid|${l.taskId}'] ?? l.taskId}';
     final courseColor = _courseColors[cid];
+    final head = [
+      if (l.timeSlot > 0) '${l.timeSlot}ª ora' else 'Recupero',
+      if (slotTime != null) '${slotTime.start}–${slotTime.end}',
+    ].join(' · ');
+    final module = [
+      'M${_refService.moduleLabel(l.moduleNumber)}',
+      if (l.submoduleCode.isNotEmpty) l.submoduleCode,
+      l.isTheory ? 'Teoria' : 'Pratica',
+    ].join(' · ');
+    const detailStyle = TextStyle(color: kTextDim, fontSize: 12);
 
     return Card(
+      key: ValueKey(l.id),
       color: kCard,
       margin: const EdgeInsets.only(bottom: 6),
+      clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(8),
         side: BorderSide(color: courseColor?.withValues(alpha: 0.6) ?? kBorder),
       ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Riga compatta (ora, orario, modulo); il resto al tap.
+          ExpansionTile(
+            shape: const Border(),
+            collapsedShape: const Border(),
+            iconColor: kTextDim,
+            collapsedIconColor: kTextDim,
+            tilePadding: const EdgeInsets.symmetric(horizontal: 12),
+            childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+            expandedCrossAxisAlignment: CrossAxisAlignment.start,
+            title: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Orario in chiaro: inizio in evidenza, fine sotto.
-                SizedBox(
-                  width: 50,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(slotTime?.start ?? '${l.timeSlot}ª ora',
-                          style: const TextStyle(color: kText, fontSize: 14, fontWeight: FontWeight.w700)),
-                      if (slotTime != null)
-                        Text(slotTime.end, style: const TextStyle(color: kTextDim, fontSize: 12)),
-                    ],
-                  ),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Text(head,
+                          style: const TextStyle(color: kText, fontSize: 13, fontWeight: FontWeight.w700)),
+                    ),
+                    const SizedBox(width: 6),
+                    l.confirmed
+                        ? const Icon(Icons.check_circle, color: kAccent, size: 18)
+                        : const Icon(Icons.schedule, color: kTextDim, size: 18),
+                  ],
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (courseColor != null)
-                        Text(_courses[cid]?.title ?? '',
-                            style: TextStyle(color: courseColor, fontWeight: FontWeight.bold, fontSize: 10),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis),
-                      Text(topic,
-                          style: const TextStyle(color: kText, fontSize: 13, fontWeight: FontWeight.w500),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis),
-                      const SizedBox(height: 2),
-                      Text.rich(
-                        TextSpan(children: [
-                          WidgetSpan(
-                            alignment: PlaceholderAlignment.middle,
-                            child: Container(
-                              width: 8,
-                              height: 8,
-                              margin: const EdgeInsets.only(right: 5),
-                              decoration: BoxDecoration(color: moduleColor(l.moduleNumber), shape: BoxShape.circle),
-                            ),
-                          ),
-                          TextSpan(
-                              text: 'M${_refService.moduleLabel(l.moduleNumber)} · '
-                                  '${l.isTheory ? 'Teoria' : 'Pratica'} · $hoursStr$task'),
-                        ]),
-                        style: const TextStyle(color: kTextDim, fontSize: 11),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                const SizedBox(height: 2),
+                Text.rich(
+                  TextSpan(children: [
+                    WidgetSpan(
+                      alignment: PlaceholderAlignment.middle,
+                      child: Container(
+                        width: 8,
+                        height: 8,
+                        margin: const EdgeInsets.only(right: 5),
+                        decoration: BoxDecoration(color: moduleColor(l.moduleNumber), shape: BoxShape.circle),
                       ),
-                    ],
-                  ),
+                    ),
+                    TextSpan(text: module),
+                  ]),
+                  style: const TextStyle(color: kTextDim, fontSize: 11),
                 ),
-                const SizedBox(width: 6),
-                l.confirmed
-                    ? const Icon(Icons.check_circle, color: kAccent, size: 18)
-                    : const Icon(Icons.schedule, color: kTextDim, size: 18),
               ],
             ),
-            if (action != null) ...[const SizedBox(height: 10), action],
-          ],
-        ),
+            children: [
+              if (courseColor != null)
+                Text(_courses[cid]?.title ?? '',
+                    style: TextStyle(color: courseColor, fontWeight: FontWeight.bold, fontSize: 11)),
+              Text(topic, style: const TextStyle(color: kText, fontSize: 13, fontWeight: FontWeight.w500)),
+              const SizedBox(height: 2),
+              Text(hoursStr, style: detailStyle),
+              if (l.taskId != null) Text('Task ${_taskNames['$cid|${l.taskId}'] ?? l.taskId}', style: detailStyle),
+            ],
+          ),
+          if (action != null)
+            Padding(padding: const EdgeInsets.fromLTRB(12, 0, 12, 10), child: action),
+        ],
       ),
     );
   }

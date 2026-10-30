@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../models/schedule_models.dart';
 import '../../models/user_models.dart';
@@ -15,11 +16,9 @@ import '../../theme.dart';
 import '../../widgets/collapsible_day.dart';
 import '../../widgets/lesson_tile.dart';
 import '../../widgets/status_card.dart';
-import 'history_screens.dart';
 
-/// Home istruttore sul modello della dashboard di AVES Tecnici: le due
-/// currency in alto (al tocco lo storico), la giornata con la registrazione
-/// presenze, poi le prossime lezioni a giorni collassati.
+/// Home istruttore: le due currency in alto (al tocco lo storico), la giornata
+/// con la registrazione presenze, poi le prossime lezioni a giorni collassati.
 class InstructorHomeScreen extends ConsumerStatefulWidget {
   final String userId;
   const InstructorHomeScreen({super.key, required this.userId});
@@ -44,8 +43,14 @@ class _InstructorHomeScreenState extends ConsumerState<InstructorHomeScreen> {
   @override
   void initState() {
     super.initState();
-    _load();
     _generateDayBeforeReminders();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    ModalRoute.isCurrentOf(context); // ricarica anche al ritorno da uno storico
+    _load();
   }
 
   Future<void> _generateDayBeforeReminders() async {
@@ -89,11 +94,6 @@ class _InstructorHomeScreenState extends ConsumerState<InstructorHomeScreen> {
   Future<void> _reload() async {
     await ref.read(authProvider).reloadDb();
     _load();
-  }
-
-  Future<void> _push(Widget page) async {
-    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
-    if (mounted) _load(); // aggiornamenti aggiunti nello storico
   }
 
   Future<void> _confirmLesson(ScheduledLesson lesson) async {
@@ -157,7 +157,7 @@ class _InstructorHomeScreenState extends ConsumerState<InstructorHomeScreen> {
                           style: TextStyle(color: present ? kAccent : kError),
                         ),
                       ),
-                      title: Text(a.fullName, overflow: TextOverflow.ellipsis, style: const TextStyle(color: kText)),
+                      title: Text(a.fullName, style: const TextStyle(color: kText)),
                       trailing: Switch(
                         value: present,
                         activeColor: kAccent,
@@ -239,16 +239,17 @@ class _InstructorHomeScreenState extends ConsumerState<InstructorHomeScreen> {
         .titleLarge
         ?.copyWith(color: kText, fontWeight: FontWeight.w700, letterSpacing: -0.3);
 
-    Widget currency(String title, String subtitle, double hours, double required, bool ok, Widget page) =>
+    String fmt(double h) => h == h.roundToDouble() ? h.toStringAsFixed(0) : h.toStringAsFixed(1);
+
+    Widget currency(String title, String subtitle, double hours, double required, bool ok, String route) =>
         StatusCard(
           title: title,
           subtitle: subtitle,
-          value: ok ? 'GO' : 'NO GO',
-          progress: hours / required,
-          footer: '${hours == hours.roundToDouble() ? hours.toStringAsFixed(0) : hours.toStringAsFixed(1)} h '
-              'su ${required.toStringAsFixed(0)} h',
+          value: '${fmt(hours)} h',
+          badge: ok ? 'GO' : 'NO GO',
+          footer: ok ? 'Minimo ${fmt(required)} h' : 'Mancano ${fmt(required - hours)} h',
           color: ok ? kAccent : kError,
-          onTap: () => _push(page),
+          onTap: () => context.go(route),
         );
 
     return RefreshIndicator(
@@ -266,12 +267,12 @@ class _InstructorHomeScreenState extends ConsumerState<InstructorHomeScreen> {
               children: [
                 Expanded(
                   child: currency('Insegnamento', 'Ultimi 365 giorni', teachH, 6,
-                      teachH >= 6 || grace.teach, TeachingHistoryScreen(userId: uid)),
+                      teachH >= 6 || grace.teach, '/instructor/insegnamento'),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: currency('Aggiornamento', 'Ultimi 2 anni', profH, 35,
-                      profH >= 35 || grace.prof, UpdatesHistoryScreen(userId: uid)),
+                      profH >= 35 || grace.prof, '/instructor/aggiornamenti'),
                 ),
               ],
             ),

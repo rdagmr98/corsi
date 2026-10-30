@@ -7,6 +7,7 @@ import '../../services/grade_service.dart';
 import '../../services/notification_service.dart';
 import '../../services/user_service.dart';
 import '../../theme.dart';
+import '../../utils/web_back.dart';
 import '../../widgets/instructor_lessons_by_course.dart';
 
 /// Storico insegnamento (dalla card currency della home): lezioni confermate
@@ -29,7 +30,11 @@ class _TeachingHistoryScreenState extends ConsumerState<TeachingHistoryScreen> {
     final external = _gradeService.getUpdatesForInstructor(widget.userId).where((u) => u.isTeaching).toList();
     return Scaffold(
       backgroundColor: kBg,
-      appBar: AppBar(backgroundColor: kSurface, title: const Text('Ore di insegnamento')),
+      appBar: AppBar(
+        backgroundColor: kSurface,
+        leading: const BackButton(onPressed: webBack),
+        title: const Text('Ore di insegnamento'),
+      ),
       body: RefreshIndicator(
         onRefresh: () async {
           await ref.read(authProvider).reloadDb();
@@ -84,7 +89,11 @@ class _UpdatesHistoryScreenState extends ConsumerState<UpdatesHistoryScreen> {
     final updates = _gradeService.getUpdatesForInstructor(widget.userId);
     return Scaffold(
       backgroundColor: kBg,
-      appBar: AppBar(backgroundColor: kSurface, title: const Text('Aggiornamenti')),
+      appBar: AppBar(
+        backgroundColor: kSurface,
+        leading: const BackButton(onPressed: webBack),
+        title: const Text('Aggiornamenti'),
+      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _showAddUpdateDialog,
         backgroundColor: kPrimary,
@@ -290,8 +299,7 @@ Widget _updateTile(InstructorUpdate u) {
     ),
     child: ListTile(
       leading: Icon(icon, color: iconColor, size: 20),
-      title: Text(u.description,
-          style: const TextStyle(color: kText, fontSize: 13), maxLines: 2, overflow: TextOverflow.ellipsis),
+      title: Text(u.description, style: const TextStyle(color: kText, fontSize: 13)),
       subtitle: Text(DateFormat('dd/MM/yyyy').format(u.date), style: const TextStyle(color: kTextDim, fontSize: 11)),
       trailing: u.isPending
           ? Container(

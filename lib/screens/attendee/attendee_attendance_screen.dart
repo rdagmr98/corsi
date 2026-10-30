@@ -196,11 +196,16 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
                       padding: const EdgeInsets.all(16),
                       child: Column(
                         children: [
+                          // Su due righe: in quattro colonne le etichette non ci stanno.
                           Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceAround,
                             children: [
                               Expanded(child: _stat('$totalConfirmed', 'Lezioni', kTextDim)),
                               Expanded(child: _stat('$totalAbsent', 'Assenze', totalAbsent > 0 ? kError : kAccent)),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
                               Expanded(child: _stat('$totalRecovered', 'Recuperate', kPrimary)),
                               Expanded(
                                 child: _stat(
@@ -347,8 +352,6 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
                                         ' – ${modNames[modNum] ?? ''}'
                                     : 'Recupero',
                                 style: const TextStyle(color: kText, fontSize: 12),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
                               ),
                               subtitle: date != null
                                   ? Text(DateFormat('dd/MM/yyyy').format(date),
@@ -382,7 +385,11 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
                     // Ore oltre il piano = recuperi: il contatore non supera il piano.
                     final conf = plan > 0 && rawConf > plan ? plan : rawConf;
                     final typeLabel = isTheory ? 'T' : 'P';
-                    final hoursStr = plan > 0 ? '· $typeLabel $conf/$plan h' : '· $typeLabel ${conf}h';
+                    final hoursStr = plan > 0 ? '$typeLabel $conf/$plan h' : '$typeLabel ${conf}h';
+                    final slot = typeInfo?.schedule
+                        .slotsForWeekday(l.date.weekday)
+                        .where((t) => t.slot == l.timeSlot)
+                        .firstOrNull;
 
                     String displayTopic = l.topic;
                     if (RegExp(r'^\d').hasMatch(l.topic) && l.topic.contains('.')) {
@@ -429,25 +436,32 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
                     return Card(
                       color: kCard,
                       margin: const EdgeInsets.only(bottom: 6),
+                      clipBehavior: Clip.antiAlias,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      child: ListTile(
+                      // Riga compatta (data, ora, modulo, stato); argomento e ore al tap.
+                      child: ExpansionTile(
+                        key: ValueKey(l.id),
                         dense: true,
+                        shape: const Border(),
+                        collapsedShape: const Border(),
+                        tilePadding: const EdgeInsets.symmetric(horizontal: 12),
+                        childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+                        expandedCrossAxisAlignment: CrossAxisAlignment.start,
                         leading: Icon(statusIcon, color: statusColor, size: 20),
                         title: Text(
-                            'M${_refService.moduleLabel(l.moduleNumber)} $displayTopic'
-                            '${taskLabel != null ? ' · $taskLabel' : ''}',
-                            style: const TextStyle(color: kText, fontSize: 12),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis),
-                        subtitle: Text(
-                            '${DateFormat('dd/MM/yyyy').format(l.date)} $hoursStr',
-                            style: const TextStyle(color: kTextDim, fontSize: 11)),
-                        trailing: SizedBox(
-                            width: 96,
-                            child: Text(statusText,
-                                textAlign: TextAlign.right,
-                                maxLines: 2,
-                                style: TextStyle(color: statusColor, fontSize: 11))),
+                            '${DateFormat('dd/MM/yyyy').format(l.date)} · ${l.timeSlot}ª ora · '
+                            'M${_refService.moduleLabel(l.moduleNumber)}',
+                            style: const TextStyle(color: kText, fontSize: 12, fontWeight: FontWeight.w600)),
+                        subtitle: Text(statusText, style: TextStyle(color: statusColor, fontSize: 11)),
+                        children: [
+                          Text(displayTopic, style: const TextStyle(color: kText, fontSize: 12)),
+                          if (taskLabel != null)
+                            Text(taskLabel, style: const TextStyle(color: kTextDim, fontSize: 11)),
+                          Text(
+                              '${slot != null ? '${slot.start}–${slot.end} · ' : ''}'
+                              '${isTheory ? 'Teoria' : 'Pratica'} · $hoursStr',
+                              style: const TextStyle(color: kTextDim, fontSize: 11)),
+                        ],
                       ),
                     );
                   },
@@ -555,9 +569,7 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
               const SizedBox(width: 10),
               Expanded(
                 child: Text(modNames[mod] ?? '',
-                    style: const TextStyle(color: kText, fontSize: 11),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis),
+                    style: const TextStyle(color: kText, fontSize: 11)),
               ),
               const SizedBox(width: 8),
               Text(
@@ -600,13 +612,9 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
     children: [
       Text(value,
           textAlign: TextAlign.center,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
           style: TextStyle(color: color, fontSize: 22, fontWeight: FontWeight.bold)),
       Text(label,
           textAlign: TextAlign.center,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
           style: const TextStyle(color: kTextDim, fontSize: 11)),
     ],
   );

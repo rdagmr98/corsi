@@ -47,7 +47,7 @@ void main() {
       updatedAt: DateTime(2025),
     );
     await tester.pumpWidget(MaterialApp(
-        home: QuestionnaireScreen(course: c, module: 5, userId: 'u')));
+        home: QuestionnaireScreen(course: c, module: 5, userId: 'u', onClose: () {})));
     for (var i = 0; i < 80; i++) {
       await tester.drag(find.byType(ListView), const Offset(0, -400));
       await tester.pump();

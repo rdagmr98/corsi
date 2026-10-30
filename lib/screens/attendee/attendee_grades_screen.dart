@@ -172,9 +172,7 @@ class _AttendeeGradesScreenState extends ConsumerState<AttendeeGradesScreen> {
                                 const SizedBox(width: 8),
                                 Expanded(
                                   child: Text(module.name,
-                                      style: const TextStyle(color: kText, fontSize: 13, fontWeight: FontWeight.w500),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis),
+                                      style: const TextStyle(color: kText, fontSize: 13, fontWeight: FontWeight.w500)),
                                 ),
                                 if (s != null && s.hasGrades)
                                   Text(
@@ -223,9 +221,7 @@ class _AttendeeGradesScreenState extends ConsumerState<AttendeeGradesScreen> {
                                                 style: const TextStyle(color: kTextDim, fontSize: 9)),
                                           if (g.notes != null && g.notes!.isNotEmpty)
                                             Text(g.notes!,
-                                                style: const TextStyle(color: kTextDim, fontSize: 10),
-                                                maxLines: 2,
-                                                overflow: TextOverflow.ellipsis),
+                                                style: const TextStyle(color: kTextDim, fontSize: 10)),
                                         ],
                                       ),
                                     ),

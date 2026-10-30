@@ -3,17 +3,19 @@ import '../../models/course_models.dart';
 import '../../services/questionnaire_service.dart';
 import '../../theme.dart';
 
-/// Compilazione MTOE-F-2-7 (mobile). Torna true se inviato.
+/// Compilazione MTOE-F-2-7 (mobile).
 class QuestionnaireScreen extends StatefulWidget {
   final Course course;
   final int module;
   final String userId;
+  final VoidCallback onClose;
 
   const QuestionnaireScreen({
     super.key,
     required this.course,
     required this.module,
     required this.userId,
+    required this.onClose,
   });
 
   @override
@@ -52,7 +54,7 @@ class _QuestionnaireScreenState extends State<QuestionnaireScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Questionario inviato, grazie.')));
-      Navigator.pop(context, true);
+      widget.onClose();
     } catch (e) {
       if (!mounted) return;
       setState(() => _sending = false);
@@ -108,6 +110,7 @@ class _QuestionnaireScreenState extends State<QuestionnaireScreen> {
       backgroundColor: kBg,
       appBar: AppBar(
         backgroundColor: kSurface,
+        leading: BackButton(onPressed: widget.onClose),
         title: const Text('Qualità percepita',
             style: TextStyle(color: kText, fontSize: 16)),
       ),

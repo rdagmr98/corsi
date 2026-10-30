@@ -40,14 +40,13 @@ class InstructorLessonsByCourse extends StatelessWidget {
                 style: TextStyle(color: dim ? kTextDim : kText, fontSize: 11)),
           ),
           SizedBox(
-            width: 50,
+            width: 58,
             child: Text(l.type == 'pratica' ? 'Pratica' : 'Teoria',
                 style: TextStyle(color: l.type == 'pratica' ? kAccent : kPrimary, fontSize: 10)),
           ),
           Expanded(
             child: Text(
               l.topic.isEmpty || l.topic == l.code ? l.code : '${l.code}  ${l.topic}',
-              overflow: TextOverflow.ellipsis,
               style: TextStyle(color: dim ? kTextDim : kText, fontSize: 11),
             ),
           ),
@@ -78,10 +77,7 @@ class InstructorLessonsByCourse extends StatelessWidget {
             clipBehavior: Clip.antiAlias,
             child: ExpansionTile(
               leading: const Icon(Icons.menu_book, color: kPrimary, size: 20),
-              title: Text(course?.title ?? 'Corso',
-                  style: const TextStyle(color: kText, fontSize: 13),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis),
+              title: Text(course?.title ?? 'Corso', style: const TextStyle(color: kText, fontSize: 13)),
               subtitle: Text(
                 older == 0
                     ? 'Ultimi 365 giorni'
@@ -103,8 +99,6 @@ class InstructorLessonsByCourse extends StatelessWidget {
                     title: Text(
                       m == 0 ? 'Altro' : 'M${refs.moduleLabel(m)}  ${moduleNames[m] ?? ''}',
                       style: const TextStyle(color: kText, fontSize: 12),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                     ),
                     trailing: Text(
                       '${byModule[m]!.where((l) => l.date.isAfter(cutoff)).length}h',

@@ -10,30 +10,83 @@ import 'providers/auth_provider.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/master/master_shell.dart';
 import 'screens/director/director_shell.dart';
+import 'screens/instructor/history_screens.dart';
 import 'screens/instructor/instructor_shell.dart';
+import 'screens/attendee/attendee_attendance_screen.dart';
+import 'screens/attendee/attendee_grades_screen.dart';
 import 'screens/attendee/attendee_shell.dart';
+import 'screens/attendee/questionnaire_screen.dart';
+import 'services/course_service.dart';
 import 'services/gh_db_service.dart';
 import 'utils/snackbar.dart';
+import 'utils/web_back.dart';
 import 'theme.dart';
+
+String _uid(BuildContext context) =>
+    ProviderScope.containerOf(context).read(authProvider).currentUser?.id ?? '';
+
+Widget _detail(String title, Widget body) => Scaffold(
+      backgroundColor: kBg,
+      appBar: AppBar(
+        backgroundColor: kSurface,
+        leading: const BackButton(onPressed: webBack),
+        title: Text(title),
+      ),
+      body: body,
+    );
 
 final _router = GoRouter(
   initialLocation: '/login',
   // Senza utente in memoria (reload): login, che ripristina la sessione.
-  // Con utente: solo la shell del suo ruolo. Il tasto indietro del browser
-  // riporterebbe altrimenti alle shell di profili usati prima (/master...)
-  // o al login, che rientra subito.
+  // Con utente: solo la shell del suo ruolo e i suoi dettagli. Il tasto indietro
+  // del browser riporterebbe altrimenti alle shell di profili usati prima
+  // (/master...) o al login, che rientra subito.
   redirect: (context, state) {
     final user = ProviderScope.containerOf(context).read(authProvider).currentUser;
-    if (user == null) return state.matchedLocation == '/login' ? null : '/login';
+    final loc = state.matchedLocation;
+    if (user == null) return loc == '/login' ? null : '/login';
     final home = user.userRole.home;
-    return state.matchedLocation == home ? null : home;
+    return loc == home || loc.startsWith('$home/') ? null : home;
   },
+  // I dettagli sono rotte vere: solo così hanno una voce nella cronologia e il
+  // tasto indietro del telefono torna alla home invece di uscire dall'app.
   routes: [
     GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
     GoRoute(path: '/master', builder: (_, __) => const MasterShell()),
     GoRoute(path: '/director', builder: (_, __) => const DirectorShell()),
-    GoRoute(path: '/instructor', builder: (_, __) => const InstructorShell()),
-    GoRoute(path: '/attendee', builder: (_, __) => const AttendeeShell()),
+    GoRoute(
+      path: '/instructor',
+      builder: (_, __) => const InstructorShell(),
+      routes: [
+        GoRoute(path: 'insegnamento', builder: (c, _) => TeachingHistoryScreen(userId: _uid(c))),
+        GoRoute(path: 'aggiornamenti', builder: (c, _) => UpdatesHistoryScreen(userId: _uid(c))),
+      ],
+    ),
+    GoRoute(
+      path: '/attendee',
+      builder: (_, __) => const AttendeeShell(),
+      routes: [
+        GoRoute(
+          path: 'presenze/:course',
+          builder: (c, s) => _detail(
+              'Presenze', AttendeeAttendanceScreen(userId: _uid(c), courseId: s.pathParameters['course']!)),
+        ),
+        GoRoute(
+          path: 'voti/:course',
+          builder: (c, s) =>
+              _detail('Voti', AttendeeGradesScreen(userId: _uid(c), courseId: s.pathParameters['course']!)),
+        ),
+        GoRoute(
+          path: 'questionario/:course/:module',
+          builder: (c, s) => QuestionnaireScreen(
+            course: CourseService().findById(s.pathParameters['course']!)!,
+            module: int.parse(s.pathParameters['module']!),
+            userId: _uid(c),
+            onClose: webBack,
+          ),
+        ),
+      ],
+    ),
   ],
 );
 

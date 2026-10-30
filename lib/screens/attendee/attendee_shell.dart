@@ -9,7 +9,6 @@ import '../../widgets/change_password_dialog.dart';
 import '../../widgets/notification_panel_widget.dart';
 import '../../widgets/push_banner.dart';
 import 'attendee_home_screen.dart';
-import 'questionnaire_screen.dart';
 
 class AttendeeShell extends ConsumerStatefulWidget {
   const AttendeeShell({super.key});
@@ -52,22 +51,9 @@ class _AttendeeShellState extends ConsumerState<AttendeeShell> {
             subtitle: Text(
                 QuestionnaireService.moduleLabel(
                     courses.firstWhere((c) => c.id == q.courseId), q.module),
-                overflow: TextOverflow.ellipsis,
                 style: const TextStyle(color: kTextDim, fontSize: 12)),
             trailing: const Icon(Icons.chevron_right, color: kTextDim),
-            onTap: () async {
-              final ok = await Navigator.push<bool>(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => QuestionnaireScreen(
-                    course: courses.firstWhere((c) => c.id == q.courseId),
-                    module: q.module,
-                    userId: userId,
-                  ),
-                ),
-              );
-              if (ok == true && mounted) setState(() {});
-            },
+            onTap: () => context.go('/attendee/questionario/${Uri.encodeComponent(q.courseId)}/${q.module}'),
           ),
         ),
     ];
@@ -75,6 +61,7 @@ class _AttendeeShellState extends ConsumerState<AttendeeShell> {
 
   @override
   Widget build(BuildContext context) {
+    ModalRoute.isCurrentOf(context); // al ritorno dal questionario il banner sparisce
     final auth = ref.watch(authProvider);
     final user = auth.currentUser;
     final userId = user?.id ?? '';

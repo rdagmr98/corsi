@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../models/course_models.dart';
 import '../../models/schedule_models.dart';
@@ -13,8 +14,6 @@ import '../../theme.dart';
 import '../../widgets/collapsible_day.dart';
 import '../../widgets/lesson_tile.dart';
 import '../../widgets/status_card.dart';
-import 'attendee_attendance_screen.dart';
-import 'attendee_grades_screen.dart';
 
 /// Home frequentatore come quella istruttore (modello AVES Tecnici): presenze
 /// e voti in alto (al tocco il dettaglio), la giornata, poi le prossime
@@ -39,8 +38,9 @@ class _AttendeeHomeScreenState extends ConsumerState<AttendeeHomeScreen> {
   Set<String>? _open; // giorni espansi (yyyy-MM-dd)
 
   @override
-  void initState() {
-    super.initState();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    ModalRoute.isCurrentOf(context); // ricarica anche al ritorno da un dettaglio
     _load();
   }
 
@@ -54,17 +54,6 @@ class _AttendeeHomeScreenState extends ConsumerState<AttendeeHomeScreen> {
   Future<void> _reload() async {
     await ref.read(authProvider).reloadDb();
     _load();
-  }
-
-  Future<void> _push(String title, Widget body) async {
-    await Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => Scaffold(
-        backgroundColor: kBg,
-        appBar: AppBar(backgroundColor: kSurface, title: Text(title)),
-        body: body,
-      ),
-    ));
-    if (mounted) _load();
   }
 
   @override
@@ -134,11 +123,9 @@ class _AttendeeHomeScreenState extends ConsumerState<AttendeeHomeScreen> {
               dropdownColor: kSurface,
               style: const TextStyle(color: kText),
               isExpanded: true,
+              itemHeight: null, // titoli lunghi su più righe
               underline: const SizedBox(),
-              items: _courses
-                  .map((c) => DropdownMenuItem(
-                      value: c.id, child: Text(c.title, overflow: TextOverflow.ellipsis)))
-                  .toList(),
+              items: _courses.map((c) => DropdownMenuItem(value: c.id, child: Text(c.title))).toList(),
               onChanged: (id) => setState(() {
                 _selected = _courses.firstWhere((c) => c.id == id);
                 _open = null;
@@ -157,10 +144,9 @@ class _AttendeeHomeScreenState extends ConsumerState<AttendeeHomeScreen> {
                     title: 'Presenze',
                     subtitle: 'Corso completato',
                     value: '${(completion * 100).round()}%',
-                    progress: completion,
                     footer: toRecover > 0 ? 'Da recuperare: $toRecover h' : 'Niente da recuperare',
                     color: toRecover > 0 ? kError : kAccent,
-                    onTap: () => _push('Presenze', AttendeeAttendanceScreen(userId: uid, courseId: course.id)),
+                    onTap: () => context.go('/attendee/presenze/${Uri.encodeComponent(course.id)}'),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -169,12 +155,11 @@ class _AttendeeHomeScreenState extends ConsumerState<AttendeeHomeScreen> {
                     title: 'Voti',
                     subtitle: 'Media graduatoria',
                     value: hasGrades ? avg.toStringAsFixed(2) : '—',
-                    progress: hasGrades ? avg / 30 : 0,
                     footer: hasGrades && rank > 0
                         ? 'Posizione $rank° / ${course.attendeeIds.length}'
                         : 'Nessun voto',
                     color: gradeColor,
-                    onTap: () => _push('Voti', AttendeeGradesScreen(userId: uid, courseId: course.id)),
+                    onTap: () => context.go('/attendee/voti/${Uri.encodeComponent(course.id)}'),
                   ),
                 ),
               ],
