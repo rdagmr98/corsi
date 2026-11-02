@@ -1176,18 +1176,12 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
                         )),
                       const SizedBox(height: 20),
     ];
-    final sProf = <Widget>[
-                      // ── Aggiornamenti professionali ──────────────────────
-                      _sectionTitle(
-                          'Aggiornamenti professionali svolti (ultimi 2 anni: '
-                          '${profH.toStringAsFixed(0)}h / 35h)'),
-                      const SizedBox(height: 8),
-                      if (profList.isEmpty)
-                        const Text('Nessun aggiornamento registrato',
-                            style: TextStyle(color: kTextDim, fontSize: 12))
-                      else
-                        ...profList.map((u) => Opacity(
-                          opacity: u.date.isAfter(profCutoff) ? 1 : 0.45,
+    // Insegnamento esterno ai corsi 147 (es. altri enti), inserito dall'istruttore.
+    final teachCutoff = DateTime.now().subtract(const Duration(days: 365));
+    final teachList = updates.where((u) => u.isTeaching).toList()
+      ..sort((a, b) => b.date.compareTo(a.date));
+    Widget updRow(InstructorUpdate u, DateTime cutoff) => Opacity(
+                          opacity: u.date.isAfter(cutoff) ? 1 : 0.45,
                           child: Padding(
                           padding: const EdgeInsets.only(bottom: 4),
                           child: Row(children: [
@@ -1232,7 +1226,28 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
                               onPressed: () => _deleteUpdate(instr, u),
                             ),
                           ]),
-                        ))),
+                        ));
+    final sProf = <Widget>[
+                      // ── Aggiornamenti professionali ──────────────────────
+                      _sectionTitle(
+                          'Aggiornamenti professionali svolti (ultimi 2 anni: '
+                          '${profH.toStringAsFixed(0)}h / 35h)'),
+                      const SizedBox(height: 8),
+                      if (profList.isEmpty)
+                        const Text('Nessun aggiornamento registrato',
+                            style: TextStyle(color: kTextDim, fontSize: 12))
+                      else
+                        ...profList.map((u) => updRow(u, profCutoff)),
+                      const SizedBox(height: 20),
+                      _sectionTitle(
+                          'Insegnamento esterno (ultimi 365 giorni: '
+                          '${_fmtHours(_gradeService.getManualTeachingHoursRollingYear(instr.id))}h)'),
+                      const SizedBox(height: 8),
+                      if (teachList.isEmpty)
+                        const Text('Nessuna ora di insegnamento esterno registrata',
+                            style: TextStyle(color: kTextDim, fontSize: 12))
+                      else
+                        ...teachList.map((u) => updRow(u, teachCutoff)),
                       const SizedBox(height: 20),
     ];
     final sMat = <Widget>[
