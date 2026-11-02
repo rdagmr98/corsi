@@ -215,7 +215,7 @@ class _InstructorHomeScreenState extends ConsumerState<InstructorHomeScreen> {
     final grace = me == null ? (teach: false, prof: false) : _gradeService.ojtGrace(me);
     final daaOk = daaExpiry == null || (me?.goOverride ?? false) || daaExpiry.isAfter(DateTime.now());
 
-    final describer = LessonDescriber([..._today, ..._upcoming]);
+    final describer = LessonDescriber([..._today, ..._upcoming], showCourse: true);
     final dayKey = DateFormat('yyyy-MM-dd');
     final todayKey = dayKey.format(DateTime.now());
     final notesByDate = <String, List<SlotNote>>{};

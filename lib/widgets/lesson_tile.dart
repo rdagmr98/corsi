@@ -23,7 +23,11 @@ class LessonDescriber {
 
   static String _norm(String code) => ScheduleService.normalizeSubCode(code);
 
-  LessonDescriber(Iterable<ScheduledLesson> lessons) {
+  /// Corso nella riga compatta: l'istruttore insegna in più corsi, il frequentatore
+  /// vede solo il corso scelto in home.
+  final bool showCourse;
+
+  LessonDescriber(Iterable<ScheduledLesson> lessons, {this.showCourse = false}) {
     final courseService = CourseService();
     final ids = lessons.map((l) => l.courseId).toSet().toList()..sort();
     const palette = [kPrimary, kAccent, kWarning, Colors.purple, Colors.teal];
@@ -130,6 +134,9 @@ class LessonDescriber {
                   ],
                 ),
                 const SizedBox(height: 2),
+                if (showCourse && _courses[cid] != null)
+                  Text(_courses[cid]!.title,
+                      style: TextStyle(color: courseColor ?? kText, fontWeight: FontWeight.bold, fontSize: 11)),
                 Text.rich(
                   TextSpan(children: [
                     WidgetSpan(
@@ -148,7 +155,7 @@ class LessonDescriber {
               ],
             ),
             children: [
-              if (courseColor != null)
+              if (courseColor != null && !showCourse)
                 Text(_courses[cid]?.title ?? '',
                     style: TextStyle(color: courseColor, fontWeight: FontWeight.bold, fontSize: 11)),
               Text(topic, style: const TextStyle(color: kText, fontSize: 13, fontWeight: FontWeight.w500)),
