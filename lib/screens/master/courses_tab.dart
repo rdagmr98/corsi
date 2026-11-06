@@ -303,7 +303,7 @@ class _CoursesTabState extends ConsumerState<CoursesTab> {
                       defaultAula: defaultAula,
                     ));
                   } else {
-                    await _courseService.updateCourse(course!.copyWith(
+                    await _courseService.updateCourse(course.copyWith(
                       courseTypeId: selectedType,
                       mamlCombinationId: selectedMamlCombo,
                       title: title,
@@ -424,7 +424,6 @@ class _CoursesTabState extends ConsumerState<CoursesTab> {
       final confirm = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          backgroundColor: const Color(0xFF1A2A3A),
           title: const Text('Archivia corso', style: TextStyle(color: Colors.white)),
           content: const Text(
             'Verrà generato e scaricato il PDF con tutti i dati probanti del corso.\n\n'

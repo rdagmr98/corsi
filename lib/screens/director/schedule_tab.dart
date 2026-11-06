@@ -585,8 +585,8 @@ class _DirectorScheduleTabState extends ConsumerState<DirectorScheduleTab> {
           final unconstrained = selSub == null ||
               (selSub.theoryHours == 0 && selSub.practicalHours == 0);
           final selNc = selSub == null ? '' : _normSubCode(selSub.code);
-          final remT = unconstrained ? 1 : (selSub!.theoryHours    - (doneT[selNc] ?? 0));
-          final remP = unconstrained ? 1 : (selSub!.practicalHours - (doneP[selNc] ?? 0));
+          final remT = unconstrained ? 1 : (selSub.theoryHours    - (doneT[selNc] ?? 0));
+          final remP = unconstrained ? 1 : (selSub.practicalHours - (doneP[selNc] ?? 0));
           if (type == 'teoria' && remT <= 0 && remP > 0) type = 'pratica';
           if (type == 'pratica' && remP <= 0 && remT > 0) type = 'teoria';
 

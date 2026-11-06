@@ -149,7 +149,7 @@ class UserService {
     final users = _db.users.toList();
     final idx = users.indexWhere((u) => u['id'] == userId);
     if (idx < 0) return;
-    final updated = Map<String, dynamic>.from(users[idx] as Map<String, dynamic>);
+    final updated = Map<String, dynamic>.from(users[idx]);
     updated['go_override'] = value;
     if (value) {
       if (ojtKind != null) updated['ojt_kind'] = ojtKind;
@@ -173,7 +173,7 @@ class UserService {
     final users = _db.users.toList();
     final idx = users.indexWhere((u) => u['id'] == userId);
     if (idx < 0) return;
-    final updated = Map<String, dynamic>.from(users[idx] as Map<String, dynamic>);
+    final updated = Map<String, dynamic>.from(users[idx]);
     updated['ojt_kind'] = kind;
     updated['ojt_at'] = _ymd(startAt);
     endAt == null ? updated.remove('ojt_end_at') : updated['ojt_end_at'] = _ymd(endAt);
@@ -189,7 +189,7 @@ class UserService {
     final users = _db.users.toList();
     final idx = users.indexWhere((u) => u['id'] == userId);
     if (idx < 0) return;
-    final updated = Map<String, dynamic>.from(users[idx] as Map<String, dynamic>);
+    final updated = Map<String, dynamic>.from(users[idx]);
     if (date == null) {
       updated.remove('currency_lost_at');
     } else {
@@ -204,7 +204,7 @@ class UserService {
     final users = _db.users.toList();
     final idx = users.indexWhere((u) => u['id'] == userId);
     if (idx < 0) return;
-    final updated = Map<String, dynamic>.from(users[idx] as Map<String, dynamic>);
+    final updated = Map<String, dynamic>.from(users[idx]);
     if (expiry == null) {
       updated.remove('daaa_expiry');
     } else {

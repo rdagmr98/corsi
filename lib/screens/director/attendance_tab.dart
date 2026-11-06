@@ -155,7 +155,6 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
     final totalAbsent = modStats.values.fold(0, (s, m) => s + (m['absent'] ?? 0));
     final totalUnrecovered = modStats.values.fold(0, (s, m) => s + (m['unrecovered'] ?? 0));
     final totalPlannedHours = typeInfo?.modules.fold(0, (s, m) => s + m.totalHours) ?? 0;
-    final totalConfirmed = modStats.values.fold(0, (s, m) => s + (m['confirmed'] ?? 0));
     final totalToRecover  = modStats.values.fold(0, (s, m) => s + (m['toRecover'] ?? 0));
     final totalToRecoverT = modStats.values.fold(0, (s, m) => s + (m['toRecoverT'] ?? 0));
     final totalToRecoverP = modStats.values.fold(0, (s, m) => s + (m['toRecoverP'] ?? 0));

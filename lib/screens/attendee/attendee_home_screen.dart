@@ -142,7 +142,7 @@ class _AttendeeHomeScreenState extends ConsumerState<AttendeeHomeScreen> {
                 Expanded(
                   child: StatusCard(
                     title: 'Presenze',
-                    subtitle: 'Corso completato',
+                    subtitle: 'Avanzamento corso',
                     value: '${(completion * 100).round()}%',
                     footer: toRecover > 0 ? 'Da recuperare: $toRecover h' : 'Niente da recuperare',
                     color: toRecover > 0 ? kError : kAccent,

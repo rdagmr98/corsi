@@ -372,9 +372,9 @@ class _InstructorHomeScreenState extends ConsumerState<InstructorHomeScreen> {
       color: kCard,
       margin: EdgeInsets.zero,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         side: BorderSide(
-          color: (me.goOverride ? kWarning : kError).withOpacity(0.3),
+          color: (me.goOverride ? kWarning : kError).withOpacity(0.5),
         ),
       ),
       child: Padding(
@@ -412,8 +412,8 @@ class _InstructorHomeScreenState extends ConsumerState<InstructorHomeScreen> {
       color: kCard,
       margin: EdgeInsets.zero,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: color.withOpacity(0.3)),
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: color.withOpacity(0.5)),
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),

@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../models/course_models.dart';
 import '../../models/grade_models.dart';
-import '../../models/reference_models.dart';
 import '../../models/schedule_models.dart';
 import '../../models/user_models.dart';
 import '../../providers/auth_provider.dart';
@@ -266,7 +265,6 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
         final totalAbsent = modStats.values.fold(0, (s, m) => s + (m['absent'] ?? 0));
         final totalUnrec = modStats.values.fold(0, (s, m) => s + (m['unrecovered'] ?? 0));
         final totalPlanned = typeInfo?.modules.fold<int>(0, (s, m) => s + (m.totalHours as int)) ?? 0;
-        final totalConfirmed = modStats.values.fold(0, (s, m) => s + (m['confirmed'] ?? 0));
         final presPct = totalPlanned > 0
             ? ((totalPlanned - totalAbsent) / totalPlanned * 100).toStringAsFixed(0)
             : '100';
@@ -297,11 +295,8 @@ class _State extends ConsumerState<MasterCourseDetailScreen>
                 .where((mod) => modStats.containsKey(mod.number) && (modStats[mod.number]!['confirmed'] ?? 0) > 0)
                 .map((mod) {
               final stats = modStats[mod.number]!;
-              final total = stats['confirmed'] ?? 0;
               final absent = stats['absent'] ?? 0;
-              final recovered    = stats['recovered'] ?? 0;
               final unrecovered  = stats['unrecovered'] ?? 0;
-              final confirmedT   = stats['confirmedT'] ?? 0;
               final toRecoverT   = stats['toRecoverT'] ?? 0;
               final toRecoverP   = stats['toRecoverP'] ?? 0;
               final toRecover    = stats['toRecover'] ?? 0;

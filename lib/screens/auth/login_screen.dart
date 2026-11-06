@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../../models/course_models.dart';
 import '../../models/user_models.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/course_service.dart';

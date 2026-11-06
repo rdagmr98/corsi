@@ -102,7 +102,7 @@ class LessonDescriber {
       margin: const EdgeInsets.only(bottom: 6),
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(12),
         side: BorderSide(color: courseColor?.withValues(alpha: 0.6) ?? kBorder),
       ),
       child: Column(

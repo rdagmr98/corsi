@@ -35,28 +35,51 @@ class _AttendeeShellState extends ConsumerState<AttendeeShell> {
     );
   }
 
-  /// Un banner per ogni questionario aperto e non ancora compilato.
-  List<Widget> _questionnaireBanners(String userId) {
+  /// Questionari aperti e non compilati: una riga se è uno solo, altrimenti
+  /// un unico banner che si apre al tap (con 8 righe la home finiva sotto).
+  Widget _questionnaireBanners(String userId) {
     final courses = CourseService().getCoursesForAttendee(userId);
-    return [
-      for (final q in QuestionnaireService()
-          .pendingFor(userId, courses.map((c) => c.id)))
-        Material(
-          color: kWarning.withOpacity(0.12),
-          child: ListTile(
-            dense: true,
-            leading: const Icon(Icons.rate_review_outlined, color: kWarning),
-            title: const Text('Questionario di qualità percepita',
-                style: TextStyle(color: kText, fontSize: 13)),
-            subtitle: Text(
-                QuestionnaireService.moduleLabel(
-                    courses.firstWhere((c) => c.id == q.courseId), q.module),
-                style: const TextStyle(color: kTextDim, fontSize: 12)),
-            trailing: const Icon(Icons.chevron_right, color: kTextDim),
-            onTap: () => context.go('/attendee/questionario/${Uri.encodeComponent(q.courseId)}/${q.module}'),
-          ),
+    final pending = QuestionnaireService()
+        .pendingFor(userId, courses.map((c) => c.id))
+        .toList();
+    if (pending.isEmpty) return const SizedBox.shrink();
+    final tiles = [
+      for (final q in pending)
+        ListTile(
+          dense: true,
+          leading: const Icon(Icons.rate_review_outlined, color: kWarning),
+          title: const Text('Questionario di qualità percepita',
+              style: TextStyle(color: kText, fontSize: 13)),
+          subtitle: Text(
+              QuestionnaireService.moduleLabel(
+                  courses.firstWhere((c) => c.id == q.courseId), q.module),
+              style: const TextStyle(color: kTextDim, fontSize: 12)),
+          trailing: const Icon(Icons.chevron_right, color: kTextDim),
+          onTap: () => context.go('/attendee/questionario/${Uri.encodeComponent(q.courseId)}/${q.module}'),
         ),
     ];
+    return Material(
+      color: kWarning.withOpacity(0.12),
+      child: tiles.length == 1
+          ? tiles.first
+          : ExpansionTile(
+              dense: true,
+              shape: const Border(),
+              collapsedShape: const Border(),
+              leading: const Icon(Icons.rate_review_outlined, color: kWarning),
+              iconColor: kWarning,
+              collapsedIconColor: kWarning,
+              title: Text('${tiles.length} questionari di qualità percepita da compilare',
+                  style: const TextStyle(color: kText, fontSize: 13)),
+              children: [
+                // Aperto non deve spingere la home fuori schermo.
+                ConstrainedBox(
+                  constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.4),
+                  child: ListView(shrinkWrap: true, padding: EdgeInsets.zero, children: tiles),
+                ),
+              ],
+            ),
+    );
   }
 
   @override
@@ -126,7 +149,7 @@ class _AttendeeShellState extends ConsumerState<AttendeeShell> {
       body: Column(
         children: [
           PushBanner(userId: userId),
-          ..._questionnaireBanners(userId),
+          _questionnaireBanners(userId),
           Expanded(child: AttendeeHomeScreen(userId: userId)),
         ],
       ),

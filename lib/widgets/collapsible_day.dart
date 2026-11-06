@@ -39,7 +39,7 @@ class CollapsibleDay extends StatelessWidget {
           Material(
             color: kCard,
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(12),
               side: BorderSide(color: isToday ? accent.withValues(alpha: 0.6) : kBorder),
             ),
             clipBehavior: Clip.antiAlias,
