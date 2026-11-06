@@ -8,3 +8,5 @@ Future<void> downloadBytes(
 }) async {
   await Printing.sharePdf(bytes: bytes, filename: filename);
 }
+
+Future<String?> pickTextFile({String accept = '.json'}) async => null;

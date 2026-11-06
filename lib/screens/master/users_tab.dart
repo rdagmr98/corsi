@@ -4,6 +4,7 @@ import '../../models/reference_models.dart';
 import '../../models/user_models.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/amc_service.dart';
+import '../../services/course_service.dart';
 import '../../services/password_reset.dart';
 import '../../services/reference_service.dart';
 import '../../services/user_service.dart';
@@ -22,11 +23,19 @@ class _UsersTabState extends ConsumerState<UsersTab> {
   final _refService = ReferenceService();
   List<AppUser> _users = [];
   UserRole? _filterRole;
+  final _searchCtrl = TextEditingController();
 
   @override
   void initState() {
     super.initState();
+    _searchCtrl.addListener(() => setState(() {}));
     _load();
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
   }
 
   void _load() => setState(() => _users = _userService.getAllUsers());
@@ -43,16 +52,32 @@ class _UsersTabState extends ConsumerState<UsersTab> {
     UserRole.attendee => kWarning,
   };
 
-  /// Chi ha chiesto il reset della password sta in cima alla lista.
+  /// Filtro ruolo + ricerca; chi ha chiesto il reset della password in cima,
+  /// poi per ruolo e cognome.
   List<AppUser> get _filtered {
-    final list = _filterRole == null
-        ? _users
-        : _users.where((u) => u.userRole == _filterRole).toList();
-    return [
-      ...list.where((u) => u.passwordResetRequested),
-      ...list.where((u) => !u.passwordResetRequested),
-    ];
+    final q = _searchCtrl.text.trim().toLowerCase();
+    return _users
+        .where((u) =>
+            (_filterRole == null || u.userRole == _filterRole) &&
+            (q.isEmpty ||
+                '${u.fullName} ${u.nome} ${u.username ?? ''}'
+                    .toLowerCase()
+                    .contains(q)))
+        .toList()
+      ..sort((a, b) {
+        if (a.passwordResetRequested != b.passwordResetRequested) {
+          return a.passwordResetRequested ? -1 : 1;
+        }
+        final r = a.userRole.index.compareTo(b.userRole.index);
+        return r != 0
+            ? r
+            : a.fullName.toLowerCase().compareTo(b.fullName.toLowerCase());
+      });
   }
+
+  /// Intestazione del gruppo a cui appartiene la riga.
+  String _groupOf(AppUser u) =>
+      u.passwordResetRequested ? 'Reset password richiesto' : u.userRole.label;
 
   Future<void> _resetPassword(AppUser u) async {
     final temp = generateTempPassword();
@@ -134,6 +159,7 @@ class _UsersTabState extends ConsumerState<UsersTab> {
       qualGroups.putIfAbsent(q.group, () => []).add(q);
     }
     final selQuals = <String>{...?user?.qualifications};
+    String? dlgError;
 
     await showDialog(
       context: context,
@@ -170,6 +196,10 @@ class _UsersTabState extends ConsumerState<UsersTab> {
                         .toList(),
                     onChanged: (v) => setDlg(() => selectedRole = v ?? selectedRole),
                   ),
+                  if (dlgError != null) ...[
+                    const SizedBox(height: 12),
+                    Text(dlgError!, style: const TextStyle(color: kError, fontSize: 12)),
+                  ],
           ];
           final extra = <Widget>[
                   if (selectedRole == UserRole.attendee) ...[
@@ -299,18 +329,32 @@ class _UsersTabState extends ConsumerState<UsersTab> {
             ),
             ElevatedButton(
               onPressed: () async {
-                Navigator.pop(ctx);
                 final nome = nomeCtrl.text.trim();
                 final cognome = cognomeCtrl.text.trim();
                 final username = usernameCtrl.text.trim();
                 final password = passwordCtrl.text.trim();
-                if (nome.isEmpty || cognome.isEmpty || username.isEmpty) return;
+                // Prima si chiudeva il dialog e si usciva in silenzio: i dati
+                // inseriti andavano persi senza spiegazione.
+                final err = nome.isEmpty || cognome.isEmpty || username.isEmpty
+                    ? 'Cognome, nome e username sono obbligatori.'
+                    : user == null && password.isEmpty
+                        ? 'Inserisci la password del nuovo utente.'
+                        : _users.any((o) =>
+                                o.id != user?.id &&
+                                (o.username ?? '').toLowerCase() ==
+                                    username.toLowerCase())
+                            ? 'Username «$username» già usato da un altro utente.'
+                            : null;
+                if (err != null) {
+                  setDlg(() => dlgError = err);
+                  return;
+                }
+                Navigator.pop(ctx);
                 final isInstructor = selectedRole == UserRole.instructor;
                 final isAttendee = selectedRole == UserRole.attendee;
                 final grado = titoloCtrl.text.trim();
                 try {
                   if (user == null) {
-                    if (password.isEmpty) return;
                     final created = await _userService.createUser(
                       nome: nome,
                       cognome: cognome,
@@ -345,6 +389,8 @@ class _UsersTabState extends ConsumerState<UsersTab> {
                       await AmcService().applyQualifications(user.id, selQuals);
                     }
                   }
+                } catch (e) {
+                  showAppError('Salvataggio non riuscito: $e');
                 } finally {
                   if (mounted) _reload();
                 }
@@ -383,15 +429,25 @@ class _UsersTabState extends ConsumerState<UsersTab> {
         ],
       ),
     );
-    if (ok == true) {
+    if (ok != true) return;
+    try {
       await _userService.deleteUser(u.id);
-      _reload();
+    } catch (e) {
+      showAppError('Eliminazione non riuscita: $e');
     }
+    if (mounted) _reload();
   }
 
   @override
   Widget build(BuildContext context) {
     final filtered = _filtered;
+    // Frequentatore → corso/i di appartenenza, mostrati nella riga.
+    final coursesOf = <String, List<String>>{};
+    for (final c in CourseService().getAllCourses()) {
+      for (final id in c.attendeeIds) {
+        coursesOf.putIfAbsent(id, () => []).add(c.title);
+      }
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -400,19 +456,29 @@ class _UsersTabState extends ConsumerState<UsersTab> {
           child: Row(
             children: [
               Text('Utenti', style: Theme.of(context).textTheme.titleLarge),
-              const Spacer(),
-              ...UserRole.values.map((r) => Padding(
-                padding: const EdgeInsets.only(left: 6),
-                child: FilterChip(
-                  label: Text(r.label, style: TextStyle(fontSize: 11, color: _filterRole == r ? Colors.white : kTextDim)),
-                  selected: _filterRole == r,
-                  selectedColor: _roleColor(r),
-                  backgroundColor: kSurface,
-                  onSelected: (v) => setState(() => _filterRole = v ? r : null),
+              const SizedBox(width: 24),
+              Expanded(
+                child: TextField(
+                  controller: _searchCtrl,
+                  style: const TextStyle(color: kText, fontSize: 12),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    hintText: 'Cerca per cognome, nome o username…',
+                    prefixIcon: const Icon(Icons.search, size: 18, color: kTextDim),
+                    suffixIcon: _searchCtrl.text.isEmpty
+                        ? null
+                        : IconButton(
+                            icon: const Icon(Icons.clear, size: 16, color: kTextDim),
+                            onPressed: _searchCtrl.clear,
+                          ),
+                  ),
                 ),
-              )),
+              ),
               const SizedBox(width: 8),
-              IconButton(icon: const Icon(Icons.refresh, color: kTextDim), onPressed: _reload),
+              IconButton(
+                  tooltip: 'Ricarica',
+                  icon: const Icon(Icons.refresh, color: kTextDim),
+                  onPressed: _reload),
               const SizedBox(width: 8),
               ElevatedButton.icon(
                 onPressed: () => _showUserDialog(),
@@ -422,90 +488,150 @@ class _UsersTabState extends ConsumerState<UsersTab> {
             ],
           ),
         ),
-        const SizedBox(height: 8),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: Text('${filtered.length} utenti', style: const TextStyle(color: kTextDim, fontSize: 12)),
-        ),
-        const SizedBox(height: 8),
-        Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            itemCount: filtered.length,
-            itemBuilder: (_, i) {
-              final u = filtered[i];
-              final color = _roleColor(u.userRole);
-              return Card(
-                color: kCard,
-                margin: const EdgeInsets.only(bottom: 6),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  side: BorderSide(color: color.withOpacity(0.2)),
+          padding: const EdgeInsets.fromLTRB(24, 10, 24, 4),
+          child: Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              for (final r in UserRole.values)
+                FilterChip(
+                  label: Text(
+                      '${r.label} ${_users.where((u) => u.userRole == r).length}',
+                      style: TextStyle(
+                          fontSize: 11,
+                          color: _filterRole == r ? Colors.white : kTextDim)),
+                  selected: _filterRole == r,
+                  selectedColor: _roleColor(r),
+                  backgroundColor: kSurface,
+                  onSelected: (v) => setState(() => _filterRole = v ? r : null),
                 ),
-                child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: color.withOpacity(0.15),
-                    child: Text(
-                      u.cognome.isNotEmpty ? u.cognome[0].toUpperCase() : '?',
-                      style: TextStyle(color: color, fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                  title: Text(u.fullName, overflow: TextOverflow.ellipsis, style: const TextStyle(color: kText, fontWeight: FontWeight.w500)),
-                  subtitle: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                        decoration: BoxDecoration(
-                          color: color.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(3),
-                        ),
-                        child: Text(u.userRole.label, style: TextStyle(color: color, fontSize: 10)),
-                      ),
-                      if (u.username != null) ...[
-                        const SizedBox(width: 8),
-                        Flexible(child: Text('@${u.username}', overflow: TextOverflow.ellipsis, style: const TextStyle(color: kTextDim, fontSize: 11))),
-                      ],
-                      if (u.email != null) ...[
-                        const SizedBox(width: 8),
-                        Flexible(child: Text(u.email!, overflow: TextOverflow.ellipsis, style: const TextStyle(color: kTextDim, fontSize: 11))),
-                      ],
-                    ],
-                  ),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (!u.isActive)
-                        const Padding(
-                          padding: EdgeInsets.only(right: 8),
-                          child: Text('Disattivo', style: TextStyle(color: kError, fontSize: 11)),
-                        ),
-                      if (u.passwordResetRequested)
-                        const Padding(
-                          padding: EdgeInsets.only(right: 4),
-                          child: Text('Reset richiesto', style: TextStyle(color: kWarning, fontSize: 11)),
-                        ),
-                      IconButton(
-                        tooltip: 'Reimposta password',
-                        icon: Icon(Icons.lock_reset,
-                            color: u.passwordResetRequested ? kWarning : kTextDim, size: 20),
-                        onPressed: () => _resetPassword(u),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.edit_outlined, color: kTextDim, size: 20),
-                        onPressed: () => _showUserDialog(user: u),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.delete_outline, color: kError, size: 20),
-                        onPressed: () => _deleteUser(u),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
+              const SizedBox(width: 8),
+              Text('${filtered.length} di ${_users.length} utenti',
+                  style: const TextStyle(color: kTextDim, fontSize: 12)),
+            ],
           ),
         ),
+        Expanded(
+          child: filtered.isEmpty
+              ? const Center(
+                  child: Text('Nessun utente', style: TextStyle(color: kTextDim)))
+              : ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                  itemCount: filtered.length,
+                  itemBuilder: (_, i) {
+                    final u = filtered[i];
+                    final group = _groupOf(u);
+                    final header = i == 0 || _groupOf(filtered[i - 1]) != group;
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (header)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 14, bottom: 6),
+                            child: Text(group.toUpperCase(),
+                                style: TextStyle(
+                                    color: u.passwordResetRequested
+                                        ? kWarning
+                                        : kTextDim,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 0.5)),
+                          ),
+                        _userRow(u, coursesOf[u.id]),
+                      ],
+                    );
+                  },
+                ),
+        ),
       ],
+    );
+  }
+
+  Widget _userRow(AppUser u, List<String>? courses) {
+    final color = _roleColor(u.userRole);
+    const dim = TextStyle(color: kTextDim, fontSize: 11);
+    final grado = u.userRole == UserRole.attendee ? (u.titolo ?? '').trim() : '';
+    return Card(
+      margin: const EdgeInsets.only(bottom: 6),
+      child: ListTile(
+        onTap: () => _showUserDialog(user: u),
+        leading: CircleAvatar(
+          backgroundColor: color.withOpacity(0.15),
+          child: Text(
+            u.cognome.isNotEmpty ? u.cognome[0].toUpperCase() : '?',
+            style: TextStyle(color: color, fontWeight: FontWeight.bold),
+          ),
+        ),
+        title: Text(grado.isEmpty ? u.fullName : '$grado ${u.fullName}',
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: kText, fontWeight: FontWeight.w500)),
+        subtitle: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(3),
+              ),
+              child: Text(u.userRole.label, style: TextStyle(color: color, fontSize: 10)),
+            ),
+            if (u.username != null) ...[
+              const SizedBox(width: 8),
+              Flexible(
+                  child: Text('@${u.username}',
+                      overflow: TextOverflow.ellipsis, style: dim)),
+            ],
+            if (courses != null) ...[
+              const SizedBox(width: 8),
+              const Icon(Icons.school_outlined, size: 13, color: kTextDim),
+              const SizedBox(width: 3),
+              Flexible(
+                  child: Text(courses.join(', '),
+                      overflow: TextOverflow.ellipsis, style: dim)),
+            ],
+            if (u.email != null) ...[
+              const SizedBox(width: 8),
+              Flexible(
+                  child: Text(u.email!,
+                      overflow: TextOverflow.ellipsis, style: dim)),
+            ],
+          ],
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (!u.isActive)
+              const Padding(
+                padding: EdgeInsets.only(right: 8),
+                child: Text('Disattivo', style: TextStyle(color: kError, fontSize: 11)),
+              ),
+            if (u.passwordResetRequested)
+              const Padding(
+                padding: EdgeInsets.only(right: 4),
+                child: Text('Reset richiesto', style: TextStyle(color: kWarning, fontSize: 11)),
+              ),
+            IconButton(
+              tooltip: 'Reimposta password',
+              icon: Icon(Icons.lock_reset,
+                  color: u.passwordResetRequested ? kWarning : kTextDim, size: 20),
+              onPressed: () => _resetPassword(u),
+            ),
+            IconButton(
+              tooltip: 'Modifica',
+              icon: const Icon(Icons.edit_outlined, color: kTextDim, size: 20),
+              onPressed: () => _showUserDialog(user: u),
+            ),
+            IconButton(
+              tooltip: 'Elimina',
+              icon: const Icon(Icons.delete_outline, color: kTextDim, size: 20),
+              hoverColor: kError.withOpacity(0.15),
+              onPressed: () => _deleteUser(u),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -4,6 +4,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
 import '../models/course_models.dart';
+import '../models/grade_models.dart';
 import '../utils/pdf_download.dart';
 import '../models/reference_models.dart';
 import '../models/schedule_models.dart';
@@ -22,8 +23,10 @@ class PdfExportService {
     required List<AppUser> instructors,
     required GradeService gradeService,
     required AttendanceService attendanceService,
+    List<AppUser> directors = const [],
+    String? filename,
   }) async {
-    final doc = pw.Document();
+    final doc = pw.Document(title: _pdfSafe('Archivio ${course.title}'));
     final confirmedLessons = lessons
         .where((l) => l.confirmed && l.timeSlot > 0)
         .toList()
@@ -36,15 +39,37 @@ class PdfExportService {
     final modules = typeInfo?.modules ?? [];
     final modMap = {for (final m in modules) m.number: m};
 
-    doc.addPage(_coverPage(course, typeInfo, confirmedLessons, attendees, instructors));
-    _addLessonsPages(doc, confirmedLessons, modMap, instructorMap);
-    _addGradesPages(doc, course, attendees, modules, gradeService);
-    _addAttendancePage(doc, course, attendees, modules, lessons, attendanceService);
-    _addCurrencyPage(doc, course, instructors, gradeService);
+    // Istruttori che hanno davvero insegnato nel corso (ogni slot = 1 h),
+    // non tutti quelli dell'app.
+    final taught = <String, ({int t, int p})>{};
+    for (final l in confirmedLessons) {
+      for (final id in {l.instructorId, l.instructorId2}) {
+        if (id == null || !instructorMap.containsKey(id)) continue;
+        final h = taught[id] ?? (t: 0, p: 0);
+        taught[id] = l.isTheory ? (t: h.t + 1, p: h.p) : (t: h.t, p: h.p + 1);
+      }
+    }
+    int byName(AppUser a, AppUser b) =>
+        a.fullName.toLowerCase().compareTo(b.fullName.toLowerCase());
+    final teachers = instructors.where((i) => taught.containsKey(i.id)).toList()
+      ..sort(byName);
+    final roster = [...attendees]..sort(byName);
+
+    final logo = pw.MemoryImage(
+        (await rootBundle.load('assets/images/smam_logo.png')).buffer.asUint8List());
+    final footer = _footer(course);
+
+    doc.addPage(_coverPage(course, typeInfo, confirmedLessons, roster, directors,
+        teachers, logo, footer));
+    _addLessonsPages(doc, confirmedLessons, modMap, instructorMap, footer);
+    _addInstructorsPage(doc, teachers, taught, gradeService, footer);
+    _addGradesPages(doc, course, roster, modules, gradeService, footer);
+    _addGradeDetailPages(doc, course, roster, modMap, gradeService, footer);
+    _addAttendancePage(doc, course, roster, modules, lessons, attendanceService, footer);
 
     final bytes = await doc.save();
-    final filename = '${course.title.replaceAll(' ', '_')}_report.pdf';
-    await downloadPdf(bytes, filename);
+    await downloadPdf(
+        bytes, filename ?? '${course.title.replaceAll(' ', '_')}_report.pdf');
   }
 
   /// Programma settimanale A4 portrait (1 pagina): DATA (2 righe) / ORARIO /
@@ -453,45 +478,120 @@ class PdfExportService {
 
   // ── Cover page ─────────────────────────────────────────────────────────────
 
-  static pw.Page _coverPage(
+  /// Piè di pagina comune: corso, data di generazione, pagina X di Y.
+  static pw.Widget Function(pw.Context) _footer(Course c) {
+    final when = _dateFmt.format(DateTime.now());
+    final style = pw.TextStyle(fontSize: 7.5, color: PdfColors.grey600);
+    return (ctx) => pw.Container(
+          margin: const pw.EdgeInsets.only(top: 8),
+          padding: const pw.EdgeInsets.only(top: 4),
+          decoration: const pw.BoxDecoration(
+              border: pw.Border(top: pw.BorderSide(color: PdfColors.grey400, width: 0.3))),
+          child: pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text(_pdfSafe('${c.title} - documento di archiviazione del $when'),
+                  style: style),
+              pw.Text('Pag. ${ctx.pageNumber} di ${ctx.pagesCount}', style: style),
+            ],
+          ),
+        );
+  }
+
+  static pw.MultiPage _coverPage(
     Course course,
     CourseTypeInfo? typeInfo,
     List<ScheduledLesson> confirmed,
     List<AppUser> attendees,
-    List<AppUser> instructors,
+    List<AppUser> directors,
+    List<AppUser> teachers,
+    pw.MemoryImage logo,
+    pw.Widget Function(pw.Context) footer,
   ) {
-    return pw.Page(
+    final start = course.startDate ?? (confirmed.isEmpty ? null : confirmed.first.date);
+    final end = course.endDate ?? (confirmed.isEmpty ? null : confirmed.last.date);
+    final hT = confirmed.where((l) => l.isTheory).length;
+    final typeLine = _courseTypeLine(typeInfo);
+    return pw.MultiPage(
       pageFormat: PdfPageFormat.a4,
       margin: const pw.EdgeInsets.all(40),
-      build: (ctx) => pw.Column(
-        crossAxisAlignment: pw.CrossAxisAlignment.start,
-        children: [
-          pw.Text('SMAM – GESTIONE CORSI',
-              style: pw.TextStyle(fontSize: 10, color: PdfColors.grey600)),
-          pw.SizedBox(height: 8),
-          pw.Text(course.title,
-              style: pw.TextStyle(fontSize: 26, fontWeight: pw.FontWeight.bold)),
-          if (typeInfo != null)
-            pw.Text(typeInfo.name,
-                style: pw.TextStyle(fontSize: 13, color: PdfColors.grey700)),
-          pw.Divider(thickness: 0.5),
-          pw.SizedBox(height: 8),
-          _kv('Stato', course.courseStatus.label),
-          if (course.startDate != null)
-            _kv('Data inizio', _dateFmt.format(course.startDate!)),
-          if (typeInfo != null) ...[
-            _kv('Ore teoriche previste', '${typeInfo.totalTheoryHours} h'),
-            _kv('Ore pratiche previste', '${typeInfo.totalPracticalHours} h'),
-            _kv('Ore totali previste', '${typeInfo.totalHours} h'),
-          ],
-          _kv('Lezioni svolte', '${confirmed.length}'),
-          _kv('Frequentatori', '${attendees.length}'),
-          _kv('Istruttori', '${instructors.length}'),
-          pw.SizedBox(height: 24),
-          pw.Text('Generato il ${_dateFmt.format(DateTime.now())}',
-              style: pw.TextStyle(fontSize: 9, color: PdfColors.grey500)),
+      footer: footer,
+      build: (ctx) => [
+        pw.Row(children: [
+          pw.Image(logo, width: 46, height: 46),
+          pw.SizedBox(width: 12),
+          pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+            pw.Text('SMAM - GESTIONE CORSI',
+                style: pw.TextStyle(fontSize: 10, color: PdfColors.grey700)),
+            pw.Text('Documento di archiviazione del corso',
+                style: pw.TextStyle(fontSize: 9, color: PdfColors.grey600)),
+          ]),
+        ]),
+        pw.SizedBox(height: 18),
+        pw.Text(_pdfSafe(course.title),
+            style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
+        if (typeLine != null)
+          pw.Text(typeLine, style: pw.TextStyle(fontSize: 12, color: PdfColors.grey700)),
+        pw.Divider(thickness: 0.5),
+        pw.SizedBox(height: 6),
+        _kv('Periodo', start == null
+            ? 'da definire'
+            : '${_dateFmt.format(start)} - ${end == null ? 'in corso' : _dateFmt.format(end)}'),
+        if (directors.isNotEmpty)
+          _kv(directors.length == 1 ? 'Direttore del corso' : 'Direttori del corso',
+              directors.map((d) => d.fullName).join(', ')),
+        if (typeInfo != null)
+          _kv('Ore previste',
+              '${typeInfo.totalHours} h (${typeInfo.totalTheoryHours} h teoria, '
+                  '${typeInfo.totalPracticalHours} h pratica)'),
+        _kv('Ore svolte',
+            '${confirmed.length} h ($hT h teoria, ${confirmed.length - hT} h pratica)'),
+        _kv('Frequentatori', '${attendees.length}'),
+        _kv('Istruttori impiegati', '${teachers.length}'),
+        pw.SizedBox(height: 16),
+        if (attendees.isNotEmpty) ...[
+          _sectionHeader('FREQUENTATORI'),
+          _dataTable(
+            ['N.', 'Grado', 'Cognome e nome', 'Forza'],
+            [
+              for (var i = 0; i < attendees.length; i++)
+                [
+                  '${i + 1}',
+                  attendees[i].titolo ?? '',
+                  attendees[i].fullName,
+                  attendees[i].forza ?? '',
+                ],
+            ],
+            colWidths: [24, 90, 270, 40],
+          ),
+          pw.SizedBox(height: 16),
         ],
-      ),
+        pw.Container(
+          padding: const pw.EdgeInsets.all(8),
+          decoration: pw.BoxDecoration(
+              border: pw.Border.all(color: PdfColors.grey400, width: 0.5)),
+          child: pw.Text(
+            'Conservare questo documento e il file dati del corso (.json, '
+            'ricaricabile nell\'app con "Importa archivio") per almeno 20 anni '
+            'dal termine del corso (AER(EP).P-147, 147.A.125).',
+            style: const pw.TextStyle(fontSize: 8.5),
+          ),
+        ),
+        pw.SizedBox(height: 36),
+        pw.Row(mainAxisAlignment: pw.MainAxisAlignment.end, children: [
+          pw.Column(children: [
+            pw.Text('IL DIRETTORE DEL CORSO',
+                style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
+            pw.SizedBox(height: 34),
+            pw.Container(width: 200, height: 0.5, color: PdfColors.black),
+            if (directors.isNotEmpty) ...[
+              pw.SizedBox(height: 3),
+              pw.Text(_pdfSafe(directors.first.fullName),
+                  style: const pw.TextStyle(fontSize: 9)),
+            ],
+          ]),
+        ]),
+      ],
     );
   }
 
@@ -502,10 +602,11 @@ class PdfExportService {
     List<ScheduledLesson> lessons,
     Map<int, ModuleInfo> modMap,
     Map<String, AppUser> instructorMap,
+    pw.Widget Function(pw.Context) footer,
   ) {
     if (lessons.isEmpty) return;
 
-    const headers = ['Data', 'S', 'Tipo', 'Modulo', 'Sottomodulo / Argomento', 'Istruttore'];
+    const headers = ['Data', 'Ora', 'T/P', 'Modulo', 'Sottomodulo / Argomento', 'Istruttore'];
     final rows = lessons.map((l) {
       final mod = modMap[l.moduleNumber];
       final names = [
@@ -528,7 +629,8 @@ class PdfExportService {
       pageFormat: PdfPageFormat.a4,
       margin: const pw.EdgeInsets.all(32),
       header: (_) => _sectionHeader('LEZIONI SVOLTE (${lessons.length})'),
-      build: (ctx) => [_dataTable(headers, rows, colWidths: [55, 15, 18, 90, 200, 110])],
+      footer: footer,
+      build: (ctx) => [_dataTable(headers, rows, colWidths: [55, 22, 22, 88, 196, 105])],
     ));
   }
 
@@ -540,6 +642,7 @@ class PdfExportService {
     List<AppUser> attendees,
     List<ModuleInfo> modules,
     GradeService gradeService,
+    pw.Widget Function(pw.Context) footer,
   ) {
     if (attendees.isEmpty || modules.isEmpty) return;
 
@@ -572,7 +675,8 @@ class PdfExportService {
     doc.addPage(pw.MultiPage(
       pageFormat: PdfPageFormat.a4.landscape,
       margin: const pw.EdgeInsets.all(32),
-      header: (_) => _sectionHeader('VALUTAZIONI PER FREQUENTATORE'),
+      header: (_) => _sectionHeader('VALUTAZIONI PER FREQUENTATORE (media per modulo)'),
+      footer: footer,
       build: (ctx) => [_dataTable(headers, rows)],
     ));
   }
@@ -586,6 +690,7 @@ class PdfExportService {
     List<ModuleInfo> modules,
     List<ScheduledLesson> allLessons,
     AttendanceService attendanceService,
+    pw.Widget Function(pw.Context) footer,
   ) {
     if (attendees.isEmpty) return;
 
@@ -626,45 +731,98 @@ class PdfExportService {
     doc.addPage(pw.MultiPage(
       pageFormat: PdfPageFormat.a4.landscape,
       margin: const pw.EdgeInsets.all(32),
-      header: (_) => _sectionHeader('ASSENZE PER FREQUENTATORE (nr. ore non rec. / ore prev.)'),
+      header: (_) => _sectionHeader(
+          'ASSENZE PER FREQUENTATORE (ore non recuperate / ore previste; "r" = tutte recuperate)'),
+      footer: footer,
       build: (ctx) => [_dataTable(headers, rows)],
     ));
   }
 
-  // ── Instructor currency ────────────────────────────────────────────────────
+  // ── Istruttori impiegati, ore svolte nel corso e currency ─────────────────
 
-  static void _addCurrencyPage(
+  static void _addInstructorsPage(
     pw.Document doc,
-    Course course,
-    List<AppUser> instructors,
+    List<AppUser> teachers,
+    Map<String, ({int t, int p})> taught,
     GradeService gradeService,
+    pw.Widget Function(pw.Context) footer,
   ) {
-    if (instructors.isEmpty) return;
-
-    final headers = [
-      'Istruttore',
-      'Ore insegnamento (12 mesi)',
-      'Ore aggiornamento prof. (24 mesi)',
-      'Stato currency',
-    ];
-
-    final rows = instructors.map((i) {
+    if (teachers.isEmpty) return;
+    final rows = teachers.map((i) {
+      final h = taught[i.id]!;
       final teaching = gradeService.getTeachingHoursRollingYear(i.id);
       final prof = gradeService.getProfessionalUpdateHoursLast2Years(i.id);
-      final currOk = teaching >= 6 && prof >= 35;
       return [
         i.fullName,
-        '${teaching.toStringAsFixed(1)} h',
-        '${prof.toStringAsFixed(1)} h',
-        currOk ? 'IN CURRENCY' : 'SCADUTA',
+        '${h.t}',
+        '${h.p}',
+        '${h.t + h.p}',
+        '${teaching >= 6 && prof >= 35 ? 'IN CURRENCY' : 'SCADUTA'} '
+            '(${teaching.toStringAsFixed(1)} h / ${prof.toStringAsFixed(1)} h)',
       ];
     }).toList();
 
     doc.addPage(pw.MultiPage(
       pageFormat: PdfPageFormat.a4,
       margin: const pw.EdgeInsets.all(32),
-      header: (_) => _sectionHeader('CURRENCY ISTRUTTORI'),
-      build: (ctx) => [_dataTable(headers, rows)],
+      header: (_) => _sectionHeader('ISTRUTTORI IMPIEGATI NEL CORSO'),
+      footer: footer,
+      build: (ctx) => [
+        _dataTable(
+          ['Istruttore', 'Ore teoria', 'Ore pratica', 'Ore totali',
+            'Currency alla data del documento (insegnamento 12 mesi / aggiornamento 24 mesi)'],
+          rows,
+          colWidths: [150, 50, 50, 50, 230],
+        ),
+      ],
+    ));
+  }
+
+  // ── Dettaglio di ogni prova (accertamenti, esami, recuperi) ──────────────
+
+  static void _addGradeDetailPages(
+    pw.Document doc,
+    Course course,
+    List<AppUser> attendees,
+    Map<int, ModuleInfo> modMap,
+    GradeService gradeService,
+    pw.Widget Function(pw.Context) footer,
+  ) {
+    final rows = <List<String>>[];
+    for (final a in attendees) {
+      final grades = [...gradeService.getGradesForAttendee(course.id, a.id)]
+        ..sort((x, y) {
+          final m = x.moduleNumber.compareTo(y.moduleNumber);
+          if (m != 0) return m;
+          final t = x.type.compareTo(y.type);
+          if (t != 0) return t;
+          final n = x.accertamentoNumber.compareTo(y.accertamentoNumber);
+          return n != 0 ? n : x.date.compareTo(y.date);
+        });
+      for (var i = 0; i < grades.length; i++) {
+        final g = grades[i];
+        final type = AssessmentTypeExt.fromString(g.type);
+        rows.add([
+          i == 0 ? a.fullName : '',
+          'M${modMap[g.moduleNumber]?.displayCode ?? g.moduleNumber}',
+          type == AssessmentType.esame ? type.label : '${type.label} ${g.accertamentoNumber}',
+          _dateFmt.format(g.date),
+          g.score.toStringAsFixed(1),
+          g.notes ?? '',
+        ]);
+      }
+    }
+    if (rows.isEmpty) return;
+
+    doc.addPage(pw.MultiPage(
+      pageFormat: PdfPageFormat.a4,
+      margin: const pw.EdgeInsets.all(32),
+      header: (_) => _sectionHeader('DETTAGLIO PROVE (tutti i tentativi, recuperi compresi)'),
+      footer: footer,
+      build: (ctx) => [
+        _dataTable(['Frequentatore', 'Modulo', 'Prova', 'Data', 'Voto', 'Note'], rows,
+            colWidths: [120, 40, 75, 55, 32, 209]),
+      ],
     ));
   }
 
@@ -696,7 +854,7 @@ class PdfExportService {
   }
 
   static pw.Widget _sectionHeader(String title) => pw.Column(children: [
-        pw.Text(title,
+        pw.Text(_pdfSafe(title),
             style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold)),
         pw.Divider(thickness: 0.5),
         pw.SizedBox(height: 4),
@@ -707,10 +865,11 @@ class PdfExportService {
         child: pw.Row(children: [
           pw.SizedBox(
               width: 180,
-              child: pw.Text(k,
+              child: pw.Text(_pdfSafe(k),
                   style: pw.TextStyle(
                       fontSize: 10, color: PdfColors.grey600))),
-          pw.Text(v, style: const pw.TextStyle(fontSize: 10)),
+          pw.Expanded(
+              child: pw.Text(_pdfSafe(v), style: const pw.TextStyle(fontSize: 10))),
         ]),
       );
 
@@ -758,7 +917,7 @@ class PdfExportService {
         color: fill,
         padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
         child: pw.Text(
-          text,
+          _pdfSafe(text),
           style: pw.TextStyle(
             fontSize: size,
             fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,

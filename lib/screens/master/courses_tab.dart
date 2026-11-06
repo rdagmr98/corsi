@@ -5,6 +5,7 @@ import '../../models/course_models.dart';
 import '../../models/user_models.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/attendance_service.dart';
+import '../../services/course_archive_service.dart';
 import '../../services/course_service.dart';
 import '../../services/grade_service.dart';
 import '../../services/pdf_export_service.dart';
@@ -12,6 +13,7 @@ import '../../services/reference_service.dart';
 import '../../services/schedule_service.dart';
 import '../../services/user_service.dart';
 import '../../theme.dart';
+import '../../utils/file_download.dart';
 import '../../utils/snackbar.dart';
 import '../director/schedule_tab.dart';
 import 'course_detail_screen.dart';
@@ -426,7 +428,10 @@ class _CoursesTabState extends ConsumerState<CoursesTab> {
         builder: (ctx) => AlertDialog(
           title: const Text('Archivia corso', style: TextStyle(color: Colors.white)),
           content: const Text(
-            'Verrà generato e scaricato il PDF con tutti i dati probanti del corso.\n\n'
+            'Verranno scaricati il PDF con tutti i dati probanti del corso e il '
+            'file dati (.json) per ricaricarlo nell\'app con «Importa archivio». '
+            'Conservarli entrambi per almeno 20 anni dal termine del corso '
+            '(AER(EP).P-147, 147.A.125).\n\n'
             'Gli account dei frequentatori del corso verranno eliminati '
             '(esclusi quelli iscritti ad altri corsi non archiviati).\n\nProcedere?',
             style: TextStyle(color: Colors.white70),
@@ -438,40 +443,14 @@ class _CoursesTabState extends ConsumerState<CoursesTab> {
             ),
             ElevatedButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Archivia e scarica PDF'),
+              child: const Text('Archivia e scarica'),
             ),
           ],
         ),
       );
       if (confirm != true) return;
 
-      final typeInfo = _refService.getEffectiveCourseType(c.courseTypeId, c.extensionTypeId, c.mamlCombinationId);
-      final lessons = _scheduleService.getLessonsForCourse(c.id);
-      final allUsers = _userService.getAllUsers();
-      final attendees = allUsers.where((u) => c.attendeeIds.contains(u.id)).toList();
-      final instructors = _userService.getInstructors();
-
-      try {
-        await PdfExportService.downloadCourseReport(
-          course: c,
-          typeInfo: typeInfo,
-          lessons: lessons,
-          attendees: attendees,
-          instructors: instructors,
-          gradeService: _gradeService,
-          attendanceService: _attendanceService,
-        );
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Errore generazione PDF: $e'),
-              backgroundColor: kError,
-            ),
-          );
-        }
-        return;
-      }
+      if (!await _downloadArchive(c)) return;
     }
 
     if (newStatus == 'active') await _courseService.activateCourse(c.id);
@@ -479,6 +458,44 @@ class _CoursesTabState extends ConsumerState<CoursesTab> {
     else await _courseService.updateCourse(c.copyWith(status: newStatus));
 
     if (newStatus == 'archived') await _deleteArchivedAttendees(c);
+    _reload();
+  }
+
+  /// PDF probante + file dati per il reimport. false se qualcosa è fallito.
+  Future<bool> _downloadArchive(Course c) async {
+    final typeInfo = _refService.getEffectiveCourseType(c.courseTypeId, c.extensionTypeId, c.mamlCombinationId);
+    final allUsers = _userService.getAllUsers();
+    final base = '${c.title.replaceAll(RegExp(r'[^A-Za-z0-9]+'), '_')}_archivio_'
+        '${DateFormat('yyyy-MM-dd').format(DateTime.now())}';
+    try {
+      await PdfExportService.downloadCourseReport(
+        course: c,
+        typeInfo: typeInfo,
+        lessons: _scheduleService.getLessonsForCourse(c.id),
+        attendees: allUsers.where((u) => c.attendeeIds.contains(u.id)).toList(),
+        directors: allUsers.where((u) => c.directorIds.contains(u.id)).toList(),
+        instructors: _userService.getInstructors(),
+        gradeService: _gradeService,
+        attendanceService: _attendanceService,
+        filename: '$base.pdf',
+      );
+      await downloadBytes(CourseArchiveService().bytes(c.id), '$base.json',
+          mimeType: 'application/json');
+      return true;
+    } catch (e) {
+      showAppError('Errore generazione archivio: $e');
+      return false;
+    }
+  }
+
+  Future<void> _importArchive() async {
+    final text = await pickTextFile();
+    if (text == null) return;
+    try {
+      showAppInfo(await CourseArchiveService().importJson(text));
+    } catch (e) {
+      showAppError('Import non riuscito: $e');
+    }
     _reload();
   }
 
@@ -517,6 +534,12 @@ class _CoursesTabState extends ConsumerState<CoursesTab> {
               IconButton(
                 icon: const Icon(Icons.refresh, color: kTextDim),
                 onPressed: _reload,
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton.icon(
+                onPressed: _importArchive,
+                icon: const Icon(Icons.upload_file, size: 18),
+                label: const Text('Importa archivio'),
               ),
               const SizedBox(width: 8),
               ElevatedButton.icon(
@@ -634,6 +657,11 @@ class _CoursesTabState extends ConsumerState<CoursesTab> {
                                 tooltip: 'Estendi con moduli MIL',
                                 onPressed: () => _extendCourse(c),
                               ),
+                            IconButton(
+                              icon: const Icon(Icons.archive_outlined, color: kTextDim, size: 20),
+                              tooltip: 'Scarica PDF e file dati del corso (archivio)',
+                              onPressed: () => _downloadArchive(c),
+                            ),
                             IconButton(
                               icon: const Icon(Icons.calendar_month, color: kPrimary, size: 20),
                               tooltip: 'Planner settimanale',

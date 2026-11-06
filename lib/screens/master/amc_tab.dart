@@ -4,7 +4,6 @@ import '../../models/user_models.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/amc_docx_export.dart';
 import '../../services/amc_service.dart';
-import '../../services/course_service.dart';
 import '../../services/gh_db_service.dart';
 import '../../services/grade_service.dart';
 import '../../services/reference_service.dart';
@@ -21,13 +20,11 @@ class AmcTab extends ConsumerStatefulWidget {
 class _AmcTabState extends ConsumerState<AmcTab>
     with SingleTickerProviderStateMixin {
   final _userService        = UserService();
-  final _courseService      = CourseService();
   final _db                 = GhDbService();
   final _referenceService   = ReferenceService();
   final _gradeService       = GradeService();
   late final TabController _tabs = TabController(length: 2, vsync: this);
 
-  String? _selectedCourseId;
   final _searchCtrl = TextEditingController();
   String _search = '';
   bool _onlyGo = true; // false = tutti gli istruttori, true = solo i GO
@@ -37,8 +34,6 @@ class _AmcTabState extends ConsumerState<AmcTab>
     super.initState();
     _searchCtrl.addListener(
         () => setState(() => _search = _searchCtrl.text.trim().toLowerCase()));
-    final active = _courseService.getAllCourses().where((c) => c.isActive).toList();
-    if (active.isNotEmpty) _selectedCourseId = active.first.id;
   }
 
   @override
@@ -78,12 +73,6 @@ class _AmcTabState extends ConsumerState<AmcTab>
   Map<String, AppUser> _uidToUser() =>
       {for (final u in _userService.getAllUsers()) u.id: u};
 
-  // Gli istruttori sono assegnati a tutti i corsi.
-  Set<String> _courseInstructors() =>
-      _selectedCourseId == null
-          ? {}
-          : {for (final u in _userService.getInstructors()) u.id};
-
   // ── Sorting numerico corretto: 1.1 < 1.2 < ... < 3.1 < 3.11 < 11A.1 < 11B.1 < 12.1 ──
   int _compareCode(String a, String b) {
     final pa = _parseCode(a);
@@ -110,10 +99,8 @@ class _AmcTabState extends ConsumerState<AmcTab>
 
   @override
   Widget build(BuildContext context) {
-    final allCourses = _courseService.getAllCourses();
     final uidToUser  = _uidToUser();
     final subNames   = _submoduleNames();
-    final courseUids = _courseInstructors();
     final now        = DateTime.now();
     final goUids     = <String>{
       for (final u in uidToUser.values) if (_gradeService.isGo(u, now: now)) u.id
@@ -153,45 +140,17 @@ class _AmcTabState extends ConsumerState<AmcTab>
           const SizedBox(width: 12),
           _goToggle(),
           const SizedBox(width: 12),
-          DropdownButton<String?>(
-            value: _selectedCourseId,
-            dropdownColor: kSurface,
-            style: const TextStyle(color: kText, fontSize: 12),
-            hint: const Text('Tutti i corsi',
-                style: TextStyle(color: kTextDim, fontSize: 12)),
-            underline: const SizedBox(),
-            items: [
-              const DropdownMenuItem<String?>(
-                value: null,
-                child: Text('Tutti i corsi',
-                    style: TextStyle(color: kTextDim, fontSize: 12)),
-              ),
-              ...allCourses.map((c) => DropdownMenuItem<String?>(
-                    value: c.id,
-                    child: Text(c.title,
-                        style: const TextStyle(color: kText, fontSize: 12)),
-                  )),
-            ],
-            onChanged: (v) => setState(() => _selectedCourseId = v),
-          ),
           IconButton(
               tooltip: 'Ricarica',
               icon: const Icon(Icons.refresh, color: kTextDim),
               onPressed: _reload),
         ]),
       ),
-      // ── Legenda e azioni (pulsanti con etichetta: restano leggibili anche
-      // se il glifo dell'icona manca dalla cache) ─────────────────────────
+      // ── Azioni (pulsanti con etichetta: restano leggibili anche se il
+      // glifo dell'icona manca dalla cache) ──────────────────────────────
       Padding(
         padding: const EdgeInsets.fromLTRB(24, 4, 24, 4),
         child: Row(children: [
-          _dot(kAccent), const SizedBox(width: 4),
-          const Text('Nel corso selezionato + abilitato AMC',
-              style: TextStyle(color: kTextDim, fontSize: 11)),
-          const SizedBox(width: 16),
-          _dot(kPrimary), const SizedBox(width: 4),
-          const Text('Solo abilitato AMC',
-              style: TextStyle(color: kTextDim, fontSize: 11)),
           const Spacer(),
           _action(Icons.rule, 'Criteri', 'Titoli e licenze richiesti per sottomodulo',
               _editRules),
@@ -220,10 +179,10 @@ class _AmcTabState extends ConsumerState<AmcTab>
           controller: _tabs,
           children: [
             _buildGrid(theory: true,  uidToUser: uidToUser,
-                subNames: subNames, courseUids: courseUids,
+                subNames: subNames,
                 goUids: goUids, goUidsM10: goUidsM10),
             _buildGrid(theory: false, uidToUser: uidToUser,
-                subNames: subNames, courseUids: courseUids,
+                subNames: subNames,
                 goUids: goUids, goUidsM10: goUidsM10),
           ],
         ),
@@ -235,7 +194,6 @@ class _AmcTabState extends ConsumerState<AmcTab>
     required bool theory,
     required Map<String, AppUser> uidToUser,
     required Map<String, String> subNames,
-    required Set<String> courseUids,
     required Set<String> goUids,
     required Set<String> goUidsM10,
   }) {
@@ -288,11 +246,6 @@ class _AmcTabState extends ConsumerState<AmcTab>
         final subName = subNames[code] ?? '';
 
         final showHeader = item.showHeader;
-
-        final inCourse    = uids.where((uid) => courseUids.contains(uid)).toList();
-        final notInCourse = _selectedCourseId != null
-            ? uids.where((uid) => !courseUids.contains(uid)).toList()
-            : uids;
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -355,11 +308,8 @@ class _AmcTabState extends ConsumerState<AmcTab>
                     child: Wrap(
                       spacing: 4, runSpacing: 4,
                       children: [
-                        ...inCourse.map((uid) => _chip(
-                            uidToUser[uid]?.cognome ?? uid, kAccent,
-                            filled: true)),
-                        ...notInCourse.map((uid) => _chip(
-                            uidToUser[uid]?.cognome ?? uid, kPrimary)),
+                        for (final uid in uids)
+                          _chip(uidToUser[uid]?.cognome ?? uid),
                       ],
                     ),
                   ),
@@ -414,16 +364,16 @@ class _AmcTabState extends ConsumerState<AmcTab>
         ),
       );
 
-  Widget _chip(String name, Color color, {bool filled = false}) => Container(
+  Widget _chip(String name) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
     decoration: BoxDecoration(
-      color: filled ? color.withOpacity(0.2) : color.withOpacity(0.08),
+      color: kAccent.withOpacity(0.2),
       borderRadius: BorderRadius.circular(4),
-      border: Border.all(color: color.withOpacity(0.5)),
+      border: Border.all(color: kAccent.withOpacity(0.5)),
     ),
     child: Text(name,
-        style: TextStyle(color: color, fontSize: 10,
-            fontWeight: filled ? FontWeight.bold : FontWeight.normal)),
+        style: const TextStyle(color: kAccent, fontSize: 10,
+            fontWeight: FontWeight.bold)),
   );
 
   // ── Editor criteri (reference.amcRules): sottomodulo × titolo/licenza ──
@@ -584,14 +534,6 @@ class _AmcTabState extends ConsumerState<AmcTab>
     }
     if (mounted) setState(() {});
   }
-
-  Widget _dot(Color color) => Container(
-    width: 10, height: 10,
-    decoration: BoxDecoration(
-        color: color.withOpacity(0.5),
-        shape: BoxShape.circle,
-        border: Border.all(color: color)),
-  );
 
   Widget _goToggle() => InkWell(
     borderRadius: BorderRadius.circular(6),
