@@ -31,6 +31,7 @@ jobs:
       - name: Build web
         run: >
           flutter build web
+          --no-tree-shake-icons
           --dart-define=READ_PAT=${{ secrets.READ_PAT }}
           --dart-define=APP_KEY=${{ secrets.APP_KEY }}
           --base-href /corsi/

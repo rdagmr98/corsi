@@ -124,25 +124,33 @@ class _AmcTabState extends ConsumerState<AmcTab>
     };
 
     return Column(children: [
-      // ── Toolbar ──────────────────────────────────────────────────────────
+      // ── Toolbar: titolo, ricerca, filtri ─────────────────────────────────
       Padding(
         padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
         child: Row(children: [
           Text('Tabella AMC', style: Theme.of(context).textTheme.titleLarge),
-          const Spacer(),
-          TextButton.icon(
-            onPressed: _editRules,
-            icon: const Icon(Icons.rule, size: 16),
-            label: const Text('Criteri', style: TextStyle(fontSize: 12)),
+          const SizedBox(width: 24),
+          Expanded(
+            child: TextField(
+              controller: _searchCtrl,
+              style: const TextStyle(color: kText, fontSize: 12),
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: 'Cerca sottomodulo (codice o nome)…',
+                prefixIcon: const Icon(Icons.search, size: 18, color: kTextDim),
+                suffixIcon: _search.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear, size: 16, color: kTextDim),
+                        onPressed: () {
+                          _searchCtrl.clear();
+                          setState(() => _search = '');
+                        },
+                      )
+                    : null,
+              ),
+            ),
           ),
-          IconButton(
-            tooltip: 'Stampa criteri (Word, formato ANNESSO MTOE-P-3-1)',
-            icon: const Icon(Icons.description_outlined, color: kTextDim),
-            onPressed: () => AmcDocxExport.download(
-                _referenceService.amcRuleMap(true),
-                _referenceService.amcRuleMap(false)),
-          ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 12),
           _goToggle(),
           const SizedBox(width: 12),
           DropdownButton<String?>(
@@ -166,15 +174,16 @@ class _AmcTabState extends ConsumerState<AmcTab>
             ],
             onChanged: (v) => setState(() => _selectedCourseId = v),
           ),
-          const SizedBox(width: 8),
           IconButton(
+              tooltip: 'Ricarica',
               icon: const Icon(Icons.refresh, color: kTextDim),
               onPressed: _reload),
         ]),
       ),
-      // Legenda
+      // ── Legenda e azioni (pulsanti con etichetta: restano leggibili anche
+      // se il glifo dell'icona manca dalla cache) ─────────────────────────
       Padding(
-        padding: const EdgeInsets.fromLTRB(24, 6, 24, 0),
+        padding: const EdgeInsets.fromLTRB(24, 4, 24, 4),
         child: Row(children: [
           _dot(kAccent), const SizedBox(width: 4),
           const Text('Nel corso selezionato + abilitato AMC',
@@ -183,32 +192,19 @@ class _AmcTabState extends ConsumerState<AmcTab>
           _dot(kPrimary), const SizedBox(width: 4),
           const Text('Solo abilitato AMC',
               style: TextStyle(color: kTextDim, fontSize: 11)),
+          const Spacer(),
+          _action(Icons.rule, 'Criteri', 'Titoli e licenze richiesti per sottomodulo',
+              _editRules),
+          _action(Icons.description_outlined, 'Stampa criteri',
+              'Word, tabelle criteri dell\'ANNESSO MTOE-P-3-1',
+              () => AmcDocxExport.download(_referenceService.amcRuleMap(true),
+                  _referenceService.amcRuleMap(false))),
+          _action(Icons.groups_outlined, 'Stampa elenco personale',
+              'Word, elenco personale T1/T2 dell\'annesso con gli istruttori '
+                  'mostrati (${_onlyGo ? 'solo GO' : 'tutti'})',
+              () => _printPersonnel(uidToUser, goUids, goUidsM10)),
         ]),
       ),
-      const SizedBox(height: 8),
-      // Search
-      Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24),
-        child: TextField(
-          controller: _searchCtrl,
-          style: const TextStyle(color: kText, fontSize: 12),
-          decoration: InputDecoration(
-            isDense: true,
-            hintText: 'Cerca sottomodulo (codice o nome)…',
-            prefixIcon: const Icon(Icons.search, size: 18, color: kTextDim),
-            suffixIcon: _search.isNotEmpty
-                ? IconButton(
-                    icon: const Icon(Icons.clear, size: 16, color: kTextDim),
-                    onPressed: () {
-                      _searchCtrl.clear();
-                      setState(() => _search = '');
-                    },
-                  )
-                : null,
-          ),
-        ),
-      ),
-      const SizedBox(height: 8),
       TabBar(
         controller: _tabs,
         labelColor: kPrimary,
@@ -288,10 +284,7 @@ class _AmcTabState extends ConsumerState<AmcTab>
         final item    = items[i];
         final code    = item.code;
         final allUids = grid[code] ?? [];
-        final rowGoUids = code.startsWith('10.') ? goUidsM10 : goUids;
-        final uids    = _onlyGo
-            ? allUids.where((uid) => rowGoUids.contains(uid)).toList()
-            : allUids;
+        final uids    = _shown(code, allUids, goUids, goUidsM10);
         final subName = subNames[code] ?? '';
 
         final showHeader = item.showHeader;
@@ -321,7 +314,7 @@ class _AmcTabState extends ConsumerState<AmcTab>
                 border: Border.all(color: kBorder),
               ),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
                 child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -332,15 +325,29 @@ class _AmcTabState extends ConsumerState<AmcTab>
                         style: const TextStyle(color: kText, fontSize: 12,
                             fontWeight: FontWeight.bold)),
                   ),
-                  // Nome sottomodulo
+                  // Nome sottomodulo (una riga, intero nel tooltip)
                   SizedBox(
-                    width: 260,
-                    child: Text(
-                      subName.isNotEmpty ? subName : '—',
-                      style: TextStyle(
-                          color: subName.isNotEmpty ? kTextDim : kBorder,
-                          fontSize: 11),
+                    width: 300,
+                    child: Tooltip(
+                      message: subName,
+                      child: Text(
+                        subName.isNotEmpty ? subName : '—',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            color: subName.isNotEmpty ? kTextDim : kBorder,
+                            fontSize: 11),
+                      ),
                     ),
+                  ),
+                  // Totale, accanto al nome invece che isolato sul bordo
+                  SizedBox(
+                    width: 32,
+                    child: Text('${uids.length}',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            color: uids.isEmpty ? kBorder : kTextDim,
+                            fontSize: 11, fontWeight: FontWeight.bold)),
                   ),
                   const SizedBox(width: 8),
                   // Istruttori
@@ -356,13 +363,6 @@ class _AmcTabState extends ConsumerState<AmcTab>
                       ],
                     ),
                   ),
-                  // Totale
-                  Padding(
-                    padding: const EdgeInsets.only(left: 6),
-                    child: Text('${uids.length}',
-                        style: const TextStyle(color: kTextDim,
-                            fontSize: 11, fontWeight: FontWeight.bold)),
-                  ),
                 ]),
               ),
             ),
@@ -371,6 +371,48 @@ class _AmcTabState extends ConsumerState<AmcTab>
       },
     );
   }
+
+  /// Istruttori della riga secondo il filtro «Solo GO» (modulo 10: GO M10).
+  List<String> _shown(String code, List<String> uids, Set<String> goUids,
+      Set<String> goUidsM10) {
+    if (!_onlyGo) return uids;
+    final go = code.startsWith('10.') ? goUidsM10 : goUids;
+    return uids.where(go.contains).toList();
+  }
+
+  Future<void> _printPersonnel(Map<String, AppUser> users, Set<String> goUids,
+      Set<String> goUidsM10) async {
+    Map<String, List<String>> shown(bool theory) {
+      final grid = _grid(theory);
+      return {
+        for (final c in _sortedCodes(grid))
+          c: _shown(c, grid[c]!, goUids, goUidsM10)
+      };
+    }
+
+    // titolo degli istruttori = sigle dell'annesso (TI - ETP - EM), se compilato
+    String label(AppUser u) {
+      final t = u.titolo?.trim() ?? '';
+      return '${u.cognome} ${u.nome}${t.isEmpty ? '' : ' ($t)'}';
+    }
+
+    try {
+      await AmcDocxExport.downloadPersonnel(shown(true), shown(false),
+          {for (final u in users.values) u.id: label(u)});
+    } catch (e) {
+      showAppError('Stampa elenco personale non riuscita: $e');
+    }
+  }
+
+  Widget _action(IconData icon, String label, String tip, VoidCallback onTap) =>
+      Tooltip(
+        message: tip,
+        child: TextButton.icon(
+          onPressed: onTap,
+          icon: Icon(icon, size: 16),
+          label: Text(label, style: const TextStyle(fontSize: 12)),
+        ),
+      );
 
   Widget _chip(String name, Color color, {bool filled = false}) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),

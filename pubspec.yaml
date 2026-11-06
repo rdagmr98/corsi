@@ -32,3 +32,4 @@ flutter:
     - assets/images/smam_logo.png
     - assets/templates/ps_weekly_blank.xlsx
     - assets/templates/amc_criteria_blank.docx
+    - assets/templates/amc_personnel_blank.docx

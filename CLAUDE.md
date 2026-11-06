@@ -17,7 +17,7 @@ App: `rdagmr98.github.io/corsi/` | Repo app: `rdagmr98/corsi` | Repo dati: `rdag
 
 ## Release workflow
 ```
-flutter build web --release --base-href "/corsi/"
+flutter build web --release --no-tree-shake-icons --base-href "/corsi/"
 git add lib/...
 git commit -m "..."
 git push origin main      ← autorizzato, farlo sempre senza chiedere
