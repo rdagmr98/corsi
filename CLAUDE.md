@@ -73,7 +73,17 @@ GitHub Actions (`.github/workflows/deploy.yml`) deploya automaticamente su push 
 
 ---
 
-## STATO SESSIONE — aggiornato 2026-11-06 (sessione 52)
+## STATO SESSIONE — aggiornato 2026-11-06 (sessione 53)
+
+### Ultime modifiche (2026-11-06) — sessione 53 — grafica AVES Tecnici e audit (commit `e29e999`)
+Richiesta: "fatti un giro di tutta corsi smam e vedi cosa non funziona [...] soprattuto di grafica, io la vorrei un po' più bella come aves tecnici".
+- `lib/theme.dart`:
+  - Palette navy di AVES e forme arrotondate con bordo, impostate a livello di tema senza gradient.
+  - La pillola della NavigationRail ora è blu: prima era verde, perché derivava da `secondaryContainer`.
+- Frequentatore: un solo banner per 2 o più questionari; la card Presenze ora dice "Avanzamento corso".
+- Analyze: 0 warning. Test 36/36.
+- Verifica: screenshot dei 4 ruoli presi sulla build demo locale.
+- PROSSIMO PASSO: parere dell'utente sulla grafica e decisione sulle proposte aperte (textScaler solo mobile, `_openPlanner` come rotta, `refreshListenable` per il gate password, chiave AES). Vault: [[AVES Corsi/Corsi grafica palette AVES e audit 2026-11-06]].
 
 ### Ultime modifiche (2026-11-06) — sessione 52 — editor criteri AMC + export Word formato annesso
 Richiesta: "permetti all'admin di modificare i criteri di assegnazione delle materie in base ai titoli e le licenze possedute [...] il 12.2 potevano insegnarlo sia i b2 che i b1.3 ma ora vedo solo i b2 [...] dai la possibilità anche di stamparla nel formato del file".
