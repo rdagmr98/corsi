@@ -80,6 +80,7 @@ Richiesta: "permetti all'admin di modificare i criteri di assegnazione delle mat
 - Tab AMC, pulsante "Criteri": apre la matrice sottomodulo × qualifica (Teoria/Pratica). Il salvataggio chiama `ReferenceService.saveAmcRules` e poi `AmcService.reapplyAll()`, che ricalcola le griglie degli istruttori con `qualifications != null` in una sola scrittura di amc.json.
 - Icona Word: `AmcDocxExport.download`, tabelle T3+T4 nel formato dell'annesso con i codici reali (senza font trick). Test in `test/amc_docx_test.dart`.
 - 12.2: la T3 dell'annesso marca solo B2, ma l'elenco del personale T1 include anche B1.3, quindi l'annesso è incoerente al suo interno. Dati non toccati: l'aggiunta va fatta dall'editor.
+- PROSSIMO PASSO (richiesto dall'utente): grafica della Tabella AMC, icona di stampa invisibile, stampa dell'elenco personale T1/T2. Vedi `C:\Users\Gianmarco\ObsidianVault\AVES Corsi\Corsi AMC grafica e stampa elenco personale - prossimo passo.md`.
 - Limiti: colonne delle qualifiche fisse (28 teoria, 23 pratica, come nel template). L'editor copre solo i codici già presenti in `amcRules`. L'export non include gli elenchi del personale T1/T2. Vault: [[AVES Corsi/Corsi editor criteri AMC e export annesso 2026-11-06]].
 
 ## STATO SESSIONE — [s51] 2026-10-31
