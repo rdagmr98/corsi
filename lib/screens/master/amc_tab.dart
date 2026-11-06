@@ -2,12 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/user_models.dart';
 import '../../providers/auth_provider.dart';
+import '../../services/amc_docx_export.dart';
+import '../../services/amc_service.dart';
 import '../../services/course_service.dart';
 import '../../services/gh_db_service.dart';
 import '../../services/grade_service.dart';
 import '../../services/reference_service.dart';
 import '../../services/user_service.dart';
 import '../../theme.dart';
+import '../../utils/snackbar.dart';
 
 class AmcTab extends ConsumerStatefulWidget {
   const AmcTab({super.key});
@@ -127,6 +130,19 @@ class _AmcTabState extends ConsumerState<AmcTab>
         child: Row(children: [
           Text('Tabella AMC', style: Theme.of(context).textTheme.titleLarge),
           const Spacer(),
+          TextButton.icon(
+            onPressed: _editRules,
+            icon: const Icon(Icons.rule, size: 16),
+            label: const Text('Criteri', style: TextStyle(fontSize: 12)),
+          ),
+          IconButton(
+            tooltip: 'Stampa criteri (Word, formato ANNESSO MTOE-P-3-1)',
+            icon: const Icon(Icons.description_outlined, color: kTextDim),
+            onPressed: () => AmcDocxExport.download(
+                _referenceService.amcRuleMap(true),
+                _referenceService.amcRuleMap(false)),
+          ),
+          const SizedBox(width: 8),
           _goToggle(),
           const SizedBox(width: 12),
           DropdownButton<String?>(
@@ -367,6 +383,165 @@ class _AmcTabState extends ConsumerState<AmcTab>
         style: TextStyle(color: color, fontSize: 10,
             fontWeight: filled ? FontWeight.bold : FontWeight.normal)),
   );
+
+  // ── Editor criteri (reference.amcRules): sottomodulo × titolo/licenza ──
+  Future<void> _editRules() async {
+    final quals = _referenceService.amcQualifications();
+    final rules = {
+      for (final t in [true, false])
+        t: _referenceService
+            .amcRuleMap(t)
+            .map((k, v) => MapEntry(k, v.toSet())),
+    };
+    final names = _submoduleNames();
+    var theory = true;
+    const cw = 26.0, rh = 22.0;
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setD) {
+        final r = rules[theory]!;
+        final codes = r.keys.toList();
+        final cols = theory
+            ? quals
+            : quals
+                .where((q) => AmcDocxExport.practiceCols.contains(q.id))
+                .toList();
+        // Intestazione gruppi (Laurea, B1.1, ... B2, Altro)
+        final groups = <(String, int)>[];
+        for (final q in cols) {
+          final g = q.group.replaceFirst('Categoria ', '');
+          if (groups.isNotEmpty && groups.last.$1 == g) {
+            groups.last = (g, groups.last.$2 + 1);
+          } else {
+            groups.add((g, 1));
+          }
+        }
+        const lead = 56.0 + 220.0;
+        return AlertDialog(
+          title: Row(children: [
+            const Flexible(
+              child: Text('Criteri AMC: titoli e licenze per sottomodulo',
+                  overflow: TextOverflow.ellipsis),
+            ),
+            const SizedBox(width: 16),
+            for (final t in [true, false]) ...[
+              ChoiceChip(
+                label: Text(t ? 'Teoria' : 'Pratica'),
+                selected: theory == t,
+                onSelected: (_) => setD(() => theory = t),
+              ),
+              const SizedBox(width: 6),
+            ],
+          ]),
+          content: SizedBox(
+            width: lead + quals.length * cw + 24,
+            height: MediaQuery.of(ctx).size.height * 0.75,
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                const SizedBox(width: lead),
+                for (final g in groups)
+                  Container(
+                    width: g.$2 * cw,
+                    alignment: Alignment.center,
+                    decoration: const BoxDecoration(
+                        border: Border(
+                            left: BorderSide(color: kBorder),
+                            bottom: BorderSide(color: kBorder))),
+                    child: Text(g.$1,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: kTextDim, fontSize: 10)),
+                  ),
+              ]),
+              Row(children: [
+                const SizedBox(width: lead),
+                for (final q in cols)
+                  SizedBox(
+                    width: cw,
+                    height: 92,
+                    child: RotatedBox(
+                      quarterTurns: 3,
+                      child: Tooltip(
+                        message: '${q.group} · ${q.label}',
+                        child: Text(q.label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: kText, fontSize: 10)),
+                      ),
+                    ),
+                  ),
+              ]),
+              const Divider(height: 1, color: kBorder),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: codes.length,
+                  itemExtent: rh,
+                  itemBuilder: (_, i) {
+                    final code = codes[i];
+                    final set = r[code]!;
+                    return Row(children: [
+                      SizedBox(
+                        width: 56,
+                        child: Text(code,
+                            style: const TextStyle(
+                                color: kText,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold)),
+                      ),
+                      SizedBox(
+                        width: 220,
+                        child: Text(names[code] ?? '',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: kTextDim, fontSize: 10)),
+                      ),
+                      for (final q in cols)
+                        InkWell(
+                          onTap: () => setD(() =>
+                              set.contains(q.id) ? set.remove(q.id) : set.add(q.id)),
+                          child: Container(
+                            width: cw,
+                            height: rh,
+                            decoration: BoxDecoration(
+                              color: set.contains(q.id) ? kPrimary : null,
+                              border: Border.all(color: kBorder, width: 0.5),
+                            ),
+                          ),
+                        ),
+                    ]);
+                  },
+                ),
+              ),
+            ]),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Annulla')),
+            ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Salva e ricalcola griglie')),
+          ],
+        );
+      }),
+    );
+    if (ok != true) return;
+
+    List<String> ordered(Set<String> s) =>
+        [for (final q in quals) if (s.contains(q.id)) q.id];
+    try {
+      await _referenceService.saveAmcRules(
+        rules[true]!.map((k, v) => MapEntry(k, ordered(v))),
+        rules[false]!.map((k, v) => MapEntry(k, ordered(v))),
+      );
+      await AmcService().reapplyAll();
+      showAppInfo('Criteri salvati, griglie AMC ricalcolate');
+    } catch (e) {
+      showAppError('Salvataggio criteri non riuscito: $e');
+    }
+    if (mounted) setState(() {});
+  }
 
   Widget _dot(Color color) => Container(
     width: 10, height: 10,

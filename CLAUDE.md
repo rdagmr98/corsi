@@ -9,7 +9,7 @@ App: `rdagmr98.github.io/corsi/` | Repo app: `rdagmr98/corsi` | Repo dati: `rdag
 | Ore T/P di un modulo/sottomodulo sbagliate | `C:\Users\Gianmarco\Documents\programmi\b1.pdf` (o b2/b1mil/b2mil). Vedi anche `02 - SYLLABUS_EI_B1_Combinato_(T+P)_Rev.1.pdf` in `Documents\BTC\btc\` — usato per la correzione completa di reference.json b1 in sessione 16 |
 | Ore registrate per modulo (BTC3) | `Controlloistruttori.xlsx` → foglio `3btc` (registro 1 riga = 1 ora; colonne `Data Orario Modulo "ID task" Istruttore Assenze Recuperi`; colonna Modulo suffisso "P"=pratica). **Riga conta come ora SOLO se Istruttore non nullo.** Tra queste: `Assenze` = nome frequentatore assente quell'ora (lezione regolare, conta comunque nel monte ore); `Recuperi` = nome frequentatore per cui quell'ora è un recupero mirato → ora ADDIZIONALE, va tracciata separata dal monte ore base, NON va sommata alle ore regolari quando si confronta col piano (errore commesso e corretto in sessione 16, vedi punto 3 sotto). Vedi `Attività formativa 3btc` per il riepilogo teoria pianificata/fatta per modulo — "ore da fare" è SOLO teoria, non T+P |
 | Assenze, recuperi, situazione frequentatori | `C:\Users\Gianmarco\Documents\Controlloistruttori.xlsx` → foglio `assenze 3btc` (R5-R12 = nette oltre soglia; R41-R48 = raw unrecovered) |
-| Chi può insegnare un sottomodulo (AMC) | `C:\Users\Gianmarco\Documents\ANNESSO MTOE-P-3-1.docx` → tabelle T2 (teoria) e T3 (pratica). Font trick: "3.2" in Times New Roman = "3.1" reale |
+| Chi può insegnare un sottomodulo (AMC) | `C:\Users\Gianmarco\Documents\ANNESSO MTOE-P-3-1.docx` → 4 tabelle: T1/T2 elenchi personale, T3 criteri teoria, T4 criteri pratica. Font trick: "3.2" in Times New Roman = "3.1" reale. Criteri modificabili dall'admin (tab AMC → Criteri) ed esportabili in Word nello stesso formato (template `assets/templates/amc_criteria_blank.docx`, rigenerabile con `tools/build_amc_docx_template.py`) |
 | Currency istruttori reale | `Controlloistruttori.xlsx` → fogli `istruttori nell'anno`, `currency per modulo`, `currency 2 anni` |
 | Pianificazione settimanale vs app | `C:\Users\Gianmarco\Documents\BTC\00_ProgSettimanale_TOTALE_V3.xlsx` |
 | Voti graduatoria | `C:\Users\Gianmarco\Documents\voti graduatoria 3btc.xlsx` |
@@ -73,7 +73,16 @@ GitHub Actions (`.github/workflows/deploy.yml`) deploya automaticamente su push 
 
 ---
 
-## STATO SESSIONE — aggiornato 2026-10-31 (sessione 51)
+## STATO SESSIONE — aggiornato 2026-11-06 (sessione 52)
+
+### Ultime modifiche (2026-11-06) — sessione 52 — editor criteri AMC + export Word formato annesso
+Richiesta: "permetti all'admin di modificare i criteri di assegnazione delle materie in base ai titoli e le licenze possedute [...] il 12.2 potevano insegnarlo sia i b2 che i b1.3 ma ora vedo solo i b2 [...] dai la possibilità anche di stamparla nel formato del file".
+- Tab AMC, pulsante "Criteri": apre la matrice sottomodulo × qualifica (Teoria/Pratica). Il salvataggio chiama `ReferenceService.saveAmcRules` e poi `AmcService.reapplyAll()`, che ricalcola le griglie degli istruttori con `qualifications != null` in una sola scrittura di amc.json.
+- Icona Word: `AmcDocxExport.download`, tabelle T3+T4 nel formato dell'annesso con i codici reali (senza font trick). Test in `test/amc_docx_test.dart`.
+- 12.2: la T3 dell'annesso marca solo B2, ma l'elenco del personale T1 include anche B1.3, quindi l'annesso è incoerente al suo interno. Dati non toccati: l'aggiunta va fatta dall'editor.
+- Limiti: colonne delle qualifiche fisse (28 teoria, 23 pratica, come nel template). L'editor copre solo i codici già presenti in `amcRules`. L'export non include gli elenchi del personale T1/T2. Vault: [[AVES Corsi/Corsi editor criteri AMC e export annesso 2026-11-06]].
+
+## STATO SESSIONE — [s51] 2026-10-31
 
 ### Ultime modifiche (2026-10-31) — sessione 51 — card nello stile dell'app, indietro, numero dell'ora (commit `230b2db`)
 Richiesta: "quel gradient sulle card [...] falle in stile dell'app [...] non funziona il tasto indietro (esce direttamente dall'app). oltre all'orario voglio anche il numero ordinale dell'ora!!! il testo deve essere sempre visibile [...] mostra compatto solo con poche info e al tap si apre e mostra i dettagli".

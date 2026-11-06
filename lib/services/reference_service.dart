@@ -178,19 +178,27 @@ class ReferenceService {
         .toList();
   }
 
-  Map<String, List<String>> _ruleMap(bool theory) {
+  Map<String, List<String>> amcRuleMap(bool theory) {
     final raw = _amcRules[theory ? 'theory' : 'practice']
             as Map<String, dynamic>? ??
         {};
     return raw.map((k, v) => MapEntry(k, List<String>.from(v as List)));
   }
 
+  /// Salva i criteri modificati dall'admin (ordine dei codici conservato).
+  Future<void> saveAmcRules(Map<String, List<String>> theory,
+          Map<String, List<String>> practice) =>
+      _db.saveReference({
+        ..._ref,
+        'amcRules': {..._amcRules, 'theory': theory, 'practice': practice},
+      });
+
   /// Codici sottomodulo insegnabili da chi possiede [quals]
   /// (basta una qualifica tra quelle ammesse per il sottomodulo).
   Set<String> teachableSubmodules(Iterable<String> quals,
       {required bool theory}) {
     final owned = quals.toSet();
-    final rules = _ruleMap(theory);
+    final rules = amcRuleMap(theory);
     return {
       for (final e in rules.entries)
         if (e.value.any(owned.contains)) e.key,
@@ -199,15 +207,15 @@ class ReferenceService {
 
   /// Tutti i codici coperti dalle regole AMC (gestiti in automatico).
   Set<String> amcRuleCodes({required bool theory}) =>
-      _ruleMap(theory).keys.toSet();
+      amcRuleMap(theory).keys.toSet();
 
   /// Dato un insieme di sottomoduli effettivamente insegnati (codici già
   /// normalizzati), restituisce il set minimo di qualifiche AMC che copre
   /// tutti i soggetti (greedy set cover).
   Set<String> reverseEngineerQuals(
       Set<String> taughtTheory, Set<String> taughtPractice) {
-    final theoryMap = _ruleMap(true);
-    final practiceMap = _ruleMap(false);
+    final theoryMap = amcRuleMap(true);
+    final practiceMap = amcRuleMap(false);
 
     // Soggetto (code, isTheory) → lista qualifiche che lo ammettono
     final requirements = <(String, bool), List<String>>{};
