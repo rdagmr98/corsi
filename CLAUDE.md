@@ -84,6 +84,7 @@ Richiesta: "fatti un giro di tutta corsi smam e vedi cosa non funziona [...] sop
 - Analyze: 0 warning. Test 36/36.
 - Verifica: screenshot dei 4 ruoli presi sulla build demo locale.
 - PROSSIMO PASSO: parere dell'utente sulla grafica e decisione sulle proposte aperte (textScaler solo mobile, `_openPlanner` come rotta, `refreshListenable` per il gate password, chiave AES). Vault: [[AVES Corsi/Corsi grafica palette AVES e audit 2026-11-06]].
+- PROSSIMO PASSO (richiesta nuova, non iniziata): togliere la legenda AMC, che non ha senso perché tutti gli istruttori stanno in tutti i corsi; migliorare la pagina utenti dell'admin e il PDF di archiviazione; creare un file JSON per reimportare il corso archiviato (la P-147 chiede 20 anni di conservazione, non 10). Dettagli e path: [[AVES Corsi/Corsi archivio corso export e pagina utenti - prossimo passo]].
 
 ### Ultime modifiche (2026-11-06) — sessione 52 — editor criteri AMC + export Word formato annesso
 Richiesta: "permetti all'admin di modificare i criteri di assegnazione delle materie in base ai titoli e le licenze possedute [...] il 12.2 potevano insegnarlo sia i b2 che i b1.3 ma ora vedo solo i b2 [...] dai la possibilità anche di stamparla nel formato del file".
