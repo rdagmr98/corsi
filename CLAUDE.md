@@ -82,7 +82,8 @@ Richiesta: legenda AMC senza senso; migliorare pagina utenti admin e PDF di arch
 - Utenti (`users_tab.dart`): ricerca, filtri con conteggi, gruppi per ruolo, validazione nel dialog.
 - Conservazione 20 anni (147.A.125). Purge non fatto: non riduce il repo e rompe lo storico istruttori.
 - Analyze 0 warning, test 37/37. Import non provato nel browser.
-- PROSSIMO PASSO: parere dell'utente. Vault: [[AVES Corsi/Corsi archivio corso PDF JSON e pagina utenti 2026-11-06]].
+- Sessione 55 (`3a1dc97`): pagina istruttori del PDF con currency valutata giorno per giorno su tutto il periodo del corso (`PdfExportService.currencyDuring` → `goOn`), non alla data del documento; stampa i periodi NO GO e le ore insegnate in quei periodi.
+- PROSSIMO PASSO: parere dell'utente, poi provare l'import nel browser. Vault: [[AVES Corsi/Corsi archivio corso PDF JSON e pagina utenti 2026-11-06]].
 
 ### Ultime modifiche (2026-11-06) — sessione 53 — grafica AVES Tecnici e audit (commit `e29e999`)
 Richiesta: "fatti un giro di tutta corsi smam e vedi cosa non funziona [...] soprattuto di grafica, io la vorrei un po' più bella come aves tecnici".
