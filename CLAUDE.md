@@ -83,6 +83,7 @@ Richiesta: legenda AMC senza senso; migliorare pagina utenti admin e PDF di arch
 - Conservazione 20 anni (147.A.125). Purge non fatto: non riduce il repo e rompe lo storico istruttori.
 - Analyze 0 warning, test 37/37. Import non provato nel browser.
 - Sessione 55 (`3a1dc97`): pagina istruttori del PDF con currency valutata giorno per giorno su tutto il periodo del corso (`PdfExportService.currencyDuring` → `goOn`), non alla data del documento; stampa i periodi NO GO e le ore insegnate in quei periodi.
+- Storico DAAA (`daaa_history`, `daaOn` in `currency_loss_service.dart`): il PDF segnala le lezioni M10 tenute con DAAA scaduto. Vault: [[AVES Corsi/Corsi storico scadenze DAAA 2026-11-06]].
 - PROSSIMO PASSO: parere dell'utente, poi provare l'import nel browser. Vault: [[AVES Corsi/Corsi archivio corso PDF JSON e pagina utenti 2026-11-06]].
 
 ### Ultime modifiche (2026-11-06) — sessione 53 — grafica AVES Tecnici e audit (commit `e29e999`)

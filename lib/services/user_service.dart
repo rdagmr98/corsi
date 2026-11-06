@@ -205,6 +205,17 @@ class UserService {
     final idx = users.indexWhere((u) => u['id'] == userId);
     if (idx < 0) return;
     final updated = Map<String, dynamic>.from(users[idx]);
+    // La scadenza sostituita va nello storico: serve a ricostruire la
+    // currency M10 alle date passate (PDF di archiviazione).
+    final old = updated['daaa_expiry'] as String?;
+    final next = expiry?.toIso8601String().substring(0, 10);
+    if (old != null && old != next) {
+      updated['daaa_history'] = ({
+        ...((updated['daaa_history'] as List?) ?? const []).cast<String>(),
+        old,
+      }.toList()
+        ..sort());
+    }
     if (expiry == null) {
       updated.remove('daaa_expiry');
     } else {

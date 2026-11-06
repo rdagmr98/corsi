@@ -10,7 +10,7 @@ import '../models/reference_models.dart';
 import '../models/schedule_models.dart';
 import '../models/user_models.dart';
 import 'attendance_service.dart';
-import 'currency_loss_service.dart' show goOn;
+import 'currency_loss_service.dart' show daaOn, goOn;
 import 'grade_service.dart';
 
 class PdfExportService {
@@ -743,7 +743,6 @@ class PdfExportService {
 
   /// Currency di [u] giorno per giorno da [from] a [to] (stessa regola
   /// dell'app, `goOn`): periodi NO GO e ore insegnate nel corso in quei periodi.
-  // ponytail: DAA (solo M10) escluso, l'app conserva solo la scadenza attuale.
   static String currencyDuring(AppUser u, DateTime from, DateTime to,
       GradeService gs, List<ScheduledLesson> confirmed) {
     final ev = gs.currencyEvents(u.id);
@@ -761,20 +760,28 @@ class PdfExportService {
       prev = d;
     }
     if (start != null) gaps.add((start, to));
-    if (gaps.isEmpty) return 'GO per tutto il periodo del corso';
-    return gaps.map((g) {
-      final day = DateTime(g.$2.year, g.$2.month, g.$2.day + 1);
-      final n = confirmed
-          .where((l) =>
-              (l.instructorId == u.id || l.instructorId2 == u.id) &&
-              !l.date.isBefore(g.$1) &&
-              l.date.isBefore(day))
-          .length;
-      final span = g.$1 == g.$2
-          ? 'il ${_dateFmt.format(g.$1)}'
-          : 'dal ${_dateFmt.format(g.$1)} al ${_dateFmt.format(g.$2)}';
-      return 'NO GO $span (ore insegnate nel corso: $n)';
-    }).join('\n');
+    final mine = confirmed
+        .where((l) => l.instructorId == u.id || l.instructorId2 == u.id)
+        .toList();
+    final daaKo = {
+      for (final l in mine)
+        if (l.moduleNumber == 10 && !daaOn(u, l.date)) _dateFmt.format(l.date),
+    };
+    final lines = [
+      ...gaps.map((g) {
+        final day = DateTime(g.$2.year, g.$2.month, g.$2.day + 1);
+        final n = mine
+            .where((l) => !l.date.isBefore(g.$1) && l.date.isBefore(day))
+            .length;
+        final span = g.$1 == g.$2
+            ? 'il ${_dateFmt.format(g.$1)}'
+            : 'dal ${_dateFmt.format(g.$1)} al ${_dateFmt.format(g.$2)}';
+        return 'NO GO $span (ore insegnate nel corso: $n)';
+      }),
+      if (daaKo.isNotEmpty)
+        'DAAA scaduto nelle lezioni del modulo 10 del ${daaKo.join(', ')}',
+    ];
+    return lines.isEmpty ? 'GO per tutto il periodo del corso' : lines.join('\n');
   }
 
   static void _addInstructorsPage(

@@ -58,6 +58,20 @@ bool goOn(
   return c.teach && c.prof;
 }
 
+/// DAAA (solo modulo 10) valido alla data [d]. Ogni scadenza, corrente o
+/// nello storico, copre i 2 anni precedenti (aggiornamento biennale). Senza
+/// scadenza corrente o prima della prima scadenza nota non c'è vincolo/dato:
+/// GO, come `GradeService.isGo`.
+// ponytail: inizio validità stimato a scadenza - 2 anni; salvare la data del
+// rinnovo se l'aggiornamento DAAA smette di essere biennale.
+bool daaOn(AppUser u, DateTime d) {
+  if (u.goOverride || u.daaExpiry == null) return true;
+  DateTime from(DateTime e) => DateTime(e.year - 2, e.month, e.day);
+  final all = [...u.daaHistory, u.daaExpiry!];
+  if (all.every((e) => d.isBefore(from(e)))) return true;
+  return all.any((e) => e.isAfter(d) && !d.isBefore(from(e)));
+}
+
 /// Data in cui [user] ha perso la currency (primo giorno NO-GO). Da chiamare
 /// solo per chi oggi è NO-GO.
 /// - `exact`: ricostruita camminando all'indietro fino all'ultimo giorno GO;

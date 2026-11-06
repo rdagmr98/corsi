@@ -44,6 +44,8 @@ class AppUser {
   final bool isActive;
   final bool goOverride;
   final DateTime? daaExpiry;
+  // Scadenze DAAA precedenti (la corrente è [daaExpiry]): currency storica M10.
+  final List<DateTime> daaHistory;
   // Data perdita currency (null = nessuna registrata / ripristinata senza storico locale).
   final DateTime? currencyLostAt;
   // OJT capacità didattiche: 'iniziale' | 'ripristino' (+ data).
@@ -76,6 +78,7 @@ class AppUser {
     this.isActive = true,
     this.goOverride = false,
     this.daaExpiry,
+    this.daaHistory = const [],
     this.currencyLostAt,
     this.ojtKind,
     this.ojtAt,
@@ -127,6 +130,10 @@ class AppUser {
     daaExpiry: j['daaa_expiry'] != null
         ? DateTime.tryParse(j['daaa_expiry'] as String)
         : null,
+    daaHistory: [
+      for (final s in (j['daaa_history'] as List? ?? const []))
+        if (DateTime.tryParse(s as String) case final d?) d,
+    ],
     currencyLostAt: j['currency_lost_at'] != null
         ? DateTime.tryParse(j['currency_lost_at'] as String)
         : null,
@@ -164,6 +171,8 @@ class AppUser {
     'is_active': isActive,
     'go_override': goOverride,
     if (daaExpiry != null) 'daaa_expiry': daaExpiry!.toIso8601String().substring(0, 10),
+    if (daaHistory.isNotEmpty)
+      'daaa_history': [for (final d in daaHistory) d.toIso8601String().substring(0, 10)],
     if (currencyLostAt != null)
       'currency_lost_at': currencyLostAt!.toIso8601String().substring(0, 10),
     if (ojtKind != null) 'ojt_kind': ojtKind,

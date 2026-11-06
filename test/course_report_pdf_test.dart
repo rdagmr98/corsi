@@ -6,6 +6,7 @@ import 'package:corsi/models/reference_models.dart';
 import 'package:corsi/models/schedule_models.dart';
 import 'package:corsi/models/user_models.dart';
 import 'package:corsi/services/attendance_service.dart';
+import 'package:corsi/services/currency_loss_service.dart' show daaOn;
 import 'package:corsi/services/grade_service.dart';
 import 'package:corsi/services/pdf_export_service.dart';
 import 'package:flutter/services.dart';
@@ -99,5 +100,18 @@ void main() {
     // Copia per controllo a vista (fuori dal repo, ignorata se non scrivibile).
     final out = Platform.environment['PDF_OUT'];
     if (out != null) File(out).writeAsBytesSync(pdf!);
+  });
+
+  test('DAAA alla data: scadenze storiche + corrente, validità biennale', () {
+    final t = DateTime(2026);
+    final u = AppUser(
+        id: 'i', nome: 'N', cognome: 'C', role: UserRole.instructor.value,
+        daaExpiry: DateTime(2027, 9, 1), daaHistory: [DateTime(2025, 6, 1)],
+        createdAt: t, updatedAt: t);
+    expect(daaOn(u, DateTime(2022, 1, 1)), isTrue); // prima di ogni dato
+    expect(daaOn(u, DateTime(2025, 5, 1)), isTrue);
+    expect(daaOn(u, DateTime(2025, 7, 1)), isFalse); // scaduto, rinnovo dopo
+    expect(daaOn(u, DateTime(2025, 10, 1)), isTrue);
+    expect(daaOn(u, DateTime(2027, 10, 1)), isFalse);
   });
 }
