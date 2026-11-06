@@ -16,6 +16,21 @@ class ScheduleService {
     return c;
   }
 
+  /// Numero progressivo di ogni lezione (id → n) tra quelle con la stessa [key],
+  /// in ordine di data e ora: la riga di una lezione mostra "n/tot", non il totale.
+  static Map<String, int> ordinals(
+      Iterable<ScheduledLesson> lessons, String Function(ScheduledLesson) key) {
+    final sorted = lessons.where((l) => l.timeSlot > 0).toList()
+      ..sort((a, b) {
+        final dc = a.date.compareTo(b.date);
+        return dc != 0 ? dc : a.timeSlot.compareTo(b.timeSlot);
+      });
+    final count = <String, int>{};
+    return {
+      for (final l in sorted) l.id: count[key(l)] = (count[key(l)] ?? 0) + 1,
+    };
+  }
+
   List<ScheduledLesson> getAllLessons() =>
       _db.schedules.map(ScheduledLesson.fromJson).toList();
 

@@ -67,8 +67,6 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
       for (final m in typeInfo?.modules ?? [])
         for (final s in m.submodules) s.code: s.name,
     };
-    final subConfT  = <String, int>{};
-    final subConfP  = <String, int>{};
     final subSchedT = <String, int>{};
     final subSchedP = <String, int>{};
     for (final l in lessons) {
@@ -76,12 +74,13 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
       final nc = normCode(l.submoduleCode);
       if (l.type != 'pratica') {
         subSchedT[nc] = (subSchedT[nc] ?? 0) + 1;
-        if (l.confirmed) subConfT[nc] = (subConfT[nc] ?? 0) + 1;
       } else {
         subSchedP[nc] = (subSchedP[nc] ?? 0) + 1;
-        if (l.confirmed) subConfP[nc] = (subConfP[nc] ?? 0) + 1;
       }
     }
+    // n-esima ora della lezione (per tipo e sottomodulo, in ordine cronologico), non il totale.
+    final ordinals = ScheduleService.ordinals(
+        lessons, (l) => '${l.type != 'pratica' ? 'T' : 'P'}|${normCode(l.submoduleCode)}');
     final subPlanT = <String, int>{
       for (final m in typeInfo?.modules ?? [])
         for (final s in m.submodules)
@@ -380,12 +379,14 @@ class _AttendeeAttendanceScreenState extends ConsumerState<AttendeeAttendanceScr
 
                     final isTheory = l.type != 'pratica';
                     final nc = normCode(l.submoduleCode);
-                    final rawConf = isTheory ? (subConfT[nc] ?? 0) : (subConfP[nc] ?? 0);
+                    final ord = ordinals[l.id] ?? 0;
                     final plan = isTheory ? (subPlanT[nc] ?? 0) : (subPlanP[nc] ?? 0);
                     // Ore oltre il piano = recuperi: il contatore non supera il piano.
-                    final conf = plan > 0 && rawConf > plan ? plan : rawConf;
+                    final over = plan > 0 && ord > plan;
                     final typeLabel = isTheory ? 'T' : 'P';
-                    final hoursStr = plan > 0 ? '$typeLabel $conf/$plan h' : '$typeLabel ${conf}h';
+                    final hoursStr = plan > 0
+                        ? '$typeLabel ${over ? plan : ord}/$plan h${over ? ' (rec.)' : ''}'
+                        : '$typeLabel ${ord}h';
                     final slot = typeInfo?.schedule
                         .slotsForWeekday(l.date.weekday)
                         .where((t) => t.slot == l.timeSlot)

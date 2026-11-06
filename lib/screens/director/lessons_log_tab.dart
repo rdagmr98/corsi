@@ -76,6 +76,7 @@ class _DirectorLessonsLogTabState extends ConsumerState<DirectorLessonsLogTab> {
   Course? _selected;
   CourseTypeInfo? _typeInfo;
   List<ScheduledLesson> _allLessons = [];
+  Map<String, int> _ordinals = {};
   List<AppUser> _attendees = [];
   List<AppUser> _instructors = [];
   final Map<String, String> _instructorNameById = {};
@@ -119,6 +120,7 @@ class _DirectorLessonsLogTabState extends ConsumerState<DirectorLessonsLogTab> {
       _allLessons = _scheduleService.getLessonsForCourse(_selected!.id)
           .where((l) => l.confirmed && l.timeSlot > 0)
           .toList();
+      _ordinals = ScheduleService.ordinals(_allLessons, _ordKey);
       _attendees = _userService.getAllUsers().where((u) => _selected!.attendeeIds.contains(u.id)).toList();
       final usedInstructorIds = _allLessons.map((l) => l.instructorId).whereType<String>().toSet();
       _instructorNameById
@@ -185,15 +187,12 @@ class _DirectorLessonsLogTabState extends ConsumerState<DirectorLessonsLogTab> {
     return null;
   }
 
-  Map<String, int> get _taskProgress {
-    final done = <String, int>{};
-    for (final l in _allLessons) {
-      if (l.taskId != null) {
-        final k = l.taskId.toString();
-        done[k] = (done[k] ?? 0) + 1;
-      }
-    }
-    return done;
+  /// Contatore ore: per task se la pratica ne ha uno nel programma, altrimenti
+  /// per sottomodulo e tipo (stesso criterio del monte ore in `_lessonRow`).
+  String _ordKey(ScheduledLesson l) {
+    final isPratica = l.type == 'pratica';
+    if (isPratica && l.taskId != null && _findTask(l.taskId!) != null) return 'task|${l.taskId}';
+    return '${isPratica ? 'P' : 'T'}|${_normSub(l.submoduleCode)}';
   }
 
   String _moduleLabel(int number) {
@@ -221,20 +220,6 @@ class _DirectorLessonsLogTabState extends ConsumerState<DirectorLessonsLogTab> {
       }
     }
     return null;
-  }
-
-  (Map<String, int>, Map<String, int>) get _submoduleProgress {
-    final doneT = <String, int>{};
-    final doneP = <String, int>{};
-    for (final l in _allLessons) {
-      final c = _normSub(l.submoduleCode);
-      if (l.isTheory) {
-        doneT[c] = (doneT[c] ?? 0) + 1;
-      } else {
-        doneP[c] = (doneP[c] ?? 0) + 1;
-      }
-    }
-    return (doneT, doneP);
   }
 
   List<AppUser> _absentees(ScheduledLesson l) {
@@ -340,8 +325,6 @@ class _DirectorLessonsLogTabState extends ConsumerState<DirectorLessonsLogTab> {
       return const Center(child: Text('Nessun corso assegnato', style: TextStyle(color: kTextDim)));
     }
     final filtered = _mergedEntries;
-    final (doneT, doneP) = _submoduleProgress;
-    final doneTask = _taskProgress;
     final hasFilters = _fDateFrom != null ||
         _fDateTo != null ||
         _fModule != null ||
@@ -404,7 +387,7 @@ class _DirectorLessonsLogTabState extends ConsumerState<DirectorLessonsLogTab> {
                   itemBuilder: (_, i) {
                     final e = filtered[i];
                     return e.lesson != null
-                        ? _lessonRow(e.lesson!, doneT, doneP, doneTask)
+                        ? _lessonRow(e.lesson!)
                         : _recoveryRow(e.recovery!);
                   },
                 ),
@@ -413,17 +396,21 @@ class _DirectorLessonsLogTabState extends ConsumerState<DirectorLessonsLogTab> {
     );
   }
 
-  Widget _labeled(String label, Widget child) => SizedBox(
-        width: 180,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(label, style: const TextStyle(color: kTextDim, fontSize: 11)),
-            const SizedBox(height: 4),
-            child,
-          ],
-        ),
-      );
+  /// Filtro con etichetta sopra: largo [width] o, senza, quota della riga dei filtri.
+  Widget _labeled(String label, Widget child, {double? width}) {
+    final col = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label,
+            style: const TextStyle(color: kTextDim, fontSize: 11),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis),
+        const SizedBox(height: 4),
+        child,
+      ],
+    );
+    return width != null ? SizedBox(width: width, child: col) : Expanded(child: col);
+  }
 
   Widget _dateButton(String label, DateTime? value, ValueChanged<DateTime?> onChanged) {
     return _labeled(
@@ -444,13 +431,14 @@ class _DirectorLessonsLogTabState extends ConsumerState<DirectorLessonsLogTab> {
           overflow: TextOverflow.ellipsis,
         ),
       ),
+      width: 130,
     );
   }
 
   Widget _filterBar() {
-    return Wrap(
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       spacing: 12,
-      runSpacing: 10,
       children: [
         _dateButton('Da', _fDateFrom, (d) => setState(() => _fDateFrom = d)),
         _dateButton('A', _fDateTo, (d) => setState(() => _fDateTo = d)),
@@ -582,19 +570,54 @@ class _DirectorLessonsLogTabState extends ConsumerState<DirectorLessonsLogTab> {
 
   String _fmtHours(num h) => h == h.truncate() ? '${h.toInt()}' : '$h';
 
-  Widget _lessonRow(ScheduledLesson l, Map<String, int> doneT, Map<String, int> doneP, Map<String, int> doneTask) {
+  // Colonne fisse condivise da lezioni e recuperi, così le righe restano allineate.
+  static const double _dateW = 92, _leadW = 130, _sideW = 190;
+
+  Widget _dateCell(DateTime d) => SizedBox(
+        width: _dateW,
+        child: Text(DateFormat('dd/MM/yyyy').format(d),
+            style: const TextStyle(color: kText, fontSize: 12), overflow: TextOverflow.ellipsis),
+      );
+
+  Widget _chip(String text, Color color, {double size = 10}) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+        decoration: BoxDecoration(color: color.withOpacity(0.15), borderRadius: BorderRadius.circular(3)),
+        child: Text(text, style: TextStyle(color: color, fontSize: size, fontWeight: FontWeight.bold)),
+      );
+
+  Widget _typeChip(bool isPratica) => _chip(isPratica ? 'P' : 'T', isPratica ? kAccent : kPrimary);
+
+  /// "M.. · codice   Nome sottomodulo" su una riga sola.
+  Widget _subLine(int module, String? code) => Text.rich(
+        TextSpan(children: [
+          TextSpan(
+            text: code != null ? 'M${_moduleLabel(module)} · $code' : 'M${_moduleLabel(module)}',
+            style: const TextStyle(color: kText, fontSize: 12, fontWeight: FontWeight.w600),
+          ),
+          if (code != null)
+            TextSpan(text: '   ${_subName(code)}', style: const TextStyle(color: kTextDim, fontSize: 11)),
+        ]),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      );
+
+  Widget _sideText(String text, Color color) => Tooltip(
+        message: text,
+        child: Text(text, style: TextStyle(color: color, fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
+      );
+
+  Widget _lessonRow(ScheduledLesson l) {
     final absentees = _absentees(l);
     final isPratica = l.type == 'pratica';
     final subInfo = _subInfo(l.submoduleCode);
-    final nc = _normSub(l.submoduleCode);
     final task = (isPratica && l.taskId != null) ? _findTask(l.taskId!) : null;
     final taskLabel = isPratica ? _refService.taskLabelFor(_typeInfo, l.taskId) : null;
     final num totalHours = task != null
         ? task.plannedHours
         : (subInfo == null ? 0 : (isPratica ? subInfo.practicalHours : subInfo.theoryHours));
-    final doneHours = task != null
-        ? (doneTask[l.taskId.toString()] ?? 0)
-        : (isPratica ? (doneP[nc] ?? 0) : (doneT[nc] ?? 0));
+    // n-esima ora della lezione in ordine cronologico; oltre il piano è un recupero.
+    final ord = _ordinals[l.id] ?? 0;
+    final over = ord > totalHours;
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
@@ -605,97 +628,63 @@ class _DirectorLessonsLogTabState extends ConsumerState<DirectorLessonsLogTab> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          _dateCell(l.date),
+          const SizedBox(width: 8),
           SizedBox(
-            width: 92,
-            child: Text(
-              DateFormat('dd/MM/yyyy').format(l.date),
-              style: const TextStyle(color: kText, fontSize: 12),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-            decoration: BoxDecoration(
-              color: (isPratica ? kAccent : kPrimary).withOpacity(0.15),
-              borderRadius: BorderRadius.circular(3),
-            ),
-            child: Text(
-              isPratica ? 'P' : 'T',
-              style: TextStyle(
-                  color: isPratica ? kAccent : kPrimary, fontSize: 10, fontWeight: FontWeight.bold),
-            ),
-          ),
-          if (totalHours > 0) ...[
-            const SizedBox(width: 6),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-              decoration: BoxDecoration(
-                color: kSurface,
-                borderRadius: BorderRadius.circular(3),
-                border: Border.all(color: kBorder),
-              ),
-              child: Text(
-                '$doneHours/${_fmtHours(totalHours)}h',
-                style: const TextStyle(color: kTextDim, fontSize: 10, fontWeight: FontWeight.w600),
-              ),
-            ),
-          ],
-          const SizedBox(width: 8),
-          Expanded(
-            flex: 3,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            width: _leadW,
+            child: Row(
               children: [
-                Text(
-                  'M${_moduleLabel(l.moduleNumber)} · ${l.submoduleCode}',
-                  style: const TextStyle(color: kText, fontSize: 12, fontWeight: FontWeight.w600),
-                  overflow: TextOverflow.ellipsis,
-                ),
-                Text(
-                  _subName(l.submoduleCode),
-                  style: const TextStyle(color: kTextDim, fontSize: 11),
-                  overflow: TextOverflow.ellipsis,
-                  maxLines: 1,
-                ),
+                _typeChip(isPratica),
+                if (totalHours > 0) ...[
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: kSurface,
+                        borderRadius: BorderRadius.circular(3),
+                        border: Border.all(color: kBorder),
+                      ),
+                      child: Text(
+                        '${over ? _fmtHours(totalHours) : ord}/${_fmtHours(totalHours)}h${over ? ' (rec.)' : ''}',
+                        style: const TextStyle(color: kTextDim, fontSize: 10, fontWeight: FontWeight.w600),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
-          if (taskLabel != null) ...[
-            const SizedBox(width: 8),
-            Expanded(
-              flex: 2,
-              child: Text(
-                taskLabel,
-                style: const TextStyle(color: kTextDim, fontSize: 11),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
           const SizedBox(width: 8),
           Expanded(
-            flex: 2,
-            child: Text(
-              l.instructorId != null ? (_instructorNameById[l.instructorId] ?? '—') : '— Da assegnare —',
-              style: const TextStyle(color: kTextDim, fontSize: 11),
-              overflow: TextOverflow.ellipsis,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _subLine(l.moduleNumber, l.submoduleCode),
+                if (taskLabel != null)
+                  Text(taskLabel,
+                      style: const TextStyle(color: kTextDim, fontSize: 11),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis),
+              ],
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 12),
           SizedBox(
-            width: 150,
+            width: _sideW,
+            child: _sideText(
+              l.instructorId != null ? (_instructorNameById[l.instructorId] ?? '—') : '— Da assegnare —',
+              kTextDim,
+            ),
+          ),
+          const SizedBox(width: 12),
+          SizedBox(
+            width: _sideW,
             child: absentees.isEmpty
-                ? const Text(
-                    'Tutti presenti',
-                    style: TextStyle(color: kAccent, fontSize: 11),
-                    overflow: TextOverflow.ellipsis,
-                  )
-                : Text(
-                    'Assenti: ${absentees.map((a) => a.cognome).join(', ')}',
-                    style: const TextStyle(color: kWarning, fontSize: 11),
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
-                  ),
+                ? _sideText('Tutti presenti', kAccent)
+                : _sideText('Assenti: ${absentees.map((a) => a.cognome).join(', ')}', kWarning),
           ),
         ],
       ),
@@ -730,80 +719,35 @@ class _DirectorLessonsLogTabState extends ConsumerState<DirectorLessonsLogTab> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          _dateCell(r.date),
+          const SizedBox(width: 8),
           SizedBox(
-            width: 92,
-            child: Text(
-              DateFormat('dd/MM/yyyy').format(r.date),
-              style: const TextStyle(color: kText, fontSize: 12),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-            decoration: BoxDecoration(
-              color: kPrimary.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(3),
-            ),
-            child: const Text(
-              'RECUPERO',
-              style: TextStyle(color: kPrimary, fontSize: 9, fontWeight: FontWeight.bold),
-            ),
-          ),
-          if (r.type != null) ...[
-            const SizedBox(width: 6),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-              decoration: BoxDecoration(
-                color: (isPratica ? kAccent : kPrimary).withOpacity(0.15),
-                borderRadius: BorderRadius.circular(3),
-              ),
-              child: Text(
-                isPratica ? 'P' : 'T',
-                style: TextStyle(
-                    color: isPratica ? kAccent : kPrimary, fontSize: 10, fontWeight: FontWeight.bold),
-              ),
-            ),
-          ],
-          const SizedBox(width: 8),
-          Expanded(
-            flex: 3,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            width: _leadW,
+            child: Row(
               children: [
-                Text(
-                  r.submoduleCode != null
-                      ? 'M${_moduleLabel(r.moduleNumber)} · ${r.submoduleCode}'
-                      : 'M${_moduleLabel(r.moduleNumber)}',
-                  style: const TextStyle(color: kText, fontSize: 12, fontWeight: FontWeight.w600),
-                  overflow: TextOverflow.ellipsis,
-                ),
-                if (r.submoduleCode != null)
-                  Text(
-                    _subName(r.submoduleCode!),
-                    style: const TextStyle(color: kTextDim, fontSize: 11),
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
-                  ),
-                if (taskLabel != null)
-                  Text(
-                    taskLabel,
-                    style: const TextStyle(color: kAccent, fontSize: 11),
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
-                  ),
+                _chip('RECUPERO', kPrimary, size: 9),
+                if (r.type != null) ...[const SizedBox(width: 6), _typeChip(isPratica)],
               ],
             ),
           ),
           const SizedBox(width: 8),
           Expanded(
-            flex: 4,
-            child: Text(
-              'Recuperato da: ${r.attendees.map((a) => a.cognome).join(', ')}',
-              style: const TextStyle(color: kPrimary, fontSize: 11),
-              overflow: TextOverflow.ellipsis,
-              maxLines: 1,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _subLine(r.moduleNumber, r.submoduleCode),
+                if (taskLabel != null)
+                  Text(taskLabel,
+                      style: const TextStyle(color: kAccent, fontSize: 11),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis),
+              ],
             ),
+          ),
+          const SizedBox(width: 12),
+          SizedBox(
+            width: _sideW * 2 + 12,
+            child: _sideText('Recuperato da: ${r.attendees.map((a) => a.cognome).join(', ')}', kPrimary),
           ),
         ],
       ),
