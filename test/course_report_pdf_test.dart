@@ -17,10 +17,13 @@ class _Grades extends GradeService {
   final List<Grade> grades;
   @override
   List<Grade> getAllGrades() => grades;
+  // 6 h di insegnamento il 10/03/2025: scadono durante il corso (dal 10/03/2026).
   @override
-  double getTeachingHoursRollingYear(String id) => 8;
+  ({List<(DateTime, double)> teach, List<(DateTime, double)> prof}) currencyEvents(
+          String id) =>
+      (teach: [(DateTime(2025, 3, 10), 6.0)], prof: [(DateTime(2025, 1, 1), 40.0)]);
   @override
-  double getProfessionalUpdateHoursLast2Years(String id) => 40;
+  DateTime? lastOjtDate(String id) => null;
 }
 
 void main() {
@@ -46,7 +49,7 @@ void main() {
     final att = user('a', 'Frequentatore', UserRole.attendee);
     final course = Course(
         id: 'c', courseTypeId: 'b1', title: '9 BTC – prova', status: 'completed',
-        startDate: now, directorIds: ['d'], attendeeIds: ['a'],
+        startDate: now, endDate: DateTime(2026, 3, 20), directorIds: ['d'], attendeeIds: ['a'],
         createdBy: 'd', createdAt: now, updatedAt: now);
     final type = CourseTypeInfo.fromJson({
       'id': 'b1', 'code': 'B1', 'name': 'Corso B1', 'category': 'B1',
@@ -62,6 +65,10 @@ void main() {
             id: 'l$s', courseId: 'c', moduleNumber: 1, submoduleCode: '1.1', topic: 'Aritmetica',
             type: 'teoria', date: now, timeSlot: s, instructorId: 'i', confirmed: true,
             createdAt: now, updatedAt: now),
+      ScheduledLesson(
+          id: 'l3', courseId: 'c', moduleNumber: 1, submoduleCode: '1.1', topic: 'Aritmetica',
+          type: 'teoria', date: DateTime(2026, 3, 12), timeSlot: 1, instructorId: 'i',
+          confirmed: true, createdAt: now, updatedAt: now),
     ];
     Grade g(String type, int n, double score) => Grade(
         id: '$type$n$score', courseId: 'c', attendeeId: 'a', moduleNumber: 1, type: type,
@@ -81,6 +88,14 @@ void main() {
 
     expect(name, 'prova_archivio.pdf');
     expect(pdf, isNotNull);
+    expect(
+        PdfExportService.currencyDuring(
+            ins, DateTime(2026, 3, 2), DateTime(2026, 3, 20), _Grades(const []), lessons),
+        'NO GO dal 10/03/2026 al 20/03/2026 (ore insegnate nel corso: 1)');
+    expect(
+        PdfExportService.currencyDuring(
+            ins, DateTime(2026, 3, 2), DateTime(2026, 3, 9), _Grades(const []), lessons),
+        'GO per tutto il periodo del corso');
     // Copia per controllo a vista (fuori dal repo, ignorata se non scrivibile).
     final out = Platform.environment['PDF_OUT'];
     if (out != null) File(out).writeAsBytesSync(pdf!);

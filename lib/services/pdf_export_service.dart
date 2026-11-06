@@ -10,6 +10,7 @@ import '../models/reference_models.dart';
 import '../models/schedule_models.dart';
 import '../models/user_models.dart';
 import 'attendance_service.dart';
+import 'currency_loss_service.dart' show goOn;
 import 'grade_service.dart';
 
 class PdfExportService {
@@ -62,7 +63,7 @@ class PdfExportService {
     doc.addPage(_coverPage(course, typeInfo, confirmedLessons, roster, directors,
         teachers, logo, footer));
     _addLessonsPages(doc, confirmedLessons, modMap, instructorMap, footer);
-    _addInstructorsPage(doc, teachers, taught, gradeService, footer);
+    _addInstructorsPage(doc, course, confirmedLessons, teachers, taught, gradeService, footer);
     _addGradesPages(doc, course, roster, modules, gradeService, footer);
     _addGradeDetailPages(doc, course, roster, modMap, gradeService, footer);
     _addAttendancePage(doc, course, roster, modules, lessons, attendanceService, footer);
@@ -740,25 +741,65 @@ class PdfExportService {
 
   // ── Istruttori impiegati, ore svolte nel corso e currency ─────────────────
 
+  /// Currency di [u] giorno per giorno da [from] a [to] (stessa regola
+  /// dell'app, `goOn`): periodi NO GO e ore insegnate nel corso in quei periodi.
+  // ponytail: DAA (solo M10) escluso, l'app conserva solo la scadenza attuale.
+  static String currencyDuring(AppUser u, DateTime from, DateTime to,
+      GradeService gs, List<ScheduledLesson> confirmed) {
+    final ev = gs.currencyEvents(u.id);
+    final lastOjt = gs.lastOjtDate(u.id);
+    final gaps = <(DateTime, DateTime)>[];
+    DateTime? start;
+    var prev = from;
+    for (var d = from; !d.isAfter(to); d = DateTime(d.year, d.month, d.day + 1)) {
+      if (!goOn(d, teach: ev.teach, prof: ev.prof, user: u, lastOjt: lastOjt)) {
+        start ??= d;
+      } else if (start != null) {
+        gaps.add((start, prev));
+        start = null;
+      }
+      prev = d;
+    }
+    if (start != null) gaps.add((start, to));
+    if (gaps.isEmpty) return 'GO per tutto il periodo del corso';
+    return gaps.map((g) {
+      final day = DateTime(g.$2.year, g.$2.month, g.$2.day + 1);
+      final n = confirmed
+          .where((l) =>
+              (l.instructorId == u.id || l.instructorId2 == u.id) &&
+              !l.date.isBefore(g.$1) &&
+              l.date.isBefore(day))
+          .length;
+      final span = g.$1 == g.$2
+          ? 'il ${_dateFmt.format(g.$1)}'
+          : 'dal ${_dateFmt.format(g.$1)} al ${_dateFmt.format(g.$2)}';
+      return 'NO GO $span (ore insegnate nel corso: $n)';
+    }).join('\n');
+  }
+
   static void _addInstructorsPage(
     pw.Document doc,
+    Course course,
+    List<ScheduledLesson> confirmed,
     List<AppUser> teachers,
     Map<String, ({int t, int p})> taught,
     GradeService gradeService,
     pw.Widget Function(pw.Context) footer,
   ) {
     if (teachers.isEmpty) return;
+    DateTime day(DateTime d) => DateTime(d.year, d.month, d.day);
+    final today = day(DateTime.now());
+    final from = day(course.startDate ?? confirmed.first.date);
+    var to = day(course.endDate ?? confirmed.last.date);
+    if (to.isAfter(today)) to = today;
     final rows = teachers.map((i) {
       final h = taught[i.id]!;
-      final teaching = gradeService.getTeachingHoursRollingYear(i.id);
-      final prof = gradeService.getProfessionalUpdateHoursLast2Years(i.id);
       return [
         i.fullName,
         '${h.t}',
         '${h.p}',
         '${h.t + h.p}',
-        '${teaching >= 6 && prof >= 35 ? 'IN CURRENCY' : 'SCADUTA'} '
-            '(${teaching.toStringAsFixed(1)} h / ${prof.toStringAsFixed(1)} h)',
+        currencyDuring(i, from, to, gradeService, confirmed),
       ];
     }).toList();
 
@@ -770,7 +811,7 @@ class PdfExportService {
       build: (ctx) => [
         _dataTable(
           ['Istruttore', 'Ore teoria', 'Ore pratica', 'Ore totali',
-            'Currency alla data del documento (insegnamento 12 mesi / aggiornamento 24 mesi)'],
+            'Currency nel periodo del corso (6 h insegnamento in 12 mesi, 35 h aggiornamento in 24 mesi)'],
           rows,
           colWidths: [150, 50, 50, 50, 230],
         ),
