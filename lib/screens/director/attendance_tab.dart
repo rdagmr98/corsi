@@ -137,27 +137,239 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
     if (attendees.isEmpty) {
       return const Center(child: Text('Nessun frequentatore', style: TextStyle(color: kTextDim)));
     }
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-      itemCount: attendees.length,
-      itemBuilder: (_, i) => _buildStudentCard(course, attendees[i], allLessons, typeInfo),
+
+    final summaries = attendees.map((a) {
+      final modStats = _attendanceService.computePerModuleStats(
+        course.id, a.id, allLessons, modules: typeInfo?.modules);
+      final totalAbsent = modStats.values.fold(0, (s, m) => s + (m['absent'] ?? 0));
+      final totalUnrecovered = modStats.values.fold(0, (s, m) => s + (m['unrecovered'] ?? 0));
+      final totalPlannedHours = typeInfo?.modules.fold(0, (s, m) => s + m.totalHours) ?? 0;
+      final totalToRecover = modStats.values.fold(0, (s, m) => s + (m['toRecover'] ?? 0));
+      final totalToRecoverT = modStats.values.fold(0, (s, m) => s + (m['toRecoverT'] ?? 0));
+      final totalToRecoverP = modStats.values.fold(0, (s, m) => s + (m['toRecoverP'] ?? 0));
+      final modulesToRecover = typeInfo == null
+          ? <({ModuleInfo mod, int total, int theory, int practical})>[]
+          : typeInfo.modules
+              .where((m) => (modStats[m.number]?['toRecover'] ?? 0) > 0)
+              .map((m) => (
+                    mod: m,
+                    total: modStats[m.number]?['toRecover'] ?? 0,
+                    theory: modStats[m.number]?['toRecoverT'] ?? 0,
+                    practical: modStats[m.number]?['toRecoverP'] ?? 0,
+                  ))
+              .toList();
+      return _StudentAttendanceSummary(
+        attendee: a,
+        modStats: modStats,
+        totalAbsent: totalAbsent,
+        totalUnrecovered: totalUnrecovered,
+        totalPlannedHours: totalPlannedHours,
+        totalToRecover: totalToRecover,
+        totalToRecoverT: totalToRecoverT,
+        totalToRecoverP: totalToRecoverP,
+        modulesToRecover: modulesToRecover,
+      );
+    }).toList();
+
+    final regular = summaries.where((s) => s.totalToRecover == 0).toList()
+      ..sort((a, b) {
+        final cmp = b.totalUnrecovered.compareTo(a.totalUnrecovered);
+        return cmp != 0 ? cmp : a.attendee.cognome.compareTo(b.attendee.cognome);
+      });
+
+    final toRecover = summaries.where((s) => s.totalToRecover > 0).toList()
+      ..sort((a, b) {
+        final cmp = b.totalToRecover.compareTo(a.totalToRecover);
+        return cmp != 0 ? cmp : a.attendee.cognome.compareTo(b.attendee.cognome);
+      });
+
+    final totalPendingHours = toRecover.fold(0, (s, item) => s + item.totalToRecover);
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth >= 900) {
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: _buildAttendancePanel(
+                    title: 'In regola (${regular.length})',
+                    subtitle: 'Nessun recupero obbligatorio pendente',
+                    color: kAccent,
+                    icon: Icons.check_circle_outline,
+                    emptyText: 'Nessun frequentatore in regola',
+                    items: regular,
+                    course: course,
+                    allLessons: allLessons,
+                    typeInfo: typeInfo,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _buildAttendancePanel(
+                    title: 'Da recuperare (${toRecover.length})',
+                    subtitle: toRecover.isEmpty
+                        ? 'Tutti i frequentatori sono in regola'
+                        : '${totalPendingHours}h totali da recuperare · clicca un modulo per registrare il recupero',
+                    color: toRecover.isEmpty ? kAccent : kError,
+                    icon: toRecover.isEmpty ? Icons.verified_outlined : Icons.warning_amber_rounded,
+                    emptyText: 'Nessun recupero pendente',
+                    items: toRecover,
+                    course: course,
+                    allLessons: allLessons,
+                    typeInfo: typeInfo,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        // Fallback verticale su finestre strette: prima chi ha recuperi pendenti
+        return ListView(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          children: [
+            _buildPanelHeader(
+              title: 'Da recuperare (${toRecover.length})',
+              subtitle: toRecover.isEmpty
+                  ? 'Tutti i frequentatori sono in regola'
+                  : '${totalPendingHours}h totali da recuperare',
+              color: toRecover.isEmpty ? kAccent : kError,
+              icon: toRecover.isEmpty ? Icons.verified_outlined : Icons.warning_amber_rounded,
+            ),
+            const SizedBox(height: 8),
+            if (toRecover.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: Text('Nessun recupero pendente', style: TextStyle(color: kTextDim, fontSize: 13)),
+              )
+            else
+              ...toRecover.map((s) => _buildStudentCard(course, s, allLessons, typeInfo)),
+            const SizedBox(height: 16),
+            _buildPanelHeader(
+              title: 'In regola (${regular.length})',
+              subtitle: 'Nessun recupero obbligatorio pendente',
+              color: kAccent,
+              icon: Icons.check_circle_outline,
+            ),
+            const SizedBox(height: 8),
+            if (regular.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: Text('Nessun frequentatore in regola', style: TextStyle(color: kTextDim, fontSize: 13)),
+              )
+            else
+              ...regular.map((s) => _buildStudentCard(course, s, allLessons, typeInfo)),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildAttendancePanel({
+    required String title,
+    required String subtitle,
+    required Color color,
+    required IconData icon,
+    required String emptyText,
+    required List<_StudentAttendanceSummary> items,
+    required Course course,
+    required List<ScheduledLesson> allLessons,
+    required CourseTypeInfo? typeInfo,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: kSurface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: kBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+            child: _buildPanelHeader(
+              title: title,
+              subtitle: subtitle,
+              color: color,
+              icon: icon,
+            ),
+          ),
+          const Divider(height: 1, color: kBorder),
+          Expanded(
+            child: items.isEmpty
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(emptyText, style: const TextStyle(color: kTextDim, fontSize: 13)),
+                    ),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.all(10),
+                    itemCount: items.length,
+                    itemBuilder: (_, i) =>
+                        _buildStudentCard(course, items[i], allLessons, typeInfo),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPanelHeader({
+    required String title,
+    required String subtitle,
+    required Color color,
+    required IconData icon,
+  }) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(7),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.14),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(icon, color: color, size: 18),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 14),
+              ),
+              Text(
+                subtitle,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: kTextDim, fontSize: 11),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
   Widget _buildStudentCard(
     Course course,
-    AppUser a,
+    _StudentAttendanceSummary summary,
     List<ScheduledLesson> allLessons,
     CourseTypeInfo? typeInfo,
   ) {
-    final modStats = _attendanceService.computePerModuleStats(
-      course.id, a.id, allLessons, modules: typeInfo?.modules);
-    final totalAbsent = modStats.values.fold(0, (s, m) => s + (m['absent'] ?? 0));
-    final totalUnrecovered = modStats.values.fold(0, (s, m) => s + (m['unrecovered'] ?? 0));
-    final totalPlannedHours = typeInfo?.modules.fold(0, (s, m) => s + m.totalHours) ?? 0;
-    final totalToRecover  = modStats.values.fold(0, (s, m) => s + (m['toRecover'] ?? 0));
-    final totalToRecoverT = modStats.values.fold(0, (s, m) => s + (m['toRecoverT'] ?? 0));
-    final totalToRecoverP = modStats.values.fold(0, (s, m) => s + (m['toRecoverP'] ?? 0));
+    final a = summary.attendee;
+    final modStats = summary.modStats;
+    final totalAbsent = summary.totalAbsent;
+    final totalUnrecovered = summary.totalUnrecovered;
+    final totalPlannedHours = summary.totalPlannedHours;
+    final totalToRecover = summary.totalToRecover;
+    final totalToRecoverT = summary.totalToRecoverT;
+    final totalToRecoverP = summary.totalToRecoverP;
     final presPct = totalPlannedHours > 0
         ? ((totalPlannedHours - totalAbsent) / totalPlannedHours * 100).toStringAsFixed(0)
         : '100';
@@ -171,39 +383,81 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
       margin: const EdgeInsets.only(bottom: 8),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
-        side: BorderSide(color: anyWarning ? kError.withOpacity(0.35) : kBorder),
+        side: BorderSide(color: anyWarning ? kError.withValues(alpha: 0.35) : kBorder),
       ),
-      child: ExpansionTile(
-        leading: CircleAvatar(
-          backgroundColor: anyWarning ? kError.withOpacity(0.15) : kPrimary.withOpacity(0.15),
-          child: Text(
-            a.cognome.isNotEmpty ? a.cognome[0].toUpperCase() : '?',
-            style: TextStyle(
-                color: anyWarning ? kError : kPrimary, fontWeight: FontWeight.bold),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ExpansionTile(
+            shape: const Border(),
+            collapsedShape: const Border(),
+            leading: CircleAvatar(
+              backgroundColor: anyWarning
+                  ? kError.withValues(alpha: 0.15)
+                  : kPrimary.withValues(alpha: 0.15),
+              child: Text(
+                a.cognome.isNotEmpty ? a.cognome[0].toUpperCase() : '?',
+                style: TextStyle(
+                    color: anyWarning ? kError : kPrimary, fontWeight: FontWeight.bold),
+              ),
+            ),
+            title: Text(a.fullName,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: kText, fontWeight: FontWeight.w500, fontSize: 14)),
+            subtitle: Text(
+              'Pres. $presPct% · Ass. $absPct% — $totalAbsent ore ass. · $totalUnrecovered non rec. su $totalPlannedHours ore prev.'
+              '${totalToRecover > 0 ? '\nDa recuperare: ${totalToRecover}h'
+                  '${totalToRecoverP > 0 ? ' · ${totalToRecoverP}h pratica (100%)' : ''}'
+                  '${totalToRecoverT > 0 ? ' · ${totalToRecoverT}h teoria (oltre 10%)' : ''}' : ''}',
+              style: TextStyle(color: anyWarning ? kError : kTextDim, fontSize: 12),
+            ),
+            trailing: IconButton(
+              icon: const Icon(Icons.person_remove_outlined, color: kError, size: 18),
+              tooltip: 'Espelli dal corso',
+              onPressed: () => _expelStudent(course, a),
+            ),
+            children: typeInfo == null
+                ? []
+                : typeInfo.modules
+                    .where((mod) =>
+                        modStats.containsKey(mod.number) &&
+                        (modStats[mod.number]!['total'] ?? 0) > 0)
+                    .map((mod) =>
+                        _buildModuleRow(course, a, allLessons, mod, modStats[mod.number]!, typeInfo))
+                    .toList(),
           ),
-        ),
-        title: Text(a.fullName,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(color: kText, fontWeight: FontWeight.w500, fontSize: 14)),
-        subtitle: Text(
-          'Pres. $presPct% · Ass. $absPct% — $totalAbsent ore ass. · $totalUnrecovered non rec. su $totalPlannedHours ore prev.'
-          '${totalToRecover > 0 ? '\nDa recuperare: ${totalToRecover}h'
-              '${totalToRecoverP > 0 ? ' · ${totalToRecoverP}h pratica (100%)' : ''}'
-              '${totalToRecoverT > 0 ? ' · ${totalToRecoverT}h teoria (oltre 10%)' : ''}' : ''}',
-          style: TextStyle(
-              color: anyWarning ? kError : kTextDim, fontSize: 12),
-        ),
-        trailing: IconButton(
-          icon: const Icon(Icons.person_remove_outlined, color: kError, size: 18),
-          tooltip: 'Espelli dal corso',
-          onPressed: () => _expelStudent(course, a),
-        ),
-        children: typeInfo == null
-            ? []
-            : typeInfo.modules
-                .where((mod) => modStats.containsKey(mod.number) && (modStats[mod.number]!['total'] ?? 0) > 0)
-                .map((mod) => _buildModuleRow(course, a, allLessons, mod, modStats[mod.number]!, typeInfo))
-                .toList(),
+          if (summary.modulesToRecover.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+              child: Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: summary.modulesToRecover.map((item) {
+                  final parts = <String>[];
+                  if (item.practical > 0) parts.add('${item.practical}h P');
+                  if (item.theory > 0) parts.add('${item.theory}h T');
+                  return ActionChip(
+                    avatar: const Icon(Icons.add_circle_outline, size: 15, color: kError),
+                    label: Text(
+                      'M${item.mod.displayCode}: ${parts.join(' + ')}',
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: kText,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    tooltip: 'Registra recupero per ${item.mod.displayCode}',
+                    backgroundColor: kError.withValues(alpha: 0.10),
+                    side: BorderSide(color: kError.withValues(alpha: 0.35)),
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => _addRecovery(course, a.id, item.mod),
+                  );
+                }).toList(),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -858,4 +1112,29 @@ class _DirectorAttendanceTabState extends ConsumerState<DirectorAttendanceTab>
       ],
     );
   }
+}
+
+/// Riepilogo precomputato delle presenze e dei recuperi di un frequentatore.
+class _StudentAttendanceSummary {
+  final AppUser attendee;
+  final Map<int, Map<String, int>> modStats;
+  final int totalAbsent;
+  final int totalUnrecovered;
+  final int totalPlannedHours;
+  final int totalToRecover;
+  final int totalToRecoverT;
+  final int totalToRecoverP;
+  final List<({ModuleInfo mod, int total, int theory, int practical})> modulesToRecover;
+
+  const _StudentAttendanceSummary({
+    required this.attendee,
+    required this.modStats,
+    required this.totalAbsent,
+    required this.totalUnrecovered,
+    required this.totalPlannedHours,
+    required this.totalToRecover,
+    required this.totalToRecoverT,
+    required this.totalToRecoverP,
+    required this.modulesToRecover,
+  });
 }
