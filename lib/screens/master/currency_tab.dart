@@ -8,12 +8,15 @@ import '../../providers/auth_provider.dart';
 import '../../services/currency_loss_service.dart';
 import '../../services/gh_db_service.dart';
 import '../../services/grade_service.dart';
+import '../../services/maml_scan_service.dart';
 import '../../services/notification_service.dart';
 import '../../services/reference_service.dart';
 import '../../services/user_service.dart';
 import '../../theme.dart';
 import '../../utils/snackbar.dart';
 import '../../widgets/instructor_lessons_by_course.dart';
+import '../../widgets/maml_scan_panel.dart';
+import '../../widgets/maml_viewer.dart';
 
 class CurrencyTab extends ConsumerStatefulWidget {
   const CurrencyTab({super.key});
@@ -979,6 +982,15 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
                         ),
                       ),
                       const SizedBox(height: 16),
+                      _sectionTitle('Scansione MAML'),
+                      const SizedBox(height: 8),
+                      MamlScanPanel(
+                        userId: instr.id,
+                        viewerId: ref.read(authProvider).currentUser?.id ?? '',
+                        name: instr.fullName,
+                        isAdmin: true,
+                      ),
+                      const SizedBox(height: 16),
     ];
     final sQuals = <Widget>[
                       // ── Qualifiche / abilitazioni ────────────────────────
@@ -1339,7 +1351,12 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
                               fontSize: 10, fontWeight: FontWeight.bold)),
                     ),
                   _goBadge(go),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 4),
+                  MamlButton(
+                    userId: instr.id,
+                    name: instr.fullName,
+                    canPrint: true,
+                  ),
                   IconButton(
                     icon: const Icon(Icons.add_circle_outline, color: kPrimary),
                     tooltip: 'Aggiungi ore',
@@ -1678,6 +1695,10 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
         userService: _userService,
         onChanged: _load, // cache già aggiornata: niente rete
       ),
+      _PendingMamlSection(
+        userService: _userService,
+        adminId: ref.read(authProvider).currentUser?.id ?? '',
+      ),
       Expanded(
         child: Builder(builder: (context) {
           final theoryH  = _confirmedHoursMap(true);
@@ -1773,6 +1794,11 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
                             goDaa ? kAccent : kError,
                           ),
                       ]),
+                    ),
+                    MamlButton(
+                      userId: instr.id,
+                      name: instr.fullName,
+                      canPrint: true,
                     ),
                     IconButton(
                       icon: const Icon(Icons.add_circle_outline,
@@ -2069,6 +2095,188 @@ class _PendingUpdatesSectionState extends State<_PendingUpdatesSection> {
       ),
     );
   }
+}
+
+class _PendingMamlSection extends StatefulWidget {
+  final UserService userService;
+  final String adminId;
+
+  const _PendingMamlSection({
+    required this.userService,
+    required this.adminId,
+  });
+
+  @override
+  State<_PendingMamlSection> createState() => _PendingMamlSectionState();
+}
+
+class _PendingMamlSectionState extends State<_PendingMamlSection> {
+  final _service = MamlScanService();
+  String? _busyId;
+
+  Future<void> _run(String uid, Future<void> Function() job) async {
+    if (_busyId != null) return;
+    setState(() => _busyId = uid);
+    try {
+      await job();
+    } catch (e) {
+      showAppError('$e'.replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _busyId = null);
+    }
+  }
+
+  Future<void> _reject(String uid) async {
+    final ctrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: kCard,
+        title: const Text('Rifiuta scansione MAML', style: TextStyle(color: kText)),
+        content: SizedBox(
+          width: 420,
+          child: TextField(
+            controller: ctrl,
+            style: const TextStyle(color: kText),
+            decoration: const InputDecoration(
+              hintText: 'Motivo per l\'istruttore (facoltativo)',
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annulla', style: TextStyle(color: kTextDim)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: kError),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Rifiuta'),
+          ),
+        ],
+      ),
+    );
+    final reason = ctrl.text;
+    ctrl.dispose();
+    if (ok == true) {
+      await _run(uid, () => _service.reject(uid, reason: reason));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => ValueListenableBuilder<int>(
+    valueListenable: GhDbService().changes,
+    builder: (context, _, __) {
+      final pending = _service.pendingRecords();
+      if (pending.isEmpty) return const SizedBox.shrink();
+      return Container(
+        margin: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+        decoration: BoxDecoration(
+          color: kWarning.withValues(alpha: 0.07),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: kWarning.withValues(alpha: 0.3)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
+              child: Row(children: [
+                const Icon(Icons.badge_outlined, color: kWarning, size: 16),
+                const SizedBox(width: 6),
+                Text(
+                  'Scansioni MAML da verificare (${pending.length})',
+                  style: const TextStyle(
+                      color: kWarning, fontSize: 12, fontWeight: FontWeight.bold),
+                ),
+              ]),
+            ),
+            const Divider(color: kBorder, height: 1),
+            for (final rec in pending) ...[
+              Builder(builder: (context) {
+                final uid = rec['id'] as String;
+                final file = rec['pending'] as Map;
+                final name = widget.userService.findById(uid)?.fullName ?? uid;
+                final at = DateTime.tryParse(file['at'] as String? ?? '');
+                final busy = _busyId != null;
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  child: Row(children: [
+                    const Icon(Icons.badge_outlined, color: kWarning, size: 16),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            name,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                color: kText, fontSize: 12, fontWeight: FontWeight.w600),
+                          ),
+                          if (at != null)
+                            Text(
+                              'Caricata il ${DateFormat('dd/MM/yyyy').format(at)}',
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(color: kTextDim, fontSize: 11),
+                            ),
+                        ],
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: busy
+                          ? null
+                          : () => showMamlViewer(
+                                context,
+                                file,
+                                title: 'MAML · $name',
+                                canPrint: true,
+                              ),
+                      style: TextButton.styleFrom(
+                        foregroundColor: kPrimary,
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      ),
+                      child: const Text('Visualizza', style: TextStyle(fontSize: 11)),
+                    ),
+                    if (_busyId == uid)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 18, vertical: 6),
+                        child: SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      )
+                    else ...[
+                      TextButton(
+                        onPressed: busy
+                            ? null
+                            : () => _run(
+                                uid, () => _service.approve(uid, widget.adminId)),
+                        style: TextButton.styleFrom(
+                          foregroundColor: kAccent,
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        ),
+                        child: const Text('Approva', style: TextStyle(fontSize: 11)),
+                      ),
+                      TextButton(
+                        onPressed: busy ? null : () => _reject(uid),
+                        style: TextButton.styleFrom(
+                          foregroundColor: kError,
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        ),
+                        child: const Text('Rifiuta', style: TextStyle(fontSize: 11)),
+                      ),
+                    ],
+                  ]),
+                );
+              }),
+            ],
+          ],
+        ),
+      );
+    },
+  );
 }
 
 class _RemoveDate {

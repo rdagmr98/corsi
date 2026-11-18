@@ -257,7 +257,7 @@ class _InstructorHomeScreenState extends ConsumerState<InstructorHomeScreen> {
       color: kPrimary,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
         children: [
           Text('Currency', style: sectionStyle),
           const SizedBox(height: 12),

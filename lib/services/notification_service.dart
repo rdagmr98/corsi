@@ -248,6 +248,21 @@ class NotificationService {
     );
   }
 
+  /// Notifica tutti gli admin attivi (es. scansione MAML in attesa).
+  Future<void> notifyAllAdmins({
+    required String type,
+    required String message,
+  }) async {
+    await createNotifications(
+      _adminIds().map((id) => (
+            userId: id,
+            type: type,
+            message: message,
+            metadata: null,
+          )),
+    );
+  }
+
   /// Admin ha approvato un aggiornamento: notifica l'istruttore.
   Future<void> notifyUpdateApproved({
     required String instructorId,

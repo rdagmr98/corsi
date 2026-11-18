@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import '../../providers/auth_provider.dart';
 import '../../theme.dart';
 import '../../widgets/change_password_dialog.dart';
+import '../../widgets/maml_scan_panel.dart';
+import '../../widgets/maml_viewer.dart';
 import '../../widgets/notification_panel_widget.dart';
 import '../../widgets/push_banner.dart';
 import 'home_screen.dart';
@@ -97,6 +99,23 @@ class _InstructorShellState extends ConsumerState<InstructorShell> {
         ],
       ),
       // Una sola schermata (currency, oggi, prossime lezioni), come AVES Tecnici.
+      floatingActionButton: MamlButton(
+        userId: userId,
+        name: user?.fullName ?? '',
+        fab: true,
+        onMissing: () => showMamlScanSheet(
+          context,
+          userId: userId,
+          viewerId: userId,
+          name: user?.fullName ?? '',
+        ),
+        onManage: () => showMamlScanSheet(
+          context,
+          userId: userId,
+          viewerId: userId,
+          name: user?.fullName ?? '',
+        ),
+      ),
       body: Column(
         children: [
           PushBanner(userId: userId),

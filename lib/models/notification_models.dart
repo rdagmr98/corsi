@@ -48,6 +48,7 @@ class AppNotification {
     if (type.contains('UPDATE_SUBMITTED')) return Icons.pending_actions;
     if (type.contains('UPDATE_APPROVED')) return Icons.check_circle;
     if (type.contains('PASSWORD_RESET')) return Icons.lock_reset;
+    if (type.contains('MAML')) return Icons.badge_outlined;
     return Icons.notifications;
   }
 }

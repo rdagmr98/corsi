@@ -122,12 +122,18 @@ class GhDbService {
     'notifications.json',
     'push_subscriptions.json',
     'questionnaires.json',
+    'maml_scans.json',
   ];
+
+  /// Cresce a ogni reload o modifica locale di maml_scans.json: i widget MAML
+  /// lo ascoltano per aggiornarsi senza ricaricare l'intera schermata.
+  final changes = ValueNotifier<int>(0);
 
   Future<void> init() async {
     _cache.clear();
     ReferenceService.invalidateLabelCache();
     await Future.wait(_files.map((f) async => _cache[f] = await _fetchFile(f)));
+    changes.value++;
   }
 
   /// Riallinea la cache a GitHub senza svuotarla: un solo listing e poi si
@@ -142,13 +148,17 @@ class GhDbService {
     final remote = await _remoteShas();
     if (remote == null) return; // offline: si resta sulla cache
     bool busy(String f) => _pending.containsKey(f) || _drains.containsKey(f);
+    final stale = _files
+        .where((f) => !busy(f) && (remote[f] ?? '') != _getSha(f))
+        .toList();
     await Future.wait(
-      _files.where((f) => !busy(f) && (remote[f] ?? '') != _getSha(f)).map((f) async {
+      stale.map((f) async {
         final entry = await _fetchFile(f);
         if (!busy(f)) _cache[f] = entry; // una scrittura può partire durante il fetch
       }),
     );
     ReferenceService.invalidateLabelCache();
+    if (stale.isNotEmpty) changes.value++;
   }
 
   static String get _blobBase =>
@@ -520,6 +530,83 @@ class GhDbService {
         await _backoff(attempt);
       }
     }
+  }
+
+  /// Indice delle scansioni MAML: un record per utente (`id` = user id) con
+  /// `approved` e `pending` = `{path, sha, mime, at, by}` o null.
+  List<Map<String, dynamic>> get mamlScans =>
+      List<Map<String, dynamic>>.from(_getData('maml_scans.json') as List? ?? []);
+
+  Future<void> saveMamlScans(List<Map<String, dynamic>> data) async {
+    await _writeFile('maml_scans.json', data, 'aggiornamento scansioni MAML');
+    changes.value++;
+  }
+
+  // ── File binari (scansioni MAML), fuori dalla cache JSON ──────────────────
+  static String get _root =>
+      '${GhConfig.apiRoot}/repos/${GhConfig.owner}/${GhConfig.dataRepo}/contents';
+
+  /// Crea [path] (nome sempre nuovo, quindi niente sha) e ne restituisce lo
+  /// sha, che serve poi per cancellarlo.
+  Future<String> putBinary(String path, Uint8List bytes, String msg) async {
+    final body = jsonEncode({'message': msg, 'content': base64.encode(bytes)});
+    for (var attempt = 1;; attempt++) {
+      final res = await http
+          .put(
+            Uri.parse('$_root/$path'),
+            headers: {
+              ...GhConfig.authHeaders(),
+              'Accept': 'application/vnd.github+json',
+              'Content-Type': 'application/json',
+              'X-GitHub-Api-Version': '2022-11-28',
+            },
+            body: body,
+          )
+          .timeout(const Duration(seconds: 120));
+      if (res.statusCode == 200 || res.statusCode == 201) {
+        return ((jsonDecode(res.body) as Map)['content'] as Map)['sha'] as String;
+      }
+      final retryable = res.statusCode == 409 || res.statusCode >= 500;
+      if (!retryable || attempt == _maxWriteAttempts) {
+        throw Exception('Caricamento non riuscito (${res.statusCode})');
+      }
+      await _backoff(attempt);
+    }
+  }
+
+  Future<Uint8List> getBinary(String path) async {
+    final res = await http
+        .get(
+          _fresh('$_root/$path'),
+          headers: {
+            ...GhConfig.authHeaders(),
+            'Accept': 'application/vnd.github.raw+json',
+            'X-GitHub-Api-Version': '2022-11-28',
+          },
+        )
+        .timeout(const Duration(seconds: 120));
+    if (res.statusCode != 200) {
+      throw Exception('Scansione non disponibile (${res.statusCode})');
+    }
+    return res.bodyBytes;
+  }
+
+  /// Best effort: un file orfano non fa danni, un errore qui non blocca nulla.
+  Future<void> deleteBinary(String path, String sha, String msg) async {
+    try {
+      await http
+          .delete(
+            Uri.parse('$_root/$path'),
+            headers: {
+              ...GhConfig.authHeaders(),
+              'Accept': 'application/vnd.github+json',
+              'Content-Type': 'application/json',
+              'X-GitHub-Api-Version': '2022-11-28',
+            },
+            body: jsonEncode({'message': msg, 'sha': sha}),
+          )
+          .timeout(const Duration(seconds: 30));
+    } catch (_) {}
   }
 
   /// Ogni cambio password chiude la richiesta di reset; [mustChange] obbliga
