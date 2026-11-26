@@ -46,6 +46,8 @@ class UserService {
     List<String>? qualifications,
     String? titolo,
     String? licenza,
+    String? grado,
+    String? mamlNumber,
     String? forza,
   }) async {
     final users = _db.users.toList();
@@ -63,6 +65,8 @@ class UserService {
       if (qualifications != null) 'qualifications': qualifications,
       if (titolo != null && titolo.isNotEmpty) 'titolo': titolo,
       if (licenza != null && licenza.isNotEmpty) 'licenza': licenza,
+      if (grado != null && grado.isNotEmpty) 'grado': grado,
+      if (mamlNumber != null && mamlNumber.isNotEmpty) 'maml_number': mamlNumber,
       if (forza != null && forza.isNotEmpty) 'forza': forza,
       'created_at': now,
       'updated_at': now,
@@ -76,11 +80,14 @@ class UserService {
     final users = _db.users.toList();
     final idx = users.indexWhere((u) => u['id'] == updated.id);
     if (idx < 0) return;
-    users[idx] = {
+    final next = {
       ...users[idx],
       ...updated.toJson(),
       'updated_at': DateTime.now().toIso8601String(),
     };
+    if (updated.grado == null) next.remove('grado');
+    if (updated.mamlNumber == null) next.remove('maml_number');
+    users[idx] = next;
     await _db.saveUsers(users);
   }
 

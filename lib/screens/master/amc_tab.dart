@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import '../../models/user_models.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/amc_docx_export.dart';
 import '../../services/amc_service.dart';
+import '../../services/conferimento_docx_export.dart';
 import '../../services/gh_db_service.dart';
 import '../../services/grade_service.dart';
 import '../../services/reference_service.dart';
@@ -73,28 +75,8 @@ class _AmcTabState extends ConsumerState<AmcTab>
   Map<String, AppUser> _uidToUser() =>
       {for (final u in _userService.getAllUsers()) u.id: u};
 
-  // ── Sorting numerico corretto: 1.1 < 1.2 < ... < 3.1 < 3.11 < 11A.1 < 11B.1 < 12.1 ──
-  int _compareCode(String a, String b) {
-    final pa = _parseCode(a);
-    final pb = _parseCode(b);
-    if (pa[0] != pb[0]) return (pa[0] as int).compareTo(pb[0] as int);
-    final la = pa[1] as String, lb = pb[1] as String;
-    if (la != lb) return la.compareTo(lb);
-    return (pa[2] as int).compareTo(pb[2] as int);
-  }
-
-  List _parseCode(String code) {
-    final parts = code.split('.');
-    final m = RegExp(r'^(\d+)([A-Za-z]?)$').firstMatch(parts[0]);
-    return [
-      m != null ? (int.tryParse(m.group(1)!) ?? 0) : 0,
-      m?.group(2)?.toUpperCase() ?? '',
-      parts.length > 1 ? (int.tryParse(parts[1]) ?? 0) : 0,
-    ];
-  }
-
   List<String> _sortedCodes(Map<String, List<String>> grid) {
-    return grid.keys.toList()..sort(_compareCode);
+    return grid.keys.toList()..sort(ConferimentoDocxExport.compareCode);
   }
 
   @override
@@ -162,6 +144,9 @@ class _AmcTabState extends ConsumerState<AmcTab>
               'Word, elenco personale T1/T2 dell\'annesso con gli istruttori '
                   'mostrati (${_onlyGo ? 'solo GO' : 'tutti'})',
               () => _printPersonnel(uidToUser, goUids, goUidsM10)),
+          _action(Icons.workspace_premium_outlined, 'Stampa conferimenti',
+              'Word, conferimento dell\'abilitazione all\'insegnamento: uno o più istruttori in un file',
+              _printConferimenti),
         ]),
       ),
       TabBar(
@@ -351,6 +336,248 @@ class _AmcTabState extends ConsumerState<AmcTab>
           {for (final u in users.values) u.id: label(u)});
     } catch (e) {
       showAppError('Stampa elenco personale non riuscita: $e');
+    }
+  }
+
+  Future<void> _printConferimenti() async {
+    final theoryGrid = _grid(true);
+    final practiceGrid = _grid(false);
+    final countByUid = <String, int>{};
+    for (final grid in [theoryGrid, practiceGrid]) {
+      for (final uids in grid.values) {
+        for (final uid in uids) {
+          countByUid[uid] = (countByUid[uid] ?? 0) + 1;
+        }
+      }
+    }
+    // Direttori solo se nelle griglie: chi è anche istruttore ha un account dedicato.
+    final instructors = _userService
+        .getAllUsers()
+        .where((u) =>
+            u.userRole == UserRole.instructor ||
+            (u.userRole == UserRole.courseDirector &&
+                (countByUid[u.id] ?? 0) > 0))
+        .toList()
+      ..sort((a, b) {
+        final c = a.cognome.toLowerCase().compareTo(b.cognome.toLowerCase());
+        return c != 0 ? c : a.nome.toLowerCase().compareTo(b.nome.toLowerCase());
+      });
+
+    final searchCtrl = TextEditingController();
+    final selected = <String>{};
+    var decorrenza = DateTime.now();
+
+    final chosen = await showDialog<List<String>>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlg) {
+          final q = searchCtrl.text.trim().toLowerCase();
+          final visible = q.isEmpty
+              ? instructors
+              : instructors
+                  .where((u) =>
+                      '${u.cognome} ${u.nome} ${u.grado ?? ''} ${u.mamlNumber ?? ''}'
+                          .toLowerCase()
+                          .contains(q))
+                  .toList();
+          final visSel = visible.where((u) => selected.contains(u.id)).length;
+          final bool? allState = visible.isEmpty || visSel == 0
+              ? false
+              : (visSel == visible.length ? true : null);
+
+          return AlertDialog(
+            title: const Text('Stampa conferimenti'),
+            content: SizedBox(
+              width: 560,
+              height: 520,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(children: [
+                    const Text('Decorrenza',
+                        style: TextStyle(color: kTextDim, fontSize: 12)),
+                    const SizedBox(width: 12),
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.event, size: 16),
+                      label: Text(DateFormat('dd/MM/yyyy').format(decorrenza)),
+                      onPressed: () async {
+                        final d = await showDatePicker(
+                          context: ctx,
+                          initialDate: decorrenza,
+                          firstDate: DateTime(2020),
+                          lastDate: DateTime(2040),
+                        );
+                        if (d != null) setDlg(() => decorrenza = d);
+                      },
+                    ),
+                  ]),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: searchCtrl,
+                    style: const TextStyle(color: kText, fontSize: 13),
+                    onChanged: (_) => setDlg(() {}),
+                    decoration: InputDecoration(
+                      isDense: true,
+                      hintText: 'Cerca istruttore…',
+                      prefixIcon:
+                          const Icon(Icons.search, size: 18, color: kTextDim),
+                      suffixIcon: searchCtrl.text.isEmpty
+                          ? null
+                          : IconButton(
+                              icon: const Icon(Icons.clear,
+                                  size: 16, color: kTextDim),
+                              onPressed: () {
+                                searchCtrl.clear();
+                                setDlg(() {});
+                              },
+                            ),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  CheckboxListTile(
+                    tristate: true,
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    value: allState,
+                    title: Row(
+                      children: [
+                        const Flexible(
+                          child: Text(
+                            'Seleziona tutti',
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                color: kText,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '${selected.length}/${instructors.length}',
+                          style: const TextStyle(color: kTextDim, fontSize: 11),
+                        ),
+                      ],
+                    ),
+                    onChanged: visible.isEmpty
+                        ? null
+                        : (_) => setDlg(() {
+                              if (allState == true) {
+                                for (final u in visible) {
+                                  selected.remove(u.id);
+                                }
+                              } else {
+                                for (final u in visible) {
+                                  selected.add(u.id);
+                                }
+                              }
+                            }),
+                  ),
+                  const Divider(height: 1, color: kBorder),
+                  Expanded(
+                    child: visible.isEmpty
+                        ? const Center(
+                            child: Text('Nessun istruttore',
+                                style: TextStyle(color: kTextDim)),
+                          )
+                        : ListView.builder(
+                            itemCount: visible.length,
+                            itemBuilder: (_, i) {
+                              final u = visible[i];
+                              final grado = (u.grado ?? '').trim();
+                              final maml = (u.mamlNumber ?? '').trim();
+                              final nSub = countByUid[u.id] ?? 0;
+                              final subLabel = nSub == 1
+                                  ? '1 sottomodulo'
+                                  : '$nSub sottomoduli';
+                              return CheckboxListTile(
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
+                                controlAffinity:
+                                    ListTileControlAffinity.leading,
+                                value: selected.contains(u.id),
+                                title: Text(
+                                  '${u.cognome} ${u.nome}'.trim(),
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                      color: kText,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w500),
+                                ),
+                                subtitle: Text.rich(
+                                  TextSpan(
+                                    style: const TextStyle(
+                                        color: kTextDim, fontSize: 11),
+                                    children: [
+                                      TextSpan(
+                                        text: grado.isNotEmpty
+                                            ? grado
+                                            : 'grado mancante',
+                                        style: grado.isEmpty
+                                            ? const TextStyle(color: kWarning)
+                                            : null,
+                                      ),
+                                      const TextSpan(text: ' · '),
+                                      TextSpan(
+                                        text: maml.isNotEmpty
+                                            ? 'MAML $maml'
+                                            : 'MAML mancante',
+                                        style: maml.isEmpty
+                                            ? const TextStyle(color: kWarning)
+                                            : null,
+                                      ),
+                                      TextSpan(text: ' · $subLabel'),
+                                    ],
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                onChanged: (v) => setDlg(() {
+                                  v == true
+                                      ? selected.add(u.id)
+                                      : selected.remove(u.id);
+                                }),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Annulla'),
+              ),
+              ElevatedButton(
+                onPressed: selected.isEmpty
+                    ? null
+                    : () => Navigator.pop(ctx, selected.toList()),
+                child: Text('Stampa (${selected.length})'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    searchCtrl.dispose();
+    if (chosen == null || chosen.isEmpty) return;
+
+    final chosenSet = chosen.toSet();
+    final items = [
+      for (final u in instructors)
+        if (chosenSet.contains(u.id))
+          ConferimentoData.fromUser(
+            u,
+            theoryGrid: theoryGrid,
+            practiceGrid: practiceGrid,
+          ),
+    ];
+    try {
+      await ConferimentoDocxExport.download(items,
+          decorrenza: DateFormat('dd/MM/yyyy').format(decorrenza));
+    } catch (e) {
+      showAppError('Stampa conferimenti non riuscita: $e');
     }
   }
 

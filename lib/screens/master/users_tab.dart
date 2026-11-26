@@ -149,6 +149,8 @@ class _UsersTabState extends ConsumerState<UsersTab> {
     final usernameCtrl = TextEditingController(text: user?.username ?? '');
     final passwordCtrl = TextEditingController();
     final titoloCtrl = TextEditingController(text: user?.titolo ?? '');
+    final gradoCtrl = TextEditingController(text: user?.grado ?? '');
+    final mamlCtrl = TextEditingController(text: user?.mamlNumber ?? '');
     UserRole selectedRole = user?.userRole ?? UserRole.attendee;
     String selectedForza = (user?.forza ?? 'EI').toUpperCase() == 'CC' ? 'CC' : 'EI';
 
@@ -166,9 +168,10 @@ class _UsersTabState extends ConsumerState<UsersTab> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDlg) {
           // Desktop: anagrafica a sinistra, dati di ruolo (grado/forza o
-          // qualifiche AMC) a destra; mobile: tutto in colonna come prima.
-          final hasExtra = selectedRole == UserRole.attendee ||
-              (selectedRole == UserRole.instructor && allQuals.isNotEmpty);
+          // grado/MAML/qualifiche AMC) a destra; mobile: tutto in colonna come prima.
+          final isTeachingRole = selectedRole == UserRole.instructor ||
+              selectedRole == UserRole.courseDirector;
+          final hasExtra = selectedRole == UserRole.attendee || isTeachingRole;
           final screenW = MediaQuery.of(ctx).size.width;
           final wide = hasExtra && screenW >= 820;
           final base = <Widget>[
@@ -221,12 +224,16 @@ class _UsersTabState extends ConsumerState<UsersTab> {
                           setDlg(() => selectedForza = v ?? selectedForza),
                     ),
                   ],
+                  if (isTeachingRole) ...[
+                    _field('Grado', gradoCtrl,
+                        hint: 'es. 1°Lgt., Cap., Serg.Magg.A.'),
+                    const SizedBox(height: 12),
+                    _field('N. MAML', mamlCtrl, hint: 'es. IT.EMAR66.EI000123'),
+                  ],
                   if (selectedRole == UserRole.instructor && allQuals.isNotEmpty) ...[
-                    if (!wide) ...const [
-                      SizedBox(height: 4),
-                      Divider(color: kBorder, height: 1),
-                      SizedBox(height: 12),
-                    ],
+                    const SizedBox(height: 12),
+                    const Divider(color: kBorder, height: 1),
+                    const SizedBox(height: 12),
                     const Align(
                       alignment: Alignment.centerLeft,
                       child: Text('Qualifiche istruttore (AMC)',
@@ -351,8 +358,12 @@ class _UsersTabState extends ConsumerState<UsersTab> {
                 }
                 Navigator.pop(ctx);
                 final isInstructor = selectedRole == UserRole.instructor;
+                final isTeachingRole =
+                    isInstructor || selectedRole == UserRole.courseDirector;
                 final isAttendee = selectedRole == UserRole.attendee;
-                final grado = titoloCtrl.text.trim();
+                final attendeeGrado = titoloCtrl.text.trim();
+                final instGrado = gradoCtrl.text.trim();
+                final maml = mamlCtrl.text.trim();
                 try {
                   if (user == null) {
                     final created = await _userService.createUser(
@@ -363,8 +374,10 @@ class _UsersTabState extends ConsumerState<UsersTab> {
                       password: password,
                       role: selectedRole,
                       qualifications: isInstructor ? selQuals.toList() : null,
-                      titolo: isAttendee && grado.isNotEmpty ? grado : null,
+                      titolo: isAttendee && attendeeGrado.isNotEmpty ? attendeeGrado : null,
                       forza: isAttendee ? selectedForza : null,
+                      grado: isTeachingRole && instGrado.isNotEmpty ? instGrado : null,
+                      mamlNumber: isTeachingRole && maml.isNotEmpty ? maml : null,
                     );
                     if (isInstructor) {
                       await AmcService().applyQualifications(created.id, selQuals);
@@ -378,9 +391,15 @@ class _UsersTabState extends ConsumerState<UsersTab> {
                       role: selectedRole.value,
                       qualifications: isInstructor ? selQuals.toList() : user.qualifications,
                       titolo: isAttendee
-                          ? (grado.isEmpty ? null : grado)
+                          ? (attendeeGrado.isEmpty ? null : attendeeGrado)
                           : user.titolo,
                       forza: isAttendee ? selectedForza : user.forza,
+                      grado: isTeachingRole
+                          ? (instGrado.isEmpty ? null : instGrado)
+                          : user.grado,
+                      mamlNumber: isTeachingRole
+                          ? (maml.isEmpty ? null : maml)
+                          : user.mamlNumber,
                     ));
                     if (password.isNotEmpty) {
                       await _userService.updatePassword(user.id, password);
@@ -552,7 +571,9 @@ class _UsersTabState extends ConsumerState<UsersTab> {
   Widget _userRow(AppUser u, List<String>? courses) {
     final color = _roleColor(u.userRole);
     const dim = TextStyle(color: kTextDim, fontSize: 11);
-    final grado = u.userRole == UserRole.attendee ? (u.titolo ?? '').trim() : '';
+    final grado = u.userRole == UserRole.attendee
+        ? (u.titolo ?? '').trim()
+        : (u.grado ?? '').trim();
     return Card(
       margin: const EdgeInsets.only(bottom: 6),
       child: ListTile(

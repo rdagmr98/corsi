@@ -59,6 +59,9 @@ class AppUser {
   // Grado / titolo (frequentatori: es. GRD, CAR. SC; istruttori: abilitazione).
   final String? titolo;
   final String? licenza;
+  // Grado militare e numero MAML (istruttori / direttori corso, per conferimento).
+  final String? grado;
+  final String? mamlNumber;
   /// Forza armata per PS PERSONALE: `EI` (sinistra) o `CC` (destra). Null = EI.
   final String? forza;
   // Sola lettura dalla riga: fuori da toJson, così una modifica con dati
@@ -87,6 +90,8 @@ class AppUser {
     this.qualifications,
     this.titolo,
     this.licenza,
+    this.grado,
+    this.mamlNumber,
     this.forza,
     this.passwordResetRequested = false,
     this.mustChangePassword = false,
@@ -150,6 +155,8 @@ class AppUser {
         : null,
     titolo: j['titolo'] as String?,
     licenza: j['licenza'] as String?,
+    grado: j['grado'] as String?,
+    mamlNumber: j['maml_number'] as String?,
     forza: j['forza'] as String?,
     passwordResetRequested: j['password_reset_requested_at'] != null,
     mustChangePassword: j['must_change_password'] == true,
@@ -182,6 +189,8 @@ class AppUser {
     if (qualifications != null) 'qualifications': qualifications,
     if (titolo != null) 'titolo': titolo,
     if (licenza != null) 'licenza': licenza,
+    if (grado != null) 'grado': grado,
+    if (mamlNumber != null) 'maml_number': mamlNumber,
     if (forza != null) 'forza': forza,
     'created_at': createdAt.toIso8601String(),
     'updated_at': updatedAt.toIso8601String(),
@@ -206,6 +215,8 @@ class AppUser {
     Object? qualifications = _s,
     Object? titolo = _s,
     Object? licenza = _s,
+    Object? grado = _s,
+    Object? mamlNumber = _s,
     Object? forza = _s,
   }) => AppUser(
     id: id,
@@ -229,6 +240,8 @@ class AppUser {
         : qualifications as List<String>?,
     titolo: identical(titolo, _s) ? this.titolo : titolo as String?,
     licenza: identical(licenza, _s) ? this.licenza : licenza as String?,
+    grado: identical(grado, _s) ? this.grado : grado as String?,
+    mamlNumber: identical(mamlNumber, _s) ? this.mamlNumber : mamlNumber as String?,
     forza: identical(forza, _s) ? this.forza : forza as String?,
     passwordResetRequested: passwordResetRequested,
     mustChangePassword: mustChangePassword,
