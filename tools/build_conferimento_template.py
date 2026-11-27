@@ -229,8 +229,8 @@ def build(bianco: bool) -> Document:
     sezione(doc, '4. DECORRENZA E VALIDITÀ')
     p = para(doc, 'Decorrenza: ', 10, bold=True, after=2)
     run(p, v('@@DECORRENZA@@') or '______________', 10)
-    para(doc, "L'abilitazione resta valida finché l'istruttore mantiene l'aggiornamento "
-              'registrato sulla scheda MTOE-F-3-5. Decade con la revoca o con un nuovo atto '
+    para(doc, "L'abilitazione resta valida finché l'istruttore mantiene currency e aggiornamento "
+              'registrati su Corsi SMAM (MTOE-P-3-3). Decade con la revoca o con un nuovo atto '
               'di conferimento, che sostituisce il presente.', 9.5)
 
     sezione(doc, '5. FIRME')
