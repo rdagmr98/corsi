@@ -185,6 +185,33 @@ class ReferenceService {
     return raw.map((k, v) => MapEntry(k, List<String>.from(v as List)));
   }
 
+  // ── Emendamenti del MTOE (MTOE 1.11, 3.6.3) ──
+  List<Map<String, dynamic>> mtoeAmendments() => [
+        for (final a in (_ref['mtoeAmendments'] as List? ?? const []))
+          Map<String, dynamic>.from(a as Map),
+      ];
+
+  /// Ultimo emendamento pubblicato (numero più alto), null se nessuno.
+  Map<String, dynamic>? latestMtoeAmendment() {
+    Map<String, dynamic>? best;
+    for (final a in mtoeAmendments()) {
+      if (best == null || (a['n'] as num) > (best['n'] as num)) best = a;
+    }
+    return best;
+  }
+
+  /// Il Training Manager pubblica un emendamento.
+  Future<void> addMtoeAmendment(int n, DateTime date, String description) async {
+    await _db.refresh();
+    await _db.saveReference({
+      ..._ref,
+      'mtoeAmendments': [
+        ...mtoeAmendments(),
+        {'n': n, 'date': date.toIso8601String().substring(0, 10), 'description': description},
+      ],
+    });
+  }
+
   /// Salva i criteri modificati dall'admin (ordine dei codici conservato).
   Future<void> saveAmcRules(Map<String, List<String>> theory,
           Map<String, List<String>> practice) =>

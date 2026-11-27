@@ -68,6 +68,9 @@ class AppUser {
   // vecchi non riapre una richiesta già chiusa.
   final bool passwordResetRequested;
   final bool mustChangePassword;
+  /// Presa visione degli emendamenti del MTOE: numero → data `YYYY-MM-DD`.
+  /// Sola lettura come sopra: la scrive solo `UserService.ackMtoeAmendment`.
+  final Map<String, String> mtoeAcks;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -95,6 +98,7 @@ class AppUser {
     this.forza,
     this.passwordResetRequested = false,
     this.mustChangePassword = false,
+    this.mtoeAcks = const {},
     required this.createdAt,
     required this.updatedAt,
   });
@@ -160,6 +164,10 @@ class AppUser {
     forza: j['forza'] as String?,
     passwordResetRequested: j['password_reset_requested_at'] != null,
     mustChangePassword: j['must_change_password'] == true,
+    mtoeAcks: {
+      for (final e in ((j['mtoe_acks'] as Map?) ?? const {}).entries)
+        '${e.key}': '${e.value}',
+    },
     createdAt: DateTime.parse(
       j['created_at'] as String? ?? DateTime.now().toIso8601String(),
     ),
@@ -245,6 +253,7 @@ class AppUser {
     forza: identical(forza, _s) ? this.forza : forza as String?,
     passwordResetRequested: passwordResetRequested,
     mustChangePassword: mustChangePassword,
+    mtoeAcks: mtoeAcks,
     createdAt: createdAt,
     updatedAt: DateTime.now(),
   );

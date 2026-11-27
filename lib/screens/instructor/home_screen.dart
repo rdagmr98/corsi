@@ -13,6 +13,7 @@ import '../../services/reference_service.dart';
 import '../../services/schedule_service.dart';
 import '../../services/user_service.dart';
 import '../../theme.dart';
+import '../../utils/snackbar.dart';
 import '../../widgets/collapsible_day.dart';
 import '../../widgets/lesson_tile.dart';
 import '../../widgets/status_card.dart';
@@ -214,6 +215,8 @@ class _InstructorHomeScreenState extends ConsumerState<InstructorHomeScreen> {
     final daaExpiry = me?.daaExpiry;
     final grace = me == null ? (teach: false, prof: false) : _gradeService.ojtGrace(me);
     final daaOk = daaExpiry == null || (me?.goOverride ?? false) || daaExpiry.isAfter(DateTime.now());
+    final amend = _refService.latestMtoeAmendment();
+    final ackDue = me != null && !GradeService.mtoeAcked(me, amend);
 
     final describer = LessonDescriber([..._today, ..._upcoming], showCourse: true);
     final dayKey = DateFormat('yyyy-MM-dd');
@@ -259,6 +262,10 @@ class _InstructorHomeScreenState extends ConsumerState<InstructorHomeScreen> {
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
         children: [
+          if (ackDue) ...[
+            _amendmentCard(amend!),
+            const SizedBox(height: 16),
+          ],
           Text('Currency', style: sectionStyle),
           const SizedBox(height: 12),
           IntrinsicHeight(
@@ -402,6 +409,53 @@ class _InstructorHomeScreenState extends ConsumerState<InstructorHomeScreen> {
             ],
           ],
         ),
+      ),
+    );
+  }
+
+  /// Presa visione dell'ultimo emendamento del MTOE (sostituisce MTOE-F-1-3).
+  Widget _amendmentCard(Map<String, dynamic> a) {
+    final n = (a['n'] as num).toInt();
+    return Card(
+      color: kCard,
+      margin: EdgeInsets.zero,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: kError.withOpacity(0.5)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            const Icon(Icons.menu_book, color: kError, size: 20),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text('Emendamento $n del MTOE',
+                  style: const TextStyle(color: kText, fontSize: 13, fontWeight: FontWeight.w600)),
+            ),
+          ]),
+          const SizedBox(height: 8),
+          Text('${a['description'] ?? ''}', style: const TextStyle(color: kText, fontSize: 13)),
+          const SizedBox(height: 4),
+          const Text('Sei NO GO finché non ne prendi visione.',
+              style: TextStyle(color: kError, fontSize: 12)),
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerRight,
+            child: ElevatedButton.icon(
+              onPressed: () async {
+                try {
+                  await _userService.ackMtoeAmendment(widget.userId, n);
+                } catch (_) {
+                  showAppError('Presa visione non salvata. Riprova.');
+                }
+                if (mounted) setState(() {});
+              },
+              icon: const Icon(Icons.check, size: 16),
+              label: const Text('Prendi visione'),
+            ),
+          ),
+        ]),
       ),
     );
   }

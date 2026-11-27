@@ -153,6 +153,21 @@ class NotificationService {
     await _db.savePushSubscriptions(all);
   }
 
+  /// Emendamento del MTOE pubblicato: ogni istruttore deve prenderne visione per restare GO.
+  Future<void> notifyMtoeAmendment({
+    required Iterable<String> userIds,
+    required int n,
+  }) =>
+      createNotifications(
+        userIds.toSet().map((id) => (
+              userId: id,
+              type: 'MTOE_AMENDMENT',
+              message: 'Emendamento $n del MTOE: prendine visione dalla pagina iniziale',
+              metadata: {'n': n},
+            )),
+        dedupeUnread: true,
+      );
+
   /// Il direttore preme "Invia notifica": avvisa istruttori e frequentatori che
   /// il programma è pronto o è cambiato. Una sola notifica per utente (dedup su non letta).
   Future<int> notifyPlannerPublished({

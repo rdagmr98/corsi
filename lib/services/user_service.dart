@@ -91,6 +91,19 @@ class UserService {
     await _db.saveUsers(users);
   }
 
+  /// L'istruttore prende visione dell'emendamento [n] del MTOE (sostituisce F-1-3).
+  Future<void> ackMtoeAmendment(String userId, int n) async {
+    await _db.refresh();
+    final users = _db.users.toList();
+    final idx = users.indexWhere((u) => u['id'] == userId);
+    if (idx < 0) return;
+    users[idx] = {
+      ...users[idx],
+      'mtoe_acks': {...?(users[idx]['mtoe_acks'] as Map?), '$n': _ymd(DateTime.now())},
+    };
+    await _db.saveUsers(users);
+  }
+
   Future<void> updatePassword(String userId, String newPassword, {bool mustChange = false}) =>
       _db.updateUserPassword(userId, GhDbService.hashPassword(newPassword), mustChange: mustChange);
 

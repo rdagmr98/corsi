@@ -142,7 +142,7 @@ class CurrencyLossService {
     for (final instr in _users.getInstructors()) {
       bool mine(Map<String, dynamic> u) => u['instructor_id'] == instr.id;
       final hasOpen = updates.any((u) => mine(u) && _isOpen(u));
-      if (_grades.isGo(instr, now: n) || instr.currencyLostAt != null) {
+      if (_grades.isGo(instr, now: n, ack: false) || instr.currencyLostAt != null) {
         if (hasOpen) {
           updates.removeWhere((u) => mine(u) && _isOpen(u));
           updatesDirty = true;

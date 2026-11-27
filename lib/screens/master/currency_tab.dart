@@ -274,6 +274,122 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
     );
   }
 
+  // ── Emendamento MTOE: lo pubblica il Training Manager, ogni istruttore
+  // ne prende visione dalla home per restare GO (sostituisce MTOE-F-1-3).
+  Future<void> _publishAmendment() async {
+    final latest = _refService.latestMtoeAmendment();
+    final next = latest == null ? 1 : (latest['n'] as num).toInt() + 1;
+    final nCtrl = TextEditingController(text: '$next');
+    final descCtrl = TextEditingController();
+    DateTime date = DateTime.now();
+    String? err;
+    Widget label(String t) => Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: Text(t, style: const TextStyle(color: kTextDim, fontSize: 12)),
+        );
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlg) => AlertDialog(
+          backgroundColor: kCard,
+          title: const Text('Emendamento MTOE', style: TextStyle(color: kText)),
+          content: SizedBox(
+            width: 480,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (latest != null) ...[
+                  Text('Ultimo pubblicato: ${latest['n']} del ${latest['date']}',
+                      style: const TextStyle(color: kTextDim, fontSize: 12)),
+                  const SizedBox(height: 12),
+                ],
+                label('Numero'),
+                TextField(
+                  controller: nCtrl,
+                  keyboardType: TextInputType.number,
+                  style: const TextStyle(color: kText),
+                  decoration: const InputDecoration(isDense: true),
+                ),
+                const SizedBox(height: 12),
+                label('Cosa cambia'),
+                TextField(
+                  controller: descCtrl,
+                  minLines: 1,
+                  maxLines: 3,
+                  style: const TextStyle(color: kText),
+                  decoration: const InputDecoration(isDense: true),
+                ),
+                const SizedBox(height: 12),
+                label('Data'),
+                Row(children: [
+                  Text(DateFormat('dd/MM/yyyy').format(date),
+                      style: const TextStyle(color: kText)),
+                  const SizedBox(width: 12),
+                  TextButton(
+                    onPressed: () async {
+                      final d = await showDatePicker(
+                        context: ctx,
+                        initialDate: date,
+                        firstDate: DateTime(2020),
+                        lastDate: DateTime(2035),
+                      );
+                      if (d != null) setDlg(() => date = d);
+                    },
+                    child: const Text('Cambia'),
+                  ),
+                ]),
+                const SizedBox(height: 12),
+                const Text(
+                  'Ogni istruttore attivo riceve la notifica ed è NO GO finché '
+                  'non ne prende visione dalla propria pagina iniziale.',
+                  style: TextStyle(color: kTextDim, fontSize: 12),
+                ),
+                if (err != null) ...[
+                  const SizedBox(height: 8),
+                  Text(err!, style: const TextStyle(color: kError, fontSize: 12)),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Annulla', style: TextStyle(color: kTextDim)),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final n = int.tryParse(nCtrl.text.trim());
+                if (n == null || n < next) {
+                  setDlg(() => err = 'Il numero deve essere almeno $next');
+                } else if (descCtrl.text.trim().isEmpty) {
+                  setDlg(() => err = 'Scrivi cosa cambia');
+                } else {
+                  Navigator.pop(ctx, true);
+                }
+              },
+              child: const Text('Pubblica e notifica'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (ok != true) return;
+    final n = int.parse(nCtrl.text.trim());
+    try {
+      await _refService.addMtoeAmendment(n, date, descCtrl.text.trim());
+      await _notifService.notifyMtoeAmendment(
+        userIds: _instructors.where((i) => i.isActive).map((i) => i.id),
+        n: n,
+      );
+      showAppInfo('Emendamento $n pubblicato e notificato agli istruttori');
+    } catch (e) {
+      showAppError('Pubblicazione emendamento non riuscita: $e');
+    }
+    _reload();
+  }
+
   // ── Add update dialog ─────────────────────────────────────────────────────
   Future<void> _addUpdate(AppUser instr) async {
     final hoursCtrl = TextEditingController();
@@ -919,6 +1035,8 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
     final goDaa    = instr.daaExpiry == null || instr.goOverride ||
         instr.daaExpiry!.isAfter(DateTime.now());
     final go       = _gradeService.isGo(instr);
+    final amend    = _refService.latestMtoeAmendment();
+    final ackDate  = amend == null ? null : instr.mtoeAcks['${amend['n']}'];
     final qualMap = {
       for (final q in _refService.amcQualifications()) q.id: q,
     };
@@ -949,6 +1067,13 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
                       _kvRow('Username', instr.username ?? '—'),
                       _kvRow('Attivo', instr.isActive ? 'Sì' : 'No'),
                       _kvRow('Stato GO/NO-GO', go ? 'GO' : 'NO-GO'),
+                      if (amend != null)
+                        _kvRow(
+                          'Emendamento ${amend['n']} MTOE',
+                          ackDate != null
+                              ? 'preso visione il ${DateFormat('dd/MM/yyyy').format(DateTime.parse(ackDate))}'
+                              : 'non preso visione (NO GO)',
+                        ),
                       _kvRow(
                         'Perdita currency',
                         instr.currencyLostAt != null
@@ -1568,6 +1693,7 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
+    final amend = _refService.latestMtoeAmendment();
     // Compute GO for each instructor
     final rows = _instructors.map<_Row>((instr) {
       final teachH = _gradeService.getTeachingHoursRollingYear(instr.id);
@@ -1624,6 +1750,13 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
           Text('Stati di servizio (${_instructors.length})',
               style: Theme.of(context).textTheme.titleLarge),
           const Spacer(),
+          OutlinedButton.icon(
+            onPressed: _publishAmendment,
+            icon: const Icon(Icons.menu_book, size: 16),
+            label: const Text('Emendamento MTOE', style: TextStyle(fontSize: 12)),
+            style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
+          ),
+          const SizedBox(width: 8),
           ElevatedButton.icon(
             onPressed: _addGroupUpdate,
             icon: const Icon(Icons.groups, size: 16),
@@ -1793,6 +1926,8 @@ class _CurrencyTabState extends ConsumerState<CurrencyTab> {
                             'DAAA ${DateFormat('MM/yy').format(instr.daaExpiry!)}',
                             goDaa ? kAccent : kError,
                           ),
+                        if (!GradeService.mtoeAcked(instr, amend))
+                          _chip('Emendamento ${amend!['n']} da vedere', kError),
                       ]),
                     ),
                     MamlButton(

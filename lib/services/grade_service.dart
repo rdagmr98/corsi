@@ -242,7 +242,13 @@ class GradeService {
   /// GO/NOGO complessivo. Il DAA (aggiornamento normativa aeronautica)
   /// incide solo sul modulo 10: la scadenza NAM non deve rendere NOGO
   /// un istruttore per gli altri moduli.
-  bool isGo(AppUser u, {DateTime? now, int? moduleNumber}) {
+  /// Presa visione dell'ultimo emendamento del MTOE: senza emendamenti è sempre ok.
+  static bool mtoeAcked(AppUser u, Map<String, dynamic>? latest) =>
+      latest == null || u.mtoeAcks.containsKey('${latest['n']}');
+
+  /// [ack] false: solo ore e DAAA (la presa visione mancante non è perdita di currency).
+  bool isGo(AppUser u, {DateTime? now, int? moduleNumber, bool ack = true}) {
+    if (ack && !mtoeAcked(u, _refService.latestMtoeAmendment())) return false;
     final g = ojtGrace(u, now: now);
     final teachOk = getTeachingHoursRollingYear(u.id) >= 6 || g.teach;
     final profOk = getProfessionalUpdateHoursLast2Years(u.id) >= 35 || g.prof;
