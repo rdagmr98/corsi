@@ -28,10 +28,12 @@ class ConferimentoData {
     required this.practiceCodes,
   });
 
+  /// [theoryCodes]/[practiceCodes] = materie ASSEGNATE dall'AM, sottoinsieme
+  /// di quelle insegnabili ([teachable] sulle griglie AMC).
   factory ConferimentoData.fromUser(
     AppUser user, {
-    required Map<String, List<String>> theoryGrid,
-    required Map<String, List<String>> practiceGrid,
+    required List<String> theoryCodes,
+    required List<String> practiceCodes,
   }) =>
       ConferimentoData(
         grado: user.grado,
@@ -39,28 +41,29 @@ class ConferimentoData {
         cognome: user.cognome,
         mamlNumber: user.mamlNumber,
         qualifications: user.qualifications,
-        theoryCodes: [
-          for (final e in theoryGrid.entries)
-            if (e.value.contains(user.id)) e.key,
-        ],
-        practiceCodes: [
-          for (final e in practiceGrid.entries)
-            if (e.value.contains(user.id)) e.key,
-        ],
+        theoryCodes: theoryCodes,
+        practiceCodes: practiceCodes,
       );
+
+  /// Codici della griglia AMC che [uid] può insegnare, ordinati.
+  static List<String> teachable(Map<String, List<String>> grid, String uid) =>
+      [
+        for (final e in grid.entries)
+          if (e.value.contains(uid)) e.key,
+      ]..sort(ConferimentoDocxExport.compareCode);
 }
 
-/// Export Word del conferimento dell'abilitazione all'insegnamento (MTOE-F-3-4):
-/// uno o più istruttori in un unico .docx, uno per pagina.
+/// Export Word del modulo MTOE-F-3-4 «Atto di conferimento dell'abilitazione
+/// all'insegnamento»: uno o più istruttori in un unico .docx, uno per pagina.
 /// Template: `tools/build_conferimento_template.py`.
 class ConferimentoDocxExport {
   static const templateAsset = 'assets/templates/conferimento_blank.docx';
+  static const defaultTm = 'IL TRAINING MANAGER';
+  static const defaultAm = "L'ACCOUNTABLE MANAGER";
   static const _docxMime =
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
   static const _pageBreak = '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
   static const _esc = HtmlEscape(HtmlEscapeMode.element);
-  static const _fontRpr =
-      '<w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:cs="Times New Roman"/>';
   static const _tblBorders =
       '<w:tblBorders>'
       '<w:top w:val="single" w:sz="4" w:space="0" w:color="000000"/>'
@@ -97,18 +100,6 @@ class ConferimentoDocxExport {
     '55': 'Military Communication Systems',
   };
 
-  static const List<String> theoryModules = [
-    '1', '2', '3', '4', '5', '6', '7', '8', '9', '10',
-    '11A', '11B', '12', '13', '14', '15', '16', '17',
-    '50', '51', '53', '54', '55',
-  ];
-
-  static const List<String> practiceModules = [
-    '3', '4', '5', '7',
-    '11A', '11B', '12', '13', '14', '15', '16', '17',
-    '50', '51', '53', '54', '55',
-  ];
-
   /// Ordinamento numerico corretto: 1.1 < 1.2 < ... < 5.4 < 5.12 < 11A.1 < 11B.1 < 12.1.
   static int compareCode(String a, String b) {
     final pa = _parseCode(a);
@@ -129,30 +120,32 @@ class ConferimentoDocxExport {
     );
   }
 
-  static String formatName(ConferimentoData d) {
-    final parts = <String>[
-      if ((d.grado ?? '').trim().isNotEmpty) d.grado!.trim(),
-      if (d.nome.trim().isNotEmpty) d.nome.trim(),
-      if (d.cognome.trim().isNotEmpty) d.cognome.trim().toUpperCase(),
-    ];
-    return parts.join(' ');
-  }
+  /// «Nome COGNOME» (il grado ha un campo suo nel modulo).
+  static String formatName(ConferimentoData d) => [
+        if (d.nome.trim().isNotEmpty) d.nome.trim(),
+        if (d.cognome.trim().isNotEmpty) d.cognome.trim().toUpperCase(),
+      ].join(' ');
 
   static String formatQualifica(List<String>? qualifications) {
     final q = {
       for (final s in qualifications ?? const <String>[])
         if (s.trim().isNotEmpty) s.trim().toLowerCase(),
     };
-    if (q.length == 1 && q.contains('sv')) return '"Istruttore SV"';
+    if (q.length == 1 && q.contains('sv')) return 'Istruttore SV';
     const base =
-        '"Tecnico Istruttore militare di materie tecnico aeronautiche (TI)"';
+        'Tecnico Istruttore militare di materie tecnico aeronautiche (TI)';
     return q.contains('nam') ? '$base e Istruttore NAM' : base;
   }
 
-  static String formatMaml(String? mamlNumber) {
-    final m = (mamlNumber ?? '').trim();
-    return m.isNotEmpty ? ', possessore della MAML No.$m' : '';
-  }
+  static String _orDash(String? s) =>
+      (s ?? '').trim().isEmpty ? '—' : s!.trim();
+
+  /// Gruppo firma su più righe dentro un unico `<w:t>` del template.
+  static String _multiline(String text) => text
+      .trim()
+      .split('\n')
+      .map((l) => _esc.convert(l.trim()))
+      .join('</w:t><w:br/><w:t xml:space="preserve">');
 
   static int _usableWidth(String sectPr) {
     final pgSz = RegExp(r'<w:pgSz\b[^>]*\bw:w="(\d+)"').firstMatch(sectPr);
@@ -169,91 +162,63 @@ class ConferimentoDocxExport {
     return 9638;
   }
 
-  static String _buildTable(
-    String title,
-    List<String> fixedModules,
-    List<String> codes,
-    int tableW,
-  ) {
-    final fixedSet = fixedModules.toSet();
-    final byMod = <String, Set<String>>{};
+  static String _cell(int w, String text,
+      {bool bold = false, bool italic = false, String? fill, int span = 1}) {
+    final rpr = '<w:rPr>${bold ? '<w:b/>' : ''}${italic ? '<w:i/>' : ''}'
+        '<w:sz w:val="17"/><w:szCs w:val="17"/></w:rPr>';
+    return '<w:tc><w:tcPr><w:tcW w:w="$w" w:type="dxa"/>'
+        '${span > 1 ? '<w:gridSpan w:val="$span"/>' : ''}'
+        '${fill != null ? '<w:shd w:val="clear" w:color="auto" w:fill="$fill"/>' : ''}'
+        '<w:vAlign w:val="center"/></w:tcPr>'
+        '<w:p><w:pPr>${span > 1 ? '<w:jc w:val="center"/>' : ''}$rpr</w:pPr>'
+        '${text.isEmpty ? '' : '<w:r>$rpr<w:t xml:space="preserve">${_esc.convert(text)}</w:t></w:r>'}'
+        '</w:p></w:tc>';
+  }
+
+  /// Tabella dei soli moduli assegnati: «MODULE N Nome» | codici.
+  /// Colonne 7/17 e 10/17 come `COL_CAMPO` del builder.
+  static String _buildTable(String title, List<String> codes, int tableW) {
+    final byMod = <String, List<String>>{};
     for (final raw in codes) {
       final c = raw.trim();
       if (c.isEmpty) continue;
-      final mod = c.split('.').first.trim().toUpperCase();
-      if (mod.isEmpty) continue;
-      byMod.putIfAbsent(mod, () => <String>{}).add(c);
+      byMod.putIfAbsent(c.split('.').first.toUpperCase(), () => []).add(c);
     }
-
-    final modules = {...fixedModules, ...byMod.keys}.toList()
-      ..sort(compareCode);
-
-    final col1W = tableW ~/ 2;
-    final col2W = tableW - col1W;
+    final modules = byMod.keys.toList()..sort(compareCode);
+    final c1 = tableW * 7 ~/ 17;
+    final c2 = tableW - c1;
 
     final buf = StringBuffer()
-      ..write('<w:tbl><w:tblPr>')
-      ..write('<w:tblW w:w="$tableW" w:type="dxa"/>')
-      ..write('<w:jc w:val="center"/>')
-      ..write(_tblBorders)
-      ..write('<w:tblLayout w:type="fixed"/>')
-      ..write(
-          '<w:tblCellMar><w:top w:w="20" w:type="dxa"/><w:left w:w="80" w:type="dxa"/>'
-          '<w:bottom w:w="20" w:type="dxa"/><w:right w:w="80" w:type="dxa"/></w:tblCellMar>')
-      ..write('</w:tblPr>')
-      ..write(
-          '<w:tblGrid><w:gridCol w:w="$col1W"/><w:gridCol w:w="$col2W"/></w:tblGrid>')
-      // Riga intestazione unita e centrata
-      ..write(
-          '<w:tr><w:trPr><w:cantSplit/><w:tblHeader/></w:trPr>'
-          '<w:tc><w:tcPr><w:tcW w:w="$tableW" w:type="dxa"/><w:gridSpan w:val="2"/>'
-          '<w:vAlign w:val="center"/></w:tcPr>'
-          '<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/>'
-          '<w:jc w:val="center"/></w:pPr>'
-          '<w:r><w:rPr>$_fontRpr<w:b/><w:bCs/><w:sz w:val="16"/><w:szCs w:val="16"/></w:rPr>'
-          '<w:t>${_esc.convert(title)}</w:t></w:r></w:p></w:tc></w:tr>');
-
+      ..write('<w:tbl><w:tblPr><w:tblW w:w="$tableW" w:type="dxa"/>'
+          '<w:jc w:val="center"/>$_tblBorders<w:tblLayout w:type="fixed"/>'
+          '<w:tblCellMar><w:top w:w="15" w:type="dxa"/><w:left w:w="80" w:type="dxa"/>'
+          '<w:bottom w:w="15" w:type="dxa"/><w:right w:w="80" w:type="dxa"/></w:tblCellMar>'
+          '</w:tblPr><w:tblGrid><w:gridCol w:w="$c1"/><w:gridCol w:w="$c2"/></w:tblGrid>')
+      ..write('<w:tr><w:trPr><w:cantSplit/><w:tblHeader/></w:trPr>'
+          '${_cell(tableW, title, bold: true, span: 2)}</w:tr>')
+      ..write('<w:tr><w:trPr><w:cantSplit/><w:tblHeader/></w:trPr>'
+          '${_cell(c1, 'Modulo', italic: true, fill: 'EDEFF3')}'
+          '${_cell(c2, 'Sottomoduli', italic: true, fill: 'EDEFF3')}</w:tr>');
+    if (modules.isEmpty) {
+      buf.write('<w:tr>${_cell(c1, '—')}${_cell(c2, '')}</w:tr>');
+    }
     for (final mod in modules) {
-      final modName = fixedSet.contains(mod) ? _moduleNames[mod] : null;
-      final label = modName != null ? 'MODULE $mod $modName' : 'MODULE $mod';
-      final modCodes = byMod[mod]?.toList();
-      modCodes?.sort(compareCode);
-      final codesText = (modCodes == null || modCodes.isEmpty)
-          ? ''
-          : '${modCodes.join(', ')}.';
-
-      buf
-        ..write('<w:tr><w:trPr><w:cantSplit/></w:trPr>')
-        ..write(
-            '<w:tc><w:tcPr><w:tcW w:w="$col1W" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr>'
-            '<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/></w:pPr>'
-            '<w:r><w:rPr>$_fontRpr<w:i/><w:iCs/><w:sz w:val="16"/><w:szCs w:val="16"/></w:rPr>'
-            '<w:t>${_esc.convert(label)}</w:t></w:r></w:p></w:tc>')
-        ..write(
-            '<w:tc><w:tcPr><w:tcW w:w="$col2W" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr>'
-            // rPr del segno di paragrafo a 8pt: la cella vuota non alza la riga
-            '<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/>'
-            '<w:rPr>$_fontRpr<w:sz w:val="16"/><w:szCs w:val="16"/></w:rPr></w:pPr>');
-      if (codesText.isNotEmpty) {
-        buf.write(
-            '<w:r><w:rPr>$_fontRpr<w:sz w:val="16"/><w:szCs w:val="16"/></w:rPr>'
-            '<w:t>${_esc.convert(codesText)}</w:t></w:r>');
-      }
-      buf.write('</w:p></w:tc></w:tr>');
+      final name = _moduleNames[mod];
+      final list = byMod[mod]!..sort(compareCode);
+      buf.write('<w:tr><w:trPr><w:cantSplit/></w:trPr>'
+          '${_cell(c1, name != null ? 'MODULE $mod $name' : 'MODULE $mod', italic: true)}'
+          '${_cell(c2, '${list.join(', ')}.')}</w:tr>');
     }
     buf.write('</w:tbl>');
     return buf.toString();
   }
 
   static String _buildCampo(ConferimentoData d, int tableW) {
-    final theory =
-        _buildTable('Theoretical element', theoryModules, d.theoryCodes, tableW);
-    final gap =
-        '<w:p><w:pPr><w:spacing w:before="0" w:after="120"/>'
-        '<w:rPr>$_fontRpr<w:sz w:val="16"/><w:szCs w:val="16"/></w:rPr></w:pPr></w:p>';
-    final practice = _buildTable(
-        'Practical element', practiceModules, d.practiceCodes, tableW);
-    return '$theory$gap$practice';
+    const gap = '<w:p><w:pPr><w:spacing w:after="80"/>'
+        '<w:rPr><w:sz w:val="8"/></w:rPr></w:pPr></w:p>';
+    return _buildTable('Theoretical element', d.theoryCodes, tableW) +
+        gap +
+        _buildTable('Practical element', d.practiceCodes, tableW);
   }
 
   static String _replaceCampoParagraph(String body, String replacement) {
@@ -266,92 +231,58 @@ class ConferimentoDocxExport {
     return body.replaceRange(pStart, pEnd, replacement);
   }
 
-  /// Compila `word/document.xml` ripetendo il corpo per ogni istruttore
-  /// separato da un page break e rinumerando gli id `wp:docPr`/`pic:cNvPr`.
+  /// Compila `word/document.xml` ripetendo il corpo per ogni istruttore,
+  /// separato da un page break (il corpo non ha immagini: lo stemma è nell'header).
   static String fillDocument(
     String xml,
     List<ConferimentoData> items, {
-    bool restartNumbering = false,
     String decorrenza = '',
+    String firmaTm = '',
+    String firmaAm = '',
   }) {
     if (items.isEmpty) {
       throw ArgumentError('Serve almeno un istruttore per generare il conferimento.');
     }
-    final bodyOpen = xml.indexOf('<w:body>');
-    final bodyStart = bodyOpen + '<w:body>'.length;
+    final bodyStart = xml.indexOf('<w:body>') + '<w:body>'.length;
     final sectStart = xml.lastIndexOf('<w:sectPr');
-    final prefix = xml.substring(0, bodyStart);
     final bodyTpl = xml.substring(bodyStart, sectStart);
     final suffix = xml.substring(sectStart);
     final tableW = _usableWidth(suffix);
+    final tm = _multiline(firmaTm.trim().isEmpty ? defaultTm : firmaTm);
+    final am = _multiline(firmaAm.trim().isEmpty ? defaultAm : firmaAm);
 
-    final pages = <String>[];
-    for (var i = 0; i < items.length; i++) {
-      final d = items[i];
-      var b = bodyTpl
-          .replaceAll('@@NOME@@', _esc.convert(formatName(d)))
-          .replaceAll('@@QUALIFICA@@', _esc.convert(formatQualifica(d.qualifications)))
-          .replaceAll('@@MAML@@', _esc.convert(formatMaml(d.mamlNumber)))
-          .replaceAll('@@DECORRENZA@@', _esc.convert(decorrenza));
-      b = _replaceCampoParagraph(b, _buildCampo(d, tableW));
-      if (restartNumbering && i > 0) {
-        b = b.replaceAll('<w:numId w:val="2"/>', '<w:numId w:val="${100 + i}"/>');
-      }
-      pages.add(b);
-    }
-
-    var combined = pages.join(_pageBreak);
-    var docPrId = 10;
-    combined = combined.replaceAllMapped(
-      RegExp(r'(<wp:docPr\b[^>]*\bid=")\d+(")'),
-      (m) => '${m.group(1)}${docPrId++}${m.group(2)}',
-    );
-    var cNvPrId = 10;
-    combined = combined.replaceAllMapped(
-      RegExp(r'(<pic:cNvPr\b[^>]*\bid=")\d+(")'),
-      (m) => '${m.group(1)}${cNvPrId++}${m.group(2)}',
-    );
-    return '$prefix$combined$suffix';
+    final pages = [
+      for (final d in items)
+        _replaceCampoParagraph(
+          bodyTpl
+              .replaceAll('@@GRADO@@', _esc.convert(_orDash(d.grado)))
+              .replaceAll('@@NOME@@', _esc.convert(formatName(d)))
+              .replaceAll('@@QUALIFICA@@', _esc.convert(formatQualifica(d.qualifications)))
+              .replaceAll('@@MAML@@', _esc.convert(_orDash(d.mamlNumber)))
+              .replaceAll('@@DECORRENZA@@', _esc.convert(decorrenza))
+              .replaceAll('@@TM@@', tm)
+              .replaceAll('@@AM@@', am),
+          _buildCampo(d, tableW),
+        ),
+    ];
+    return '${xml.substring(0, bodyStart)}${pages.join(_pageBreak)}$suffix';
   }
 
   static Uint8List buildBytes(
     Uint8List template,
     List<ConferimentoData> items, {
     String decorrenza = '',
+    String firmaTm = '',
+    String firmaAm = '',
   }) {
-    if (items.isEmpty) {
-      throw ArgumentError('Serve almeno un istruttore per generare il conferimento.');
-    }
     final archive = ZipDecoder().decodeBytes(template);
-    final numFile = archive.findFile('word/numbering.xml');
-    final numXml =
-        numFile != null ? utf8.decode(numFile.content as List<int>) : null;
-    final canRestartNum = items.length > 1 &&
-        numXml != null &&
-        numXml.contains('w:abstractNumId="1"') &&
-        numXml.contains('</w:numbering>');
-
     final out = Archive();
     for (final f in archive.files) {
       if (!f.isFile) continue;
       var content = f.content as List<int>;
       if (f.name == 'word/document.xml') {
-        content = utf8.encode(fillDocument(
-          utf8.decode(content),
-          items,
-          restartNumbering: canRestartNum,
-          decorrenza: decorrenza,
-        ));
-      } else if (f.name == 'word/numbering.xml' && canRestartNum) {
-        final extraNums = StringBuffer();
-        for (var i = 1; i < items.length; i++) {
-          extraNums.write(
-              '<w:num w:numId="${100 + i}"><w:abstractNumId w:val="1"/>'
-              '<w:lvlOverride w:ilvl="0"><w:startOverride w:val="1"/></w:lvlOverride>'
-              '</w:num>');
-        }
-        content = utf8.encode(
-            numXml.replaceFirst('</w:numbering>', '$extraNums</w:numbering>'));
+        content = utf8.encode(fillDocument(utf8.decode(content), items,
+            decorrenza: decorrenza, firmaTm: firmaTm, firmaAm: firmaAm));
       }
       out.addFile(ArchiveFile(f.name, content.length, content));
     }
@@ -374,10 +305,11 @@ class ConferimentoDocxExport {
   }
 
   static Future<void> download(List<ConferimentoData> items,
-      {String decorrenza = ''}) async {
+      {String decorrenza = '', String firmaTm = '', String firmaAm = ''}) async {
     final tpl = (await rootBundle.load(templateAsset)).buffer.asUint8List();
     await downloadBytes(
-      buildBytes(tpl, items, decorrenza: decorrenza),
+      buildBytes(tpl, items,
+          decorrenza: decorrenza, firmaTm: firmaTm, firmaAm: firmaAm),
       fileName(items),
       mimeType: _docxMime,
     );

@@ -339,29 +339,186 @@ class _AmcTabState extends ConsumerState<AmcTab>
     }
   }
 
+  /// Scrive una chiave di amc.json lasciando intatte le altre.
+  Future<void> _saveAmcKey(String key, Object value) =>
+      _db.saveAmc(Map<String, dynamic>.from(_db.amcData)..[key] = value);
+
+  /// Gruppi firma del conferimento (TM propone, AM conferisce): righe libere.
+  Future<(String, String)?> _editFirme(String tm, String am) {
+    final tmCtrl = TextEditingController(text: tm);
+    final amCtrl = TextEditingController(text: am);
+    Widget field(String label, TextEditingController c, String hint) => Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label, style: const TextStyle(color: kTextDim, fontSize: 12)),
+            const SizedBox(height: 4),
+            TextField(
+              controller: c,
+              minLines: 2,
+              maxLines: 4,
+              style: const TextStyle(color: kText, fontSize: 13),
+              decoration: InputDecoration(isDense: true, hintText: hint),
+            ),
+          ],
+        );
+    return showDialog<(String, String)>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Gruppi firma del conferimento'),
+        content: SizedBox(
+          width: 460,
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            field('Propone: Training Manager', tmCtrl,
+                'IL TRAINING MANAGER\nGrado Nome COGNOME'),
+            const SizedBox(height: 14),
+            field('Conferisce: Accountable Manager (Comandante)', amCtrl,
+                'IL COMANDANTE\nGrado Nome COGNOME'),
+            const SizedBox(height: 8),
+            const Text('Una voce per riga: carica, poi grado e nome.',
+                style: TextStyle(color: kTextDim, fontSize: 11)),
+          ]),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annulla')),
+          ElevatedButton(
+              onPressed: () =>
+                  Navigator.pop(ctx, (tmCtrl.text.trim(), amCtrl.text.trim())),
+              child: const Text('Salva')),
+        ],
+      ),
+    );
+  }
+
+  /// Materie assegnate dall'AM: sottoinsieme di quelle insegnabili (griglia AMC).
+  Future<(Set<String>, Set<String>)?> _editAssegnate(
+    String who,
+    List<String> teachT,
+    List<String> teachP,
+    Set<String> selT,
+    Set<String> selP,
+    Map<String, String> subNames,
+  ) {
+    final t = {...selT}, p = {...selP};
+    return showDialog<(Set<String>, Set<String>)>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setDlg) {
+        List<Widget> section(String title, List<String> codes, Set<String> sel) {
+          final bool? all = sel.isEmpty
+              ? false
+              : (sel.length == codes.length ? true : null);
+          return [
+            CheckboxListTile(
+              tristate: true,
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              controlAffinity: ListTileControlAffinity.leading,
+              value: all,
+              title: Text('$title  ${sel.length}/${codes.length}',
+                  style: const TextStyle(
+                      color: kText, fontSize: 13, fontWeight: FontWeight.w600)),
+              onChanged: codes.isEmpty
+                  ? null
+                  : (_) => setDlg(
+                      () => all == true ? sel.clear() : sel.addAll(codes)),
+            ),
+            if (codes.isEmpty)
+              const Padding(
+                padding: EdgeInsets.only(left: 24, bottom: 8),
+                child: Text('Nessun sottomodulo insegnabile',
+                    style: TextStyle(color: kTextDim, fontSize: 12)),
+              ),
+            for (final c in codes)
+              CheckboxListTile(
+                dense: true,
+                contentPadding: const EdgeInsets.only(left: 24),
+                controlAffinity: ListTileControlAffinity.leading,
+                value: sel.contains(c),
+                title: Text(
+                  subNames[c] != null ? '$c  ${subNames[c]}' : c,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: kText, fontSize: 12),
+                ),
+                onChanged: (v) =>
+                    setDlg(() => v == true ? sel.add(c) : sel.remove(c)),
+              ),
+          ];
+        }
+
+        return AlertDialog(
+          title: Text('Materie assegnate · $who',
+              overflow: TextOverflow.ellipsis),
+          content: SizedBox(
+            width: 560,
+            height: 520,
+            child: ListView(children: [
+              const Text(
+                  "L'Accountable Manager assegna le materie tra quelle che "
+                  "l'istruttore può insegnare (griglia AMC).",
+                  style: TextStyle(color: kTextDim, fontSize: 11)),
+              ...section('Teoria', teachT, t),
+              const Divider(color: kBorder),
+              ...section('Pratica', teachP, p),
+            ]),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Annulla')),
+            ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, (t, p)),
+                child: const Text('Conferma')),
+          ],
+        );
+      }),
+    );
+  }
+
   Future<void> _printConferimenti() async {
     final theoryGrid = _grid(true);
     final practiceGrid = _grid(false);
-    final countByUid = <String, int>{};
-    for (final grid in [theoryGrid, practiceGrid]) {
-      for (final uids in grid.values) {
-        for (final uid in uids) {
-          countByUid[uid] = (countByUid[uid] ?? 0) + 1;
-        }
-      }
+    final subNames = _submoduleNames();
+    final firme = _db.amcData['conferimento_firme'] as Map? ?? const {};
+    var firmaTm = (firme['tm'] as String?) ?? '';
+    var firmaAm = (firme['am'] as String?) ?? '';
+    final registro = _db.amcData['conferimenti'] as Map? ?? const {};
+
+    final teachT = <String, List<String>>{};
+    final teachP = <String, List<String>>{};
+    for (final u in _userService.getAllUsers()) {
+      teachT[u.id] = ConferimentoData.teachable(theoryGrid, u.id);
+      teachP[u.id] = ConferimentoData.teachable(practiceGrid, u.id);
     }
+    int nTeach(String uid) =>
+        (teachT[uid]?.length ?? 0) + (teachP[uid]?.length ?? 0);
     // Direttori solo se nelle griglie: chi è anche istruttore ha un account dedicato.
     final instructors = _userService
         .getAllUsers()
         .where((u) =>
             u.userRole == UserRole.instructor ||
-            (u.userRole == UserRole.courseDirector &&
-                (countByUid[u.id] ?? 0) > 0))
+            (u.userRole == UserRole.courseDirector && nTeach(u.id) > 0))
         .toList()
       ..sort((a, b) {
         final c = a.cognome.toLowerCase().compareTo(b.cognome.toLowerCase());
         return c != 0 ? c : a.nome.toLowerCase().compareTo(b.nome.toLowerCase());
       });
+
+    // Ultimo conferimento registrato, ristretto a ciò che oggi è insegnabile;
+    // mai conferito = tutte le materie insegnabili.
+    Set<String> initial(String uid, String key, List<String> teach) {
+      final prev = (registro[uid] as Map?)?[key] as List?;
+      return prev == null
+          ? teach.toSet()
+          : prev.whereType<String>().where(teach.contains).toSet();
+    }
+
+    final assT = {
+      for (final u in instructors) u.id: initial(u.id, 'teoria', teachT[u.id]!)
+    };
+    final assP = {
+      for (final u in instructors) u.id: initial(u.id, 'pratica', teachP[u.id]!)
+    };
 
     final searchCtrl = TextEditingController();
     final selected = <String>{};
@@ -384,12 +541,13 @@ class _AmcTabState extends ConsumerState<AmcTab>
           final bool? allState = visible.isEmpty || visSel == 0
               ? false
               : (visSel == visible.length ? true : null);
+          final firmeMancanti = firmaTm.isEmpty || firmaAm.isEmpty;
 
           return AlertDialog(
             title: const Text('Stampa conferimenti'),
             content: SizedBox(
-              width: 560,
-              height: 520,
+              width: 600,
+              height: 540,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -409,6 +567,34 @@ class _AmcTabState extends ConsumerState<AmcTab>
                         );
                         if (d != null) setDlg(() => decorrenza = d);
                       },
+                    ),
+                    const Spacer(),
+                    Tooltip(
+                      message: firmeMancanti
+                          ? 'Gruppi firma non impostati: il modulo esce con le sole cariche'
+                          : 'Propone:\n$firmaTm\n\nConferisce:\n$firmaAm',
+                      child: OutlinedButton.icon(
+                        icon: Icon(Icons.draw_outlined,
+                            size: 16,
+                            color: firmeMancanti ? kWarning : null),
+                        label: Text('Gruppi firma',
+                            style: TextStyle(
+                                color: firmeMancanti ? kWarning : null)),
+                        onPressed: () async {
+                          final r = await _editFirme(firmaTm, firmaAm);
+                          if (r == null) return;
+                          setDlg(() {
+                            firmaTm = r.$1;
+                            firmaAm = r.$2;
+                          });
+                          try {
+                            await _saveAmcKey('conferimento_firme',
+                                {'tm': firmaTm, 'am': firmaAm});
+                          } catch (e) {
+                            showAppError('Gruppi firma non salvati: $e');
+                          }
+                        },
+                      ),
                     ),
                   ]),
                   const SizedBox(height: 10),
@@ -486,18 +672,36 @@ class _AmcTabState extends ConsumerState<AmcTab>
                               final u = visible[i];
                               final grado = (u.grado ?? '').trim();
                               final maml = (u.mamlNumber ?? '').trim();
-                              final nSub = countByUid[u.id] ?? 0;
-                              final subLabel = nSub == 1
-                                  ? '1 sottomodulo'
-                                  : '$nSub sottomoduli';
+                              final nAss =
+                                  assT[u.id]!.length + assP[u.id]!.length;
+                              final who = '${u.cognome} ${u.nome}'.trim();
                               return CheckboxListTile(
                                 dense: true,
                                 contentPadding: EdgeInsets.zero,
                                 controlAffinity:
                                     ListTileControlAffinity.leading,
                                 value: selected.contains(u.id),
+                                secondary: IconButton(
+                                  tooltip: 'Materie assegnate',
+                                  icon: const Icon(Icons.tune,
+                                      size: 18, color: kTextDim),
+                                  onPressed: () async {
+                                    final r = await _editAssegnate(
+                                        who,
+                                        teachT[u.id]!,
+                                        teachP[u.id]!,
+                                        assT[u.id]!,
+                                        assP[u.id]!,
+                                        subNames);
+                                    if (r == null) return;
+                                    setDlg(() {
+                                      assT[u.id] = r.$1;
+                                      assP[u.id] = r.$2;
+                                    });
+                                  },
+                                ),
                                 title: Text(
-                                  '${u.cognome} ${u.nome}'.trim(),
+                                  who,
                                   overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(
                                       color: kText,
@@ -526,7 +730,14 @@ class _AmcTabState extends ConsumerState<AmcTab>
                                             ? const TextStyle(color: kWarning)
                                             : null,
                                       ),
-                                      TextSpan(text: ' · $subLabel'),
+                                      const TextSpan(text: ' · '),
+                                      TextSpan(
+                                        text:
+                                            '$nAss/${nTeach(u.id)} sottomoduli assegnati',
+                                        style: nAss == 0
+                                            ? const TextStyle(color: kWarning)
+                                            : null,
+                                      ),
                                     ],
                                   ),
                                   maxLines: 1,
@@ -563,21 +774,40 @@ class _AmcTabState extends ConsumerState<AmcTab>
     searchCtrl.dispose();
     if (chosen == null || chosen.isEmpty) return;
 
+    List<String> sorted(Set<String> s) =>
+        s.toList()..sort(ConferimentoDocxExport.compareCode);
     final chosenSet = chosen.toSet();
     final items = [
       for (final u in instructors)
         if (chosenSet.contains(u.id))
-          ConferimentoData.fromUser(
-            u,
-            theoryGrid: theoryGrid,
-            practiceGrid: practiceGrid,
-          ),
+          ConferimentoData.fromUser(u,
+              theoryCodes: sorted(assT[u.id]!),
+              practiceCodes: sorted(assP[u.id]!)),
     ];
     try {
       await ConferimentoDocxExport.download(items,
-          decorrenza: DateFormat('dd/MM/yyyy').format(decorrenza));
+          decorrenza: DateFormat('dd/MM/yyyy').format(decorrenza),
+          firmaTm: firmaTm,
+          firmaAm: firmaAm);
     } catch (e) {
       showAppError('Stampa conferimenti non riuscita: $e');
+      return;
+    }
+    // Registro: ultimo conferimento per istruttore (materie e decorrenza).
+    final dec = DateFormat('yyyy-MM-dd').format(decorrenza);
+    final reg = Map<String, dynamic>.from(
+        _db.amcData['conferimenti'] as Map? ?? const {});
+    for (final uid in chosenSet) {
+      reg[uid] = {
+        'teoria': sorted(assT[uid]!),
+        'pratica': sorted(assP[uid]!),
+        'decorrenza': dec,
+      };
+    }
+    try {
+      await _saveAmcKey('conferimenti', reg);
+    } catch (e) {
+      showAppError('Conferimenti stampati, registro non aggiornato: $e');
     }
   }
 

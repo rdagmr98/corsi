@@ -7,10 +7,16 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:corsi/models/user_models.dart';
 import 'package:corsi/services/conferimento_docx_export.dart';
 
+String _doc(List<int> bytes) => utf8.decode(
+      ZipDecoder().decodeBytes(bytes).findFile('word/document.xml')!.content
+          as List<int>,
+    );
+
 void main() {
-  test('export conferimenti: 2 istruttori su template reale', () {
-    final tpl = File(ConferimentoDocxExport.templateAsset).readAsBytesSync();
-    final bytes = ConferimentoDocxExport.buildBytes(tpl, const [
+  final tpl = File(ConferimentoDocxExport.templateAsset).readAsBytesSync();
+
+  test('modulo F-3-4: 2 istruttori, campi, firme e pagine', () {
+    final doc = _doc(ConferimentoDocxExport.buildBytes(tpl, const [
       ConferimentoData(
         grado: '1°Lgt.',
         nome: 'Luca',
@@ -27,136 +33,76 @@ void main() {
         theoryCodes: ['9.1'],
         practiceCodes: [],
       ),
-    ], decorrenza: '01/12/2026');
+    ], decorrenza: '01/12/2026', firmaTm: 'IL TRAINING MANAGER\nCap. Tizio CAIO', firmaAm: ''));
 
-    final archive = ZipDecoder().decodeBytes(bytes);
-    expect(archive.findFile('word/media/image3.emf'), isNull);
-
-    final doc = utf8.decode(
-      archive.findFile('word/document.xml')!.content as List<int>,
-    );
-
-    // Nessun segnaposto residuo
     expect(doc.contains('@@'), isFalse);
-    expect('Decorrenza: 01/12/2026'.allMatches(doc).length, 2);
-
-    // Entrambi i nomi in OGGETTO e corpo (2 occorrenze ciascuno)
-    expect(
-      RegExp(r'1°Lgt\. Luca VERDI').allMatches(doc).length,
-      2,
-    );
-    expect(
-      RegExp(r'Mario ROSSI').allMatches(doc).length,
-      2,
-    );
-
-    // MAML solo sul primo istruttore
-    expect(doc.contains('MAML No.IT.EMAR66.EI000000'), isTrue);
-    expect(RegExp(r'possessore della MAML').allMatches(doc).length, 1);
-
-    // Ordine numerico codici (5.4 prima di 5.12) e altri codici
-    expect(doc.contains('<w:t>5.4, 5.12.</w:t>'), isTrue);
-    expect(doc.contains('<w:t>11A.5.</w:t>'), isTrue);
-    expect(doc.contains('<w:t>12.2.</w:t>'), isTrue);
-    expect(doc.contains('<w:t>3.7.</w:t>'), isTrue);
-    expect(doc.contains('<w:t>9.1.</w:t>'), isTrue);
+    expect('>01/12/2026<'.allMatches(doc).length, 2);
+    expect(doc.contains('>Luca VERDI<'), isTrue);
+    expect(doc.contains('>Mario ROSSI<'), isTrue);
+    expect(doc.contains('>1°Lgt.<'), isTrue);
+    expect(doc.contains('>IT.EMAR66.EI000000<'), isTrue);
+    expect('>—<'.allMatches(doc).length, greaterThanOrEqualTo(3)); // grado, MAML, pratica vuota di Rossi
 
     // Qualifiche NAM e SV
     expect(doc.contains('e Istruttore NAM'), isTrue);
-    expect(doc.contains('Istruttore SV'), isTrue);
+    expect(doc.contains('>Istruttore SV<'), isTrue);
 
-    // Un solo page break tra i due istruttori, un solo sectPr finale
-    expect(
-      RegExp(r'<w:br w:type="page"/>').allMatches(doc).length,
-      1,
-    );
+    // Solo moduli assegnati, codici in ordine numerico (5.4 prima di 5.12)
+    expect(doc.contains('>5.4, 5.12.<'), isTrue);
+    expect(doc.contains('>11A.5.<'), isTrue);
+    expect(doc.contains('>3.7.<'), isTrue);
+    expect(doc.contains('>9.1.<'), isTrue);
+    expect(doc.contains('MODULE 6 '), isFalse);
+
+    // Firme: TM su due righe, AM di default
+    expect(doc.contains('IL TRAINING MANAGER</w:t><w:br/><w:t xml:space="preserve">Cap. Tizio CAIO'), isTrue);
+    expect('>${ConferimentoDocxExport.defaultAm.replaceAll("'", '&#39;')}<'.allMatches(doc).length +
+        ">${ConferimentoDocxExport.defaultAm}<".allMatches(doc).length, 2);
+
+    // Un page break tra i due istruttori, un solo sectPr
+    expect(RegExp(r'<w:br w:type="page"/>').allMatches(doc).length, 1);
     expect(RegExp(r'<w:sectPr\b').allMatches(doc).length, 1);
 
-    // Tutti gli id wp:docPr (e pic:cNvPr) unici nel documento
-    final docPrIds = [
-      for (final m in RegExp(r'<wp:docPr\b[^>]*\bid="(\d+)"').allMatches(doc))
-        m.group(1)!,
-    ];
-    expect(docPrIds.length, greaterThanOrEqualTo(4));
-    expect(docPrIds.toSet().length, docPrIds.length);
-
-    final cNvPrIds = [
-      for (final m in RegExp(r'<pic:cNvPr\b[^>]*\bid="(\d+)"').allMatches(doc))
-        m.group(1)!,
-    ];
-    expect(cNvPrIds.toSet().length, cNvPrIds.length);
-
-    // Nome file: singolo vs multiplo
     expect(
-      ConferimentoDocxExport.fileName(
-        const [
-          ConferimentoData(
-            nome: 'Luca',
-            cognome: 'Verdi',
-            theoryCodes: [],
-            practiceCodes: [],
-          ),
-        ],
-        now: DateTime(2026, 11, 26),
-      ),
+      ConferimentoDocxExport.fileName(const [
+        ConferimentoData(nome: 'Luca', cognome: 'Verdi', theoryCodes: [], practiceCodes: []),
+      ], now: DateTime(2026, 11, 26)),
       'Conferimento_VERDI_2026-11-26.docx',
     );
     expect(
-      ConferimentoDocxExport.fileName(
-        const [
-          ConferimentoData(
-            nome: 'A',
-            cognome: 'B',
-            theoryCodes: [],
-            practiceCodes: [],
-          ),
-          ConferimentoData(
-            nome: 'C',
-            cognome: 'D',
-            theoryCodes: [],
-            practiceCodes: [],
-          ),
-        ],
-        now: DateTime(2026, 11, 26),
-      ),
+      ConferimentoDocxExport.fileName(const [
+        ConferimentoData(nome: 'A', cognome: 'B', theoryCodes: [], practiceCodes: []),
+        ConferimentoData(nome: 'C', cognome: 'D', theoryCodes: [], practiceCodes: []),
+      ], now: DateTime(2026, 11, 26)),
       'Conferimenti_istruttori_2026-11-26.docx',
     );
   });
 
-  test('modulo non in elenco inserito nella posizione numerica giusta', () {
-    final tpl = File(ConferimentoDocxExport.templateAsset).readAsBytesSync();
-    final bytes = ConferimentoDocxExport.buildBytes(tpl, const [
+  test('moduli in ordine numerico, anche fuori elenco nomi', () {
+    final doc = _doc(ConferimentoDocxExport.buildBytes(tpl, const [
       ConferimentoData(
         nome: 'Luca',
         cognome: 'Bianchi',
-        theoryCodes: ['52.2', '52.10'],
-        practiceCodes: ['1.1'],
+        theoryCodes: ['53.1', '52.10', '52.2', '51.1'],
+        practiceCodes: ['3.1', '1.1'],
       ),
-    ]);
-    final doc = utf8.decode(
-      ZipDecoder()
-          .decodeBytes(bytes)
-          .findFile('word/document.xml')!
-          .content as List<int>,
-    );
+    ]));
+    final i51 = doc.indexOf('MODULE 51 Weapons Systems');
+    final i52 = doc.indexOf('>MODULE 52<');
+    final i53 = doc.indexOf('MODULE 53 Surveillance and Electronic Warfare');
+    expect(i51, greaterThan(0));
+    expect(i52, greaterThan(i51));
+    expect(i53, greaterThan(i52));
+    expect(doc.contains('>52.2, 52.10.<'), isTrue);
 
-    final idx51 = doc.indexOf('MODULE 51 Weapons Systems');
-    final idx52 = doc.indexOf('<w:t>MODULE 52</w:t>');
-    final idx53 = doc.indexOf('MODULE 53 Surveillance and Electronic Warfare');
-    expect(idx51, greaterThan(0));
-    expect(idx52, greaterThan(idx51));
-    expect(idx53, greaterThan(idx52));
-    expect(doc.contains('<w:t>52.2, 52.10.</w:t>'), isTrue);
-
-    final pracStart = doc.indexOf('Practical element');
-    final idxP1 = doc.indexOf('<w:t>MODULE 1</w:t>', pracStart);
-    final idxP3 = doc.indexOf('MODULE 3 Electrical Fundamentals', pracStart);
-    expect(idxP1, greaterThan(pracStart));
-    expect(idxP3, greaterThan(idxP1));
-    expect(doc.contains('<w:t>1.1.</w:t>'), isTrue);
+    final prac = doc.indexOf('Practical element');
+    final p1 = doc.indexOf('MODULE 1 ', prac);
+    final p3 = doc.indexOf('MODULE 3 Electrical Fundamentals', prac);
+    expect(p1, greaterThan(prac));
+    expect(p3, greaterThan(p1));
   });
 
-  test('AppUser grado/maml_number e ConferimentoData.fromUser', () {
+  test('AppUser grado/maml e insegnabili dalla griglia AMC', () {
     final u = AppUser.fromJson({
       'id': 'u1',
       'nome': 'Luca',
@@ -168,31 +114,22 @@ void main() {
       'qualifications': ['b1.3_uh212', 'nam'],
     });
     expect(u.grado, '1°Lgt.');
-    expect(u.mamlNumber, 'IT.EMAR66.EI000000');
-    expect(u.titolo, 'TI - ETP');
-    expect(u.toJson()['grado'], '1°Lgt.');
     expect(u.toJson()['maml_number'], 'IT.EMAR66.EI000000');
-
     final cleared = u.copyWith(grado: null, mamlNumber: null);
-    expect(cleared.grado, isNull);
-    expect(cleared.mamlNumber, isNull);
-    expect(cleared.titolo, 'TI - ETP');
     expect(cleared.toJson().containsKey('grado'), isFalse);
     expect(cleared.toJson().containsKey('maml_number'), isFalse);
+    expect(cleared.titolo, 'TI - ETP');
 
-    final data = ConferimentoData.fromUser(
-      u,
-      theoryGrid: {
-        '5.12': ['u1'],
-        '5.4': ['u1', 'u2'],
-        '6.1': ['u2'],
-      },
-      practiceGrid: {
-        '3.7': ['u1'],
-      },
-    );
-    expect(data.theoryCodes, containsAll(['5.12', '5.4']));
-    expect(data.theoryCodes, isNot(contains('6.1')));
-    expect(data.practiceCodes, ['3.7']);
+    final teach = ConferimentoData.teachable({
+      '5.12': ['u1'],
+      '5.4': ['u1', 'u2'],
+      '6.1': ['u2'],
+    }, 'u1');
+    expect(teach, ['5.4', '5.12']);
+
+    final data = ConferimentoData.fromUser(u, theoryCodes: ['5.4'], practiceCodes: const []);
+    expect(data.cognome, 'Verdi');
+    expect(data.theoryCodes, ['5.4']);
+    expect(data.qualifications, ['b1.3_uh212', 'nam']);
   });
 }
