@@ -5,7 +5,7 @@ Uso:
   python tools/build_conferimento_template.py --bianco OUT.docx   -> modulo in bianco per la MTOE
 
 Il template dell'app contiene i marcatori compilati da ConferimentoDocxExport:
-  @@GRADO@@ @@NOME@@ @@QUALIFICA@@ @@MAML@@ @@DECORRENZA@@ @@ISTRUTTORE@@ (grado e nome)
+  @@NOME@@ @@QUALIFICA@@ @@MAML@@ @@DECORRENZA@@ (niente grado: cambia, il conferimento no)
   @@CAMPO@@  paragrafo sostituito dalla tabella dei sottomoduli assegnati
   @@TM@@ @@AM@@  gruppi firma (righe separate da a capo, da amc.json)
 Nessun nominativo qui: il repo è pubblico, i gruppi firma stanno in corsi-data.
@@ -223,11 +223,10 @@ def build(bianco: bool) -> Document:
     banda(doc, TITOLO)
     gap(doc, 8)
 
-    t = tabella(doc, 2, (3.0, 8.2, W - 11.2))
-    casella(t.cell(0, 0), 'GRADO', v('@@GRADO@@'))
-    casella(t.cell(0, 1), 'COGNOME E NOME', v('@@NOME@@'), bold=True)
-    casella(t.cell(0, 2), 'LICENZA MAML N.', v('@@MAML@@'))
-    casella(t.cell(1, 0).merge(t.cell(1, 2)), 'QUALIFICA', v('@@QUALIFICA@@'), size=10.5)
+    t = tabella(doc, 2, (W - 5.8, 5.8))
+    casella(t.cell(0, 0), 'COGNOME E NOME', v('@@NOME@@'), bold=True)
+    casella(t.cell(0, 1), 'LICENZA MAML N.', v('@@MAML@@'))
+    casella(t.cell(1, 0).merge(t.cell(1, 1)), 'QUALIFICA', v('@@QUALIFICA@@'), size=10.5)
     for r in t.rows:
         r.height = Cm(0.9)
 
@@ -258,7 +257,7 @@ def build(bianco: bool) -> Document:
     for i, (lab, righe, incarico) in enumerate((
         ('PROPONE', ['@@TM@@'], 'IL TRAINING MANAGER'),
         ('CONFERISCE', ['@@AM@@'], "L'ACCOUNTABLE MANAGER"),
-        ('PER PRESA VISIONE', ["L'ISTRUTTORE", '@@ISTRUTTORE@@'], "L'ISTRUTTORE"),
+        ('PER PRESA VISIONE', ["L'ISTRUTTORE", '@@NOME@@'], "L'ISTRUTTORE"),
     )):
         h = t.cell(0, i)
         shade(h._tc.get_or_add_tcPr(), CHIARO)

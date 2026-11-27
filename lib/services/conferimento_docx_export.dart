@@ -10,7 +10,6 @@ import '../utils/file_download.dart';
 
 /// Dati necessari per generare il conferimento di un istruttore.
 class ConferimentoData {
-  final String? grado;
   final String nome;
   final String cognome;
   final String? mamlNumber;
@@ -19,7 +18,6 @@ class ConferimentoData {
   final List<String> practiceCodes;
 
   const ConferimentoData({
-    this.grado,
     required this.nome,
     required this.cognome,
     this.mamlNumber,
@@ -36,7 +34,6 @@ class ConferimentoData {
     required List<String> practiceCodes,
   }) =>
       ConferimentoData(
-        grado: user.grado,
         nome: user.nome,
         cognome: user.cognome,
         mamlNumber: user.mamlNumber,
@@ -111,7 +108,7 @@ class ConferimentoDocxExport {
     );
   }
 
-  /// «Nome COGNOME» (il grado ha un campo suo nel modulo).
+  /// «Nome COGNOME». Niente grado: cambia nel tempo, il conferimento no.
   static String formatName(ConferimentoData d) => [
         if (d.nome.trim().isNotEmpty) d.nome.trim(),
         if (d.cognome.trim().isNotEmpty) d.cognome.trim().toUpperCase(),
@@ -318,10 +315,7 @@ class ConferimentoDocxExport {
       for (final d in items)
         _replaceCampoParagraph(
           bodyTpl
-              .replaceAll('@@GRADO@@', _esc.convert(_orDash(d.grado)))
               .replaceAll('@@NOME@@', _esc.convert(formatName(d)))
-              .replaceAll('@@ISTRUTTORE@@',
-                  _esc.convert('${d.grado?.trim() ?? ''} ${formatName(d)}'.trim()))
               .replaceAll('@@QUALIFICA@@', _esc.convert(formatQualifica(d.qualifications)))
               .replaceAll('@@MAML@@', _esc.convert(_orDash(d.mamlNumber)))
               .replaceAll('@@DECORRENZA@@', _esc.convert(decorrenza))

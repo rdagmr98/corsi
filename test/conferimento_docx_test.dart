@@ -18,7 +18,6 @@ void main() {
   test('modulo F-3-4: 2 istruttori, campi, firme e pagine', () {
     final doc = _doc(ConferimentoDocxExport.buildBytes(tpl, const [
       ConferimentoData(
-        grado: '1°Lgt.',
         nome: 'Luca',
         cognome: 'Verdi',
         mamlNumber: 'IT.EMAR66.EI000000',
@@ -37,13 +36,12 @@ void main() {
 
     expect(doc.contains('@@'), isFalse);
     expect('>01/12/2026<'.allMatches(doc).length, 2);
-    expect(doc.contains('>Luca VERDI<'), isTrue);
     expect(doc.contains('>Mario ROSSI<'), isTrue);
-    expect(doc.contains('>1°Lgt.<'), isTrue);
     expect(doc.contains('>IT.EMAR66.EI000000<'), isTrue);
-    expect('>—<'.allMatches(doc).length, 2); // grado e MAML di Rossi
-    // Presa visione: grado + nome, senza trattino se il grado manca
-    expect(doc.contains('>1°Lgt. Luca VERDI<'), isTrue);
+    expect('>—<'.allMatches(doc).length, 1); // MAML di Rossi
+    expect(doc.contains('GRADO'), isFalse);
+    // Presa visione: solo il nome
+    expect('>Luca VERDI<'.allMatches(doc).length, 2);
     expect('>Mario ROSSI<'.allMatches(doc).length, 2);
 
     // Qualifiche NAM e SV
