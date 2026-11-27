@@ -189,7 +189,7 @@ def build(bianco: bool) -> Document:
     tit = para(doc, TITOLO, 12, bold=True, color='FFFFFF',
                align=WD_ALIGN_PARAGRAPH.CENTER, before=2, after=0)
     shade(tit._p.get_or_add_pPr(), BLU)
-    para(doc, 'AER(EP).P-147, 147.A.105 - procedura MTOE-P-3-1', 8, italic=True,
+    para(doc, 'AER(EP).P-147, 147.A.105 - MTOE paragrafo 3.6', 8, italic=True,
          align=WD_ALIGN_PARAGRAPH.CENTER, before=2, after=2)
 
     v = (lambda m: '') if bianco else (lambda m: m)
@@ -210,9 +210,7 @@ def build(bianco: bool) -> Document:
         "a) Direttiva «Profili e qualifiche istruzionali e di controllo del personale "
         "dell'Aviazione dell'Esercito», edizione in vigore.",
         "b) MTOE del Centro Addestrativo Aviazione dell'Esercito, edizione in vigore, "
-        "procedura MTOE-P-3-1 e Annesso AMC.",
-        'c) Verbale della commissione tecnica esaminatrice (MTOE-F-3-6) n. ________ '
-        'del ______________.',
+        "paragrafo 3.6 e Annesso AMC.",
     ):
         p = para(doc, r, 9.5, after=1)
         p.paragraph_format.left_indent = Cm(0.5)

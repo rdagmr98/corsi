@@ -321,7 +321,7 @@ class GradingRules {
   );
 }
 
-// Qualifica istruttore secondo l'ANNESSO MTOE-P-3-1 (regole AMC).
+// Qualifica istruttore secondo l'Annesso MTOE 3.6 (regole AMC).
 class AmcQualification {
   final String id;
   final String label;

@@ -8,7 +8,7 @@ import 'package:intl/intl.dart';
 
 import '../utils/file_download.dart';
 
-/// Tabelle criteri AMC (teoria e pratica) dell'ANNESSO MTOE-P-3-1 nel
+/// Tabelle criteri AMC (teoria e pratica) dell'Annesso MTOE 3.6 nel
 /// formato dell'originale, da incollare nell'MTOE in caso di variazioni.
 /// Template: `tools/build_amc_docx_template.py`.
 class AmcDocxExport {
@@ -176,7 +176,7 @@ class AmcDocxExport {
     final tpl = (await rootBundle.load(templateAsset)).buffer.asUint8List();
     final date = DateFormat('yyyy-MM-dd').format(DateTime.now());
     await downloadBytes(buildBytes(tpl, theory, practice),
-        'Annesso_MTOE-P-3-1_criteri_AMC_$date.docx',
+        'Annesso_MTOE_3.6_criteri_AMC_$date.docx',
         mimeType: _docxMime);
   }
 
@@ -185,7 +185,7 @@ class AmcDocxExport {
     final tpl = (await rootBundle.load(personnelAsset)).buffer.asUint8List();
     final date = DateFormat('yyyy-MM-dd').format(DateTime.now());
     await downloadBytes(buildPersonnelBytes(tpl, theory, practice, labels),
-        'Annesso_MTOE-P-3-1_elenco_personale_$date.docx',
+        'Annesso_MTOE_3.6_elenco_personale_$date.docx',
         mimeType: _docxMime);
   }
 }

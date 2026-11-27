@@ -3,7 +3,7 @@ import 'reference_service.dart';
 import 'user_service.dart';
 
 /// Applica le qualifiche degli istruttori alle griglie AMC (amc.json)
-/// secondo le regole dell'ANNESSO MTOE-P-3-1 (reference.amcRules).
+/// secondo le regole dell'Annesso MTOE 3.6 (reference.amcRules).
 class AmcService {
   final _db = GhDbService();
   final _ref = ReferenceService();

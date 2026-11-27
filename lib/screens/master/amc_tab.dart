@@ -137,7 +137,7 @@ class _AmcTabState extends ConsumerState<AmcTab>
           _action(Icons.rule, 'Criteri', 'Titoli e licenze richiesti per sottomodulo',
               _editRules),
           _action(Icons.description_outlined, 'Stampa criteri',
-              'Word, tabelle criteri dell\'ANNESSO MTOE-P-3-1',
+              'Word, tabelle criteri dell\'Annesso al paragrafo 3.6 dell\'MTOE',
               () => AmcDocxExport.download(_referenceService.amcRuleMap(true),
                   _referenceService.amcRuleMap(false))),
           _action(Icons.groups_outlined, 'Stampa elenco personale',

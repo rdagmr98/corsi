@@ -167,7 +167,7 @@ class ReferenceService {
     return InstructorCurrencyRules.fromJson(j);
   }
 
-  // ── Regole AMC (ANNESSO MTOE-P-3-1): qualifica → sottomoduli insegnabili ──
+  // ── Regole AMC (Annesso MTOE 3.6): qualifica → sottomoduli insegnabili ──
   Map<String, dynamic> get _amcRules =>
       _ref['amcRules'] as Map<String, dynamic>? ?? {};
 

@@ -154,7 +154,7 @@ class _UsersTabState extends ConsumerState<UsersTab> {
     UserRole selectedRole = user?.userRole ?? UserRole.attendee;
     String selectedForza = (user?.forza ?? 'EI').toUpperCase() == 'CC' ? 'CC' : 'EI';
 
-    // Qualifiche AMC (solo istruttori): regole ANNESSO MTOE-P-3-1.
+    // Qualifiche AMC (solo istruttori): regole Annesso al paragrafo 3.6 dell'MTOE.
     final allQuals = _refService.amcQualifications();
     final qualGroups = <String, List<AmcQualification>>{};
     for (final q in allQuals) {
@@ -242,7 +242,7 @@ class _UsersTabState extends ConsumerState<UsersTab> {
                     ),
                     const SizedBox(height: 4),
                     const Text(
-                      'I sottomoduli insegnabili vengono assegnati in automatico secondo l\'ANNESSO MTOE-P-3-1.',
+                      'I sottomoduli insegnabili vengono assegnati in automatico secondo l\'Annesso al paragrafo 3.6 dell\'MTOE.',
                       style: TextStyle(color: kTextDim, fontSize: 11),
                     ),
                     const SizedBox(height: 10),
