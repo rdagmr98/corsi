@@ -73,7 +73,14 @@ GitHub Actions (`.github/workflows/deploy.yml`) deploya automaticamente su push 
 
 ---
 
-## STATO SESSIONE — aggiornato 2026-11-06 (sessione 54)
+## STATO SESSIONE — aggiornato 2026-11-28 (sessione 56)
+
+### Sessione 56 (2026-11-28) — presa visione emendamenti MTOE (commit `5aa23d0`), conferimento senza grado (`91b4b9a`)
+Richiesta: «gli indottrinamenti sugli emendamenti non possono essere registrati tramite l'app corsi smam? arriva notifica di emendamento e gli istruttori devono prendere visione per ritornare go».
+- Admin, stati di servizio: «Emendamento MTOE» → `reference.json` `mtoeAmendments` + notifica `MTOE_AMENDMENT`. Istruttore: card «Prendi visione» in home → `mtoe_acks` sulla riga utente (fuori da `toJson`). `GradeService.isGo` NO GO senza presa visione dell'ultimo; `currency_loss_service` usa `ack: false`.
+- Analyze pulito, test 43/43, deploy. Non provato nel browser. Vault: [[AVES Corsi/Corsi presa visione emendamenti MTOE 2026-11-28]].
+
+## STATO SESSIONE — 2026-11-06 (sessione 54)
 
 ### Ultime modifiche (2026-11-06) — sessione 54 — archivio corso PDF+JSON, pagina utenti, via legenda AMC (commit `5727a21`)
 Richiesta: legenda AMC senza senso; migliorare pagina utenti admin e PDF di archiviazione; file per ricaricare il corso, per poter liberare GitHub (conservazione P-147).
