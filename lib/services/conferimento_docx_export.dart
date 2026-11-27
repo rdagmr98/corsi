@@ -64,15 +64,6 @@ class ConferimentoDocxExport {
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
   static const _pageBreak = '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
   static const _esc = HtmlEscape(HtmlEscapeMode.element);
-  static const _tblBorders =
-      '<w:tblBorders>'
-      '<w:top w:val="single" w:sz="4" w:space="0" w:color="000000"/>'
-      '<w:left w:val="single" w:sz="4" w:space="0" w:color="000000"/>'
-      '<w:bottom w:val="single" w:sz="4" w:space="0" w:color="000000"/>'
-      '<w:right w:val="single" w:sz="4" w:space="0" w:color="000000"/>'
-      '<w:insideH w:val="single" w:sz="4" w:space="0" w:color="000000"/>'
-      '<w:insideV w:val="single" w:sz="4" w:space="0" w:color="000000"/>'
-      '</w:tblBorders>';
 
   static const Map<String, String> _moduleNames = {
     '1': 'Mathematics',
@@ -162,63 +153,133 @@ class ConferimentoDocxExport {
     return 9638;
   }
 
-  static String _cell(int w, String text,
-      {bool bold = false, bool italic = false, String? fill, int span = 1}) {
-    final rpr = '<w:rPr>${bold ? '<w:b/>' : ''}${italic ? '<w:i/>' : ''}'
-        '<w:sz w:val="17"/><w:szCs w:val="17"/></w:rPr>';
-    return '<w:tc><w:tcPr><w:tcW w:w="$w" w:type="dxa"/>'
-        '${span > 1 ? '<w:gridSpan w:val="$span"/>' : ''}'
-        '${fill != null ? '<w:shd w:val="clear" w:color="auto" w:fill="$fill"/>' : ''}'
-        '<w:vAlign w:val="center"/></w:tcPr>'
-        '<w:p><w:pPr>${span > 1 ? '<w:jc w:val="center"/>' : ''}$rpr</w:pPr>'
-        '${text.isEmpty ? '' : '<w:r>$rpr<w:t xml:space="preserve">${_esc.convert(text)}</w:t></w:r>'}'
-        '</w:p></w:tc>';
+  // Colori e colonne uguali a tools/build_conferimento_template.py.
+  static const _blu = '1F3A68';
+  static const _chiaro = 'E6EAF1';
+  static const _linea = 'A9B4C6';
+
+  static String _rpr(int halfPt,
+          {bool bold = false, bool italic = false, String? color, String extra = ''}) =>
+      '<w:rPr>${bold ? '<w:b/>' : ''}${italic ? '<w:i/>' : ''}'
+      '${color != null ? '<w:color w:val="$color"/>' : ''}'
+      '<w:sz w:val="$halfPt"/><w:szCs w:val="$halfPt"/>$extra</w:rPr>';
+
+  static String _run(String text, String rpr) =>
+      '<w:r>$rpr<w:t xml:space="preserve">${_esc.convert(text)}</w:t></w:r>';
+
+  static String _tc(int w, String paragraphs,
+          {String? fill, String vMerge = '', int span = 1}) =>
+      '<w:tc><w:tcPr><w:tcW w:w="$w" w:type="dxa"/>'
+      '${span > 1 ? '<w:gridSpan w:val="$span"/>' : ''}$vMerge'
+      '${fill != null ? '<w:shd w:val="clear" w:color="auto" w:fill="$fill"/>' : ''}'
+      '<w:vAlign w:val="center"/></w:tcPr>$paragraphs</w:tc>';
+
+  static String _p(String runs, {String jc = '', String spacing = ''}) =>
+      '<w:p><w:pPr>$spacing${jc.isEmpty ? '' : '<w:jc w:val="$jc"/>'}</w:pPr>$runs</w:p>';
+
+  /// Codici come «chip»: run con bordo e sfondo, spazi non separabili dentro
+  /// (il chip non si spezza a fine riga), spazio normale tra un chip e l'altro.
+  static String _chips(List<String> codes, {required bool teoria}) {
+    final rpr = _rpr(17,
+        bold: true,
+        color: _blu,
+        extra: '<w:bdr w:val="single" w:sz="4" w:space="0" '
+            'w:color="${teoria ? _linea : _blu}"/>'
+            '<w:shd w:val="clear" w:color="auto" w:fill="${teoria ? _chiaro : 'FFFFFF'}"/>');
+    final sep = _run('  ', _rpr(17));
+    return codes.map((c) => _run(' $c ', rpr)).join(sep);
   }
 
-  /// Tabella dei soli moduli assegnati: «MODULE N Nome» | codici.
-  /// Colonne 7/17 e 10/17 come `COL_CAMPO` del builder.
-  static String _buildTable(String title, List<String> codes, int tableW) {
+  static Map<String, List<String>> _byModule(List<String> codes) {
     final byMod = <String, List<String>>{};
     for (final raw in codes) {
       final c = raw.trim();
       if (c.isEmpty) continue;
       byMod.putIfAbsent(c.split('.').first.toUpperCase(), () => []).add(c);
     }
-    final modules = byMod.keys.toList()..sort(compareCode);
-    final c1 = tableW * 7 ~/ 17;
-    final c2 = tableW - c1;
+    for (final l in byMod.values) {
+      l.sort(compareCode);
+    }
+    return byMod;
+  }
+
+  static String _conta(int n, int mods) =>
+      '$n ${n == 1 ? 'sottomodulo' : 'sottomoduli'} in $mods ${mods == 1 ? 'modulo' : 'moduli'}';
+
+  /// Tabella unica dei sottomoduli assegnati: una «card» per modulo con la
+  /// cella del modulo unita in verticale, badge TEORIA (pieno) / PRATICA
+  /// (chiaro) leggibili anche in bianco e nero, codici a chip.
+  static String _buildCampo(ConferimentoData d, int tableW) {
+    final t = _byModule(d.theoryCodes);
+    final p = _byModule(d.practiceCodes);
+    final modules = {...t.keys, ...p.keys}.toList()..sort(compareCode);
+    final c1 = tableW * 46 ~/ 170;
+    final c2 = tableW * 17 ~/ 170;
+    final c3 = tableW - c1 - c2;
+    const sp = '<w:spacing w:before="30" w:after="30"/>';
 
     final buf = StringBuffer()
-      ..write('<w:tbl><w:tblPr><w:tblW w:w="$tableW" w:type="dxa"/>'
-          '<w:jc w:val="center"/>$_tblBorders<w:tblLayout w:type="fixed"/>'
-          '<w:tblCellMar><w:top w:w="15" w:type="dxa"/><w:left w:w="80" w:type="dxa"/>'
-          '<w:bottom w:w="15" w:type="dxa"/><w:right w:w="80" w:type="dxa"/></w:tblCellMar>'
-          '</w:tblPr><w:tblGrid><w:gridCol w:w="$c1"/><w:gridCol w:w="$c2"/></w:tblGrid>')
-      ..write('<w:tr><w:trPr><w:cantSplit/><w:tblHeader/></w:trPr>'
-          '${_cell(tableW, title, bold: true, span: 2)}</w:tr>')
-      ..write('<w:tr><w:trPr><w:cantSplit/><w:tblHeader/></w:trPr>'
-          '${_cell(c1, 'Modulo', italic: true, fill: 'EDEFF3')}'
-          '${_cell(c2, 'Sottomoduli', italic: true, fill: 'EDEFF3')}</w:tr>');
+      ..write('<w:tbl><w:tblPr><w:tblW w:w="$tableW" w:type="dxa"/><w:jc w:val="center"/>'
+          '<w:tblBorders>'
+          '<w:top w:val="single" w:sz="8" w:space="0" w:color="$_blu"/>'
+          '<w:left w:val="single" w:sz="8" w:space="0" w:color="$_blu"/>'
+          '<w:bottom w:val="single" w:sz="8" w:space="0" w:color="$_blu"/>'
+          '<w:right w:val="single" w:sz="8" w:space="0" w:color="$_blu"/>'
+          '<w:insideH w:val="single" w:sz="4" w:space="0" w:color="$_linea"/>'
+          '<w:insideV w:val="single" w:sz="4" w:space="0" w:color="$_linea"/>'
+          '</w:tblBorders><w:tblLayout w:type="fixed"/>'
+          '<w:tblCellMar><w:top w:w="20" w:type="dxa"/><w:left w:w="90" w:type="dxa"/>'
+          '<w:bottom w:w="20" w:type="dxa"/><w:right w:w="90" w:type="dxa"/></w:tblCellMar>'
+          '</w:tblPr><w:tblGrid><w:gridCol w:w="$c1"/><w:gridCol w:w="$c2"/>'
+          '<w:gridCol w:w="$c3"/></w:tblGrid>')
+      ..write('<w:tr><w:trPr><w:cantSplit/><w:tblHeader/></w:trPr>${_tc(
+        tableW,
+        _p(
+          _run('SOTTOMODULI ASSEGNATI', _rpr(18, bold: true, color: 'FFFFFF')) +
+              _run('\tTeoria: ${_conta(t.values.fold(0, (s, l) => s + l.length), t.length)}'
+                  '   ·   Pratica: ${_conta(p.values.fold(0, (s, l) => s + l.length), p.length)}',
+                  _rpr(15, italic: true, color: 'FFFFFF')),
+          spacing: '<w:tabs><w:tab w:val="right" w:pos="${tableW - 200}"/></w:tabs>$sp',
+        ),
+        fill: _blu,
+        span: 3,
+      )}</w:tr>');
     if (modules.isEmpty) {
-      buf.write('<w:tr>${_cell(c1, '—')}${_cell(c2, '')}</w:tr>');
+      buf.write('<w:tr>${_tc(tableW, _p(_run('—', _rpr(18)), jc: 'center', spacing: sp), span: 3)}</w:tr>');
     }
     for (final mod in modules) {
+      final rows = [
+        if (t.containsKey(mod)) (true, t[mod]!),
+        if (p.containsKey(mod)) (false, p[mod]!),
+      ];
       final name = _moduleNames[mod];
-      final list = byMod[mod]!..sort(compareCode);
-      buf.write('<w:tr><w:trPr><w:cantSplit/></w:trPr>'
-          '${_cell(c1, name != null ? 'MODULE $mod $name' : 'MODULE $mod', italic: true)}'
-          '${_cell(c2, '${list.join(', ')}.')}</w:tr>');
+      for (var i = 0; i < rows.length; i++) {
+        final (teoria, codes) = rows[i];
+        final modCell = i == 0
+            ? _tc(
+                c1,
+                _p(_run('MODULO $mod', _rpr(19, bold: true, color: _blu))) +
+                    (name != null
+                        ? _p(_run(name, _rpr(13, italic: true, color: '4A5A75')))
+                        : ''),
+                fill: _chiaro,
+                vMerge: rows.length > 1 ? '<w:vMerge w:val="restart"/>' : '')
+            : _tc(c1, '<w:p/>', fill: _chiaro, vMerge: '<w:vMerge/>');
+        final badge = _tc(
+            c2,
+            _p(_run(teoria ? 'TEORIA' : 'PRATICA',
+                    _rpr(14, bold: true, color: teoria ? 'FFFFFF' : _blu)),
+                jc: 'center'),
+            fill: teoria ? _blu : _chiaro);
+        final chips = _tc(
+            c3,
+            _p(_chips(codes, teoria: teoria),
+                spacing: '<w:spacing w:before="40" w:after="40" w:line="300" w:lineRule="auto"/>'));
+        buf.write('<w:tr><w:trPr><w:cantSplit/></w:trPr>$modCell$badge$chips</w:tr>');
+      }
     }
     buf.write('</w:tbl>');
     return buf.toString();
-  }
-
-  static String _buildCampo(ConferimentoData d, int tableW) {
-    const gap = '<w:p><w:pPr><w:spacing w:after="80"/>'
-        '<w:rPr><w:sz w:val="8"/></w:rPr></w:pPr></w:p>';
-    return _buildTable('Theoretical element', d.theoryCodes, tableW) +
-        gap +
-        _buildTable('Practical element', d.practiceCodes, tableW);
   }
 
   static String _replaceCampoParagraph(String body, String replacement) {
@@ -232,7 +293,9 @@ class ConferimentoDocxExport {
   }
 
   /// Compila `word/document.xml` ripetendo il corpo per ogni istruttore,
-  /// separato da un page break (il corpo non ha immagini: lo stemma è nell'header).
+  /// separato da un page break. Il corpo contiene l'intestazione con emblema e
+  /// fregio: i `wp:docPr id` vanno resi univoci a ogni copia (Word altrimenti
+  /// segnala contenuto illeggibile); gli `r:embed` restano gli stessi.
   static String fillDocument(
     String xml,
     List<ConferimentoData> items, {
@@ -257,6 +320,8 @@ class ConferimentoDocxExport {
           bodyTpl
               .replaceAll('@@GRADO@@', _esc.convert(_orDash(d.grado)))
               .replaceAll('@@NOME@@', _esc.convert(formatName(d)))
+              .replaceAll('@@ISTRUTTORE@@',
+                  _esc.convert('${d.grado?.trim() ?? ''} ${formatName(d)}'.trim()))
               .replaceAll('@@QUALIFICA@@', _esc.convert(formatQualifica(d.qualifications)))
               .replaceAll('@@MAML@@', _esc.convert(_orDash(d.mamlNumber)))
               .replaceAll('@@DECORRENZA@@', _esc.convert(decorrenza))
@@ -265,7 +330,11 @@ class ConferimentoDocxExport {
           _buildCampo(d, tableW),
         ),
     ];
-    return '${xml.substring(0, bodyStart)}${pages.join(_pageBreak)}$suffix';
+    var n = 0;
+    final body = pages
+        .join(_pageBreak)
+        .replaceAllMapped(RegExp(r'<wp:docPr id="\d+"'), (_) => '<wp:docPr id="${++n}"');
+    return '${xml.substring(0, bodyStart)}$body$suffix';
   }
 
   static Uint8List buildBytes(

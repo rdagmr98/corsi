@@ -41,18 +41,25 @@ void main() {
     expect(doc.contains('>Mario ROSSI<'), isTrue);
     expect(doc.contains('>1°Lgt.<'), isTrue);
     expect(doc.contains('>IT.EMAR66.EI000000<'), isTrue);
-    expect('>—<'.allMatches(doc).length, greaterThanOrEqualTo(3)); // grado, MAML, pratica vuota di Rossi
+    expect('>—<'.allMatches(doc).length, 2); // grado e MAML di Rossi
+    // Presa visione: grado + nome, senza trattino se il grado manca
+    expect(doc.contains('>1°Lgt. Luca VERDI<'), isTrue);
+    expect('>Mario ROSSI<'.allMatches(doc).length, 2);
 
     // Qualifiche NAM e SV
     expect(doc.contains('e Istruttore NAM'), isTrue);
     expect(doc.contains('>Istruttore SV<'), isTrue);
 
-    // Solo moduli assegnati, codici in ordine numerico (5.4 prima di 5.12)
-    expect(doc.contains('>5.4, 5.12.<'), isTrue);
-    expect(doc.contains('>11A.5.<'), isTrue);
-    expect(doc.contains('>3.7.<'), isTrue);
-    expect(doc.contains('>9.1.<'), isTrue);
-    expect(doc.contains('MODULE 6 '), isFalse);
+    // Solo moduli assegnati, codici a chip in ordine numerico (5.4 prima di 5.12)
+    int chip(String c) => doc.indexOf(RegExp('>\\s${RegExp.escape(c)}\\s<'));
+    for (final c in ['5.4', '5.12', '11A.5', '3.7', '9.1']) {
+      expect(chip(c), greaterThan(0), reason: c);
+    }
+    expect(chip('5.4'), lessThan(chip('5.12')));
+    expect(doc.contains('>MODULO 5<'), isTrue);
+    expect(doc.contains('>MODULO 6<'), isFalse);
+    expect(doc.contains('>PRATICA<'), isTrue);
+    expect(doc.contains('Pratica: 0 sottomoduli in 0 moduli'), isTrue); // Rossi
 
     // Firme: TM su due righe, AM di default
     expect(doc.contains('IL TRAINING MANAGER</w:t><w:br/><w:t xml:space="preserve">Cap. Tizio CAIO'), isTrue);
@@ -62,6 +69,11 @@ void main() {
     // Un page break tra i due istruttori, un solo sectPr
     expect(RegExp(r'<w:br w:type="page"/>').allMatches(doc).length, 1);
     expect(RegExp(r'<w:sectPr\b').allMatches(doc).length, 1);
+
+    // Intestazione con immagini ripetuta per istruttore: docPr id univoci
+    final ids = RegExp(r'<wp:docPr id="(\d+)"').allMatches(doc).map((m) => m[1]).toList();
+    expect(ids.length, greaterThanOrEqualTo(4));
+    expect(ids.toSet().length, ids.length);
 
     expect(
       ConferimentoDocxExport.fileName(const [
@@ -87,19 +99,19 @@ void main() {
         practiceCodes: ['3.1', '1.1'],
       ),
     ]));
-    final i51 = doc.indexOf('MODULE 51 Weapons Systems');
-    final i52 = doc.indexOf('>MODULE 52<');
-    final i53 = doc.indexOf('MODULE 53 Surveillance and Electronic Warfare');
-    expect(i51, greaterThan(0));
+    final m1 = doc.indexOf('>MODULO 1<');
+    final m3 = doc.indexOf('>MODULO 3<');
+    final i51 = doc.indexOf('>MODULO 51<');
+    final i52 = doc.indexOf('>MODULO 52<');
+    final i53 = doc.indexOf('>MODULO 53<');
+    expect(m1, greaterThan(0));
+    expect(m3, greaterThan(m1));
+    expect(i51, greaterThan(m3));
     expect(i52, greaterThan(i51));
     expect(i53, greaterThan(i52));
-    expect(doc.contains('>52.2, 52.10.<'), isTrue);
-
-    final prac = doc.indexOf('Practical element');
-    final p1 = doc.indexOf('MODULE 1 ', prac);
-    final p3 = doc.indexOf('MODULE 3 Electrical Fundamentals', prac);
-    expect(p1, greaterThan(prac));
-    expect(p3, greaterThan(p1));
+    expect(doc.contains('>Weapons Systems<'), isTrue);
+    expect(doc.indexOf(RegExp(r'>\s52\.2\s<')),
+        lessThan(doc.indexOf(RegExp(r'>\s52\.10\s<'))));
   });
 
   test('AppUser grado/maml e insegnabili dalla griglia AMC', () {

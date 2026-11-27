@@ -5,56 +5,70 @@ Uso:
   python tools/build_conferimento_template.py --bianco OUT.docx   -> modulo in bianco per la MTOE
 
 Il template dell'app contiene i marcatori compilati da ConferimentoDocxExport:
-  @@GRADO@@ @@NOME@@ @@QUALIFICA@@ @@MAML@@ @@DECORRENZA@@
-  @@CAMPO@@  paragrafo sostituito dalle tabelle Theoretical/Practical element
+  @@GRADO@@ @@NOME@@ @@QUALIFICA@@ @@MAML@@ @@DECORRENZA@@ @@ISTRUTTORE@@ (grado e nome)
+  @@CAMPO@@  paragrafo sostituito dalla tabella dei sottomoduli assegnati
   @@TM@@ @@AM@@  gruppi firma (righe separate da a capo, da amc.json)
 Nessun nominativo qui: il repo è pubblico, i gruppi firma stanno in corsi-data.
+L'intestazione è nel corpo (come nelle lettere del Centro): il Dart rinumera i
+wp:docPr delle immagini a ogni copia del corpo.
 """
-import io
 import sys
 from pathlib import Path
 
 from docx import Document
 from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT, WD_TABLE_ALIGNMENT
-from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_TAB_ALIGNMENT
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING, WD_TAB_ALIGNMENT
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Cm, Pt, RGBColor
-from PIL import Image
 
-OUT = Path(__file__).resolve().parent.parent / 'assets' / 'templates' / 'conferimento_blank.docx'
-STEMMA = Path(r'C:\Users\Gianmarco\caae\imgs\stemma_caae_hd.png')
+HERE = Path(__file__).resolve().parent
+OUT = HERE.parent / 'assets' / 'templates' / 'conferimento_blank.docx'
+EMBLEMA = HERE / 'img' / 'emblema.png'
+FREGIO = HERE / 'img' / 'fregio.png'
 FONT = 'Times New Roman'
 BLU = '1F3A68'
-GRIGIO = 'EDEFF3'
+CHIARO = 'E6EAF1'
+LINEA = 'A9B4C6'
+ETICHETTA = '4A5A75'
 CODICE = 'MTOE-F-3-4'
 EDIZIONE = 'Ed. 4 Rev. 0'
 TITOLO = "ATTO DI CONFERIMENTO DELL'ABILITAZIONE ALL'INSEGNAMENTO"
+NOTA = ('"contiene dati personali da trattare ai sensi del Regolamento (UE) 2016/679 '
+        'e del D.Lgs. n. 196/2003"')
 W = 17.0  # cm utili (A4, margini 2 cm)
-COL_CAMPO = (7.0, 10.0)  # Modulo | Sottomoduli, uguale in ConferimentoDocxExport
+COL_CAMPO = (4.6, 1.7, W - 6.3)  # Modulo | Teoria/Pratica | sottomoduli, uguale nel Dart
 
 
-def run(p, text, size=10, bold=False, italic=False, color=None):
+def run(p, text, size=10, bold=False, italic=False, color=None, underline=False):
     r = p.add_run(text)
     r.font.name = FONT
     r._element.rPr.rFonts.set(qn('w:eastAsia'), FONT)
     r.font.size = Pt(size)
-    r.bold, r.italic = bold, italic
+    r.bold, r.italic, r.underline = bold or None, italic or None, underline or None
     if color:
         r.font.color.rgb = RGBColor.from_string(color)
     return r
 
 
-def para(cont, text='', size=10, bold=False, italic=False, align=None,
-         before=0, after=0, color=None):
+def para(cont, text='', size=10, bold=False, italic=False, align=None, before=0, after=0,
+         color=None):
     p = cont.add_paragraph()
-    pf = p.paragraph_format
-    pf.space_before, pf.space_after = Pt(before), Pt(after)
+    f = p.paragraph_format
+    f.space_before, f.space_after = Pt(before), Pt(after)
     if align is not None:
-        pf.alignment = align
+        f.alignment = align
     if text:
         run(p, text, size, bold, italic, color)
     return p
+
+
+def gap(doc, pt):
+    """Spaziatore tra le sezioni: riga vuota ad altezza esatta."""
+    f = doc.add_paragraph().paragraph_format
+    f.space_before = f.space_after = Pt(0)
+    f.line_spacing_rule = WD_LINE_SPACING.EXACTLY
+    f.line_spacing = Pt(pt)
 
 
 def shade(el, fill):
@@ -66,34 +80,26 @@ def shade(el, fill):
     el.append(shd)
 
 
-def bordo_sotto(p, color=BLU, sz=8):
-    pbdr = OxmlElement('w:pBdr')
-    b = OxmlElement('w:bottom')
-    for k, v in (('val', 'single'), ('sz', str(sz)), ('space', '1'), ('color', color)):
-        b.set(qn(f'w:{k}'), v)
-    pbdr.append(b)
-    p._p.get_or_add_pPr().append(pbdr)
-
-
-def senza_bordi(table):
+def bordi(table, esterno=(BLU, 8), interno=(LINEA, 4)):
+    """Bordi tabella: None = senza bordo."""
     tblPr = table._tbl.tblPr
-    borders = OxmlElement('w:tblBorders')
+    b = OxmlElement('w:tblBorders')
     for side in ('top', 'left', 'bottom', 'right', 'insideH', 'insideV'):
+        spec = esterno if side in ('top', 'left', 'bottom', 'right') else interno
         e = OxmlElement(f'w:{side}')
-        e.set(qn('w:val'), 'nil')
-        borders.append(e)
-    tblPr.append(borders)
+        if spec is None:
+            e.set(qn('w:val'), 'nil')
+        else:
+            for k, v in (('val', 'single'), ('sz', str(spec[1])), ('space', '0'),
+                         ('color', spec[0])):
+                e.set(qn(f'w:{k}'), v)
+        b.append(e)
+    tblPr.append(b)
 
 
-def tabella(cont, rows, widths, bordi=True):
-    if hasattr(cont, 'sections'):  # Document
-        t = cont.add_table(rows=rows, cols=len(widths))
-    else:  # header/cella: python-docx vuole la larghezza
-        t = cont.add_table(rows, len(widths), Cm(sum(widths)))
-    if bordi:
-        t.style = 'Table Grid'
-    else:
-        senza_bordi(t)
+def tabella(doc, rows, widths, esterno=(BLU, 8), interno=(LINEA, 4)):
+    t = doc.add_table(rows=rows, cols=len(widths))
+    bordi(t, esterno, interno)
     t.alignment = WD_TABLE_ALIGNMENT.CENTER
     t.autofit = False
     for row in t.rows:
@@ -103,50 +109,45 @@ def tabella(cont, rows, widths, bordi=True):
     return t
 
 
-def cella(c, text, size=10, bold=False, italic=False, align=None, fill=None, color=None):
+def casella(c, etichetta, valore='', size=11, bold=False):
+    """Casella del modulo: etichetta piccola sopra, valore sotto."""
     p = c.paragraphs[0]
-    if align is not None:
-        p.paragraph_format.alignment = align
-    if text:
-        run(p, text, size, bold, italic, color)
-    if fill:
-        shade(c._tc.get_or_add_tcPr(), fill)
-    return p
+    p.paragraph_format.space_before = Pt(1)
+    run(p, etichetta, 6.5, bold=True, color=ETICHETTA)
+    v = para(c, after=2)
+    if valore:
+        run(v, valore, size, bold)
+    return v
 
 
-def sezione(doc, text):
-    p = para(doc, text, 10, bold=True, color=BLU, before=9, after=3)
-    bordo_sotto(p, sz=6)
-    return p
+def intestazione(doc):
+    """Come nelle lettere del Centro (contratto 1132): emblema, nome, motto, recapiti, fregio."""
+    def pic(path, w, after):
+        p = para(doc, align=WD_ALIGN_PARAGRAPH.CENTER, after=after)
+        p.add_run().add_picture(str(path), width=Cm(w))
+
+    pic(EMBLEMA, 1.4, 2)
+    para(doc, 'CENTRO ADDESTRATIVO AVIAZIONE DELL’ESERCITO', 16, bold=True,
+         align=WD_ALIGN_PARAGRAPH.CENTER)
+    para(doc, '“Volat agile rapide observat”', 14, bold=True, italic=True,
+         align=WD_ALIGN_PARAGRAPH.CENTER, after=2)
+    for segs in ([('Caserma M.O.V.M. Ten. Dante CHELOTTI / strada Toscanese, 28 - 01100 Viterbo', False)],
+                 [('Indirizzo telegrafico: CENTRAVIESERCITO – VITERBO', False)],
+                 [('Indirizzo di PEI: ', False), ('centraviesercito@esercito.difesa.it', True),
+                  (' – Indirizzo di PEC: ', False), ('centraviesercito@postacert.difesa.it', True)]):
+        p = para(doc, align=WD_ALIGN_PARAGRAPH.CENTER)
+        for text, u in segs:
+            run(p, text, 9, italic=True, underline=u)
+    pic(FREGIO, 5.0, 8)
 
 
-def intestazione(sec):
+def testata_pagina(sec):
     h = sec.header
     h.is_linked_to_previous = False
-    t = tabella(h, 1, (2.2, W - 4.4, 2.2), bordi=False)
-    img = Image.open(STEMMA).convert('RGBA')
-    img.thumbnail((220, 300))
-    buf = io.BytesIO()
-    img.save(buf, 'PNG', optimize=True)
-    buf.seek(0)
-    pic = t.cell(0, 0).paragraphs[0]
-    pic.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    pic.add_run().add_picture(buf, height=Cm(2.0))
-    c = t.cell(0, 1)
-    c.paragraphs[0].paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run(c.paragraphs[0], "CENTRO ADDESTRATIVO AVIAZIONE DELL'ESERCITO", 12, bold=True)
-    for text, size, it in (
-        ('"Volat agile rapide observat"', 9, True),
-        ('Caserma M.O.V.M. Ten. Dante CHELOTTI - strada Toscanese, 28 - 01100 Viterbo', 8, False),
-        ('Indirizzo telegrafico: CENTRAVIESERCITO - VITERBO', 8, False),
-        ('PEI: centraviesercito@esercito.difesa.it - PEC: centraviesercito@postacert.difesa.it', 8, False),
-    ):
-        para(c, text, size, italic=it, align=WD_ALIGN_PARAGRAPH.CENTER)
-    bordo_sotto(para(h, '', 4), sz=12)
-    # header vuoto residuo del template python-docx
-    first = h.paragraphs[0]
-    if not first.text and first._p.getprevious() is None:
-        first._p.getparent().remove(first._p)
+    p = h.paragraphs[0]
+    p.style = 'Normal'
+    p.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run(p, NOTA, 8, italic=True, color=ETICHETTA)
 
 
 def piede(sec):
@@ -155,21 +156,52 @@ def piede(sec):
     p = f.paragraphs[0]
     p.style = 'Normal'  # lo stile Footer ha tab predefiniti al centro
     p.paragraph_format.tab_stops.add_tab_stop(Cm(W), WD_TAB_ALIGNMENT.RIGHT)
-    bordo_sotto(p, sz=4)
+    pbdr = OxmlElement('w:pBdr')
+    top = OxmlElement('w:top')
+    for k, v in (('val', 'single'), ('sz', '4'), ('space', '4'), ('color', BLU)):
+        top.set(qn(f'w:{k}'), v)
+    pbdr.append(top)
+    p._p.get_or_add_pPr().append(pbdr)
     run(p, f'{CODICE} - {EDIZIONE}', 8, bold=True, color=BLU)
-    run(p, '\t' + TITOLO.capitalize(), 8, italic=True)
+    run(p, "\tAtto di conferimento dell'abilitazione all'insegnamento", 8, italic=True)
+
+
+def banda(doc, text, size=11):
+    """Titolo su banda blu con il codice del modulo a destra, come i modelli P-147."""
+    t = tabella(doc, 1, (W - 3.0, 3.0), esterno=(BLU, 8), interno=('FFFFFF', 8))
+    c = t.cell(0, 0)
+    shade(c._tc.get_or_add_tcPr(), BLU)
+    p = c.paragraphs[0]
+    p.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p.paragraph_format.space_before = p.paragraph_format.space_after = Pt(4)
+    run(p, text, size, bold=True, color='FFFFFF')
+    c = t.cell(0, 1)
+    shade(c._tc.get_or_add_tcPr(), '14284A')
+    p = c.paragraphs[0]
+    p.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run(p, CODICE, 9, bold=True, color='FFFFFF')
+    p = para(c, align=WD_ALIGN_PARAGRAPH.CENTER)
+    run(p, EDIZIONE, 7.5, italic=True, color='D5DCE8')
 
 
 def campo_bianco(doc):
-    for titolo, righe in (('Theoretical element', 6), ('Practical element', 4)):
-        t = tabella(doc, righe + 2, COL_CAMPO)
-        hdr = t.cell(0, 0).merge(t.cell(0, 1))
-        cella(hdr, titolo, 8, bold=True, align=WD_ALIGN_PARAGRAPH.CENTER)
-        cella(t.cell(1, 0), 'Modulo', 8, italic=True, fill=GRIGIO)
-        cella(t.cell(1, 1), 'Sottomoduli', 8, italic=True, fill=GRIGIO)
-        for r in t.rows[2:]:
-            r.height = Cm(0.5)
-        para(doc, '', 4)
+    """Stessa forma della tabella generata dall'app, con righe vuote."""
+    t = tabella(doc, 9, COL_CAMPO)
+    hdr = t.cell(0, 0).merge(t.cell(0, 2))
+    shade(hdr._tc.get_or_add_tcPr(), BLU)
+    p = hdr.paragraphs[0]
+    p.paragraph_format.space_before = p.paragraph_format.space_after = Pt(2)
+    run(p, 'SOTTOMODULI ASSEGNATI', 9, bold=True, color='FFFFFF')
+    for i in range(1, 9, 2):
+        m = t.cell(i, 0).merge(t.cell(i + 1, 0))
+        shade(m._tc.get_or_add_tcPr(), CHIARO)
+        run(m.paragraphs[0], 'MODULO', 8, bold=True, color=BLU)
+        for j, (lab, fill, col) in enumerate((('TEORIA', BLU, 'FFFFFF'), ('PRATICA', CHIARO, BLU))):
+            c = t.cell(i + j, 1)
+            shade(c._tc.get_or_add_tcPr(), fill)
+            c.paragraphs[0].paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            run(c.paragraphs[0], lab, 7, bold=True, color=col)
+            t.rows[i + j].height = Cm(0.6)
 
 
 def build(bianco: bool) -> Document:
@@ -181,80 +213,67 @@ def build(bianco: bool) -> Document:
     sec = doc.sections[0]
     sec.page_width, sec.page_height = Cm(21), Cm(29.7)
     sec.left_margin = sec.right_margin = Cm(2)
-    sec.top_margin, sec.bottom_margin = Cm(1.2), Cm(1.5)
-    sec.header_distance, sec.footer_distance = Cm(0.8), Cm(0.8)
-    intestazione(sec)
+    sec.top_margin, sec.bottom_margin = Cm(1.4), Cm(1.4)
+    sec.header_distance, sec.footer_distance = Cm(0.6), Cm(0.7)
+    testata_pagina(sec)
     piede(sec)
-
-    tit = para(doc, TITOLO, 12, bold=True, color='FFFFFF',
-               align=WD_ALIGN_PARAGRAPH.CENTER, before=2, after=0)
-    shade(tit._p.get_or_add_pPr(), BLU)
-    para(doc, 'AER(EP).P-147, 147.A.105 - MTOE paragrafo 3.6', 8, italic=True,
-         align=WD_ALIGN_PARAGRAPH.CENTER, before=2, after=2)
-
     v = (lambda m: '') if bianco else (lambda m: m)
-    sezione(doc, "1. DATI DELL'ISTRUTTORE")
-    t = tabella(doc, 3, (2.6, 3.4, 3.0, W - 9.0))
+
+    intestazione(doc)
+    banda(doc, TITOLO)
+    gap(doc, 8)
+
+    t = tabella(doc, 2, (3.0, 8.2, W - 11.2))
+    casella(t.cell(0, 0), 'GRADO', v('@@GRADO@@'))
+    casella(t.cell(0, 1), 'COGNOME E NOME', v('@@NOME@@'), bold=True)
+    casella(t.cell(0, 2), 'LICENZA MAML N.', v('@@MAML@@'))
+    casella(t.cell(1, 0).merge(t.cell(1, 2)), 'QUALIFICA', v('@@QUALIFICA@@'), size=10.5)
     for r in t.rows:
-        r.height = Cm(0.6)
-    cella(t.cell(0, 0), 'Grado', 9, bold=True, fill=GRIGIO)
-    cella(t.cell(0, 1), v('@@GRADO@@'))
-    cella(t.cell(0, 2), 'Cognome e nome', 9, bold=True, fill=GRIGIO)
-    cella(t.cell(0, 3), v('@@NOME@@'), bold=True)
-    for i, (lab, mk) in enumerate((('Qualifica', '@@QUALIFICA@@'), ('MAML n.', '@@MAML@@')), 1):
-        cella(t.cell(i, 0), lab, 9, bold=True, fill=GRIGIO)
-        cella(t.cell(i, 1).merge(t.cell(i, 3)), v(mk))
+        r.height = Cm(0.9)
 
-    sezione(doc, '2. RIFERIMENTI')
-    for r in (
-        "a) Direttiva «Profili e qualifiche istruzionali e di controllo del personale "
-        "dell'Aviazione dell'Esercito», edizione in vigore.",
-        "b) MTOE del Centro Addestrativo Aviazione dell'Esercito, edizione in vigore, "
-        "paragrafo 3.6 e Annesso AMC.",
-    ):
-        p = para(doc, r, 9.5, after=1)
-        p.paragraph_format.left_indent = Cm(0.5)
-        p.paragraph_format.first_line_indent = Cm(-0.5)
-
-    sezione(doc, '3. MATERIE ASSEGNATE')
-    para(doc, "Tra le materie che l'istruttore è qualificato a insegnare (Annesso AMC), "
-              "l'Accountable Manager gli assegna l'insegnamento delle seguenti:", 9.5, after=4)
+    p = para(doc, "L'Accountable Manager, su proposta del Training Manager, conferisce "
+                  "all'istruttore l'abilitazione all'insegnamento dei sottomoduli sotto "
+                  "indicati, scelti tra quelli per cui è qualificato.", 10.5,
+             align=WD_ALIGN_PARAGRAPH.JUSTIFY, before=8, after=6)
     if bianco:
         campo_bianco(doc)
     else:
         para(doc, '@@CAMPO@@')
 
-    sezione(doc, '4. DECORRENZA E VALIDITÀ')
-    p = para(doc, 'Decorrenza: ', 10, bold=True, after=2)
-    run(p, v('@@DECORRENZA@@') or '______________', 10)
-    para(doc, "L'abilitazione resta valida finché l'istruttore mantiene currency e aggiornamento "
-              'registrati su Corsi SMAM (MTOE-P-3-3). Decade con la revoca o con un nuovo atto '
-              'di conferimento, che sostituisce il presente.', 9.5)
+    gap(doc, 8)
+    t = tabella(doc, 1, (4.2, W - 4.2))
+    shade(t.cell(0, 0)._tc.get_or_add_tcPr(), CHIARO)
+    val = casella(t.cell(0, 0), 'DECORRENZA', v('@@DECORRENZA@@'), size=12, bold=True)
+    if bianco:
+        run(val, '____/____/________', 11)
+    c = t.cell(0, 1)
+    c.paragraphs[0].paragraph_format.space_before = Pt(2)
+    run(c.paragraphs[0], "L'abilitazione resta valida finché l'istruttore mantiene currency e "
+                         "aggiornamento professionale. Decade con la revoca o con un nuovo atto "
+                         "di conferimento, che sostituisce il presente.", 9, italic=True)
+    c.paragraphs[0].paragraph_format.space_after = Pt(2)
 
-    sezione(doc, '5. FIRME')
-    t = tabella(doc, 2, (W / 2, W / 2))
-    for i, (lab, mk, incarico) in enumerate((
-        ('PROPONE', '@@TM@@', 'IL TRAINING MANAGER'),
-        ('CONFERISCE', '@@AM@@', "L'ACCOUNTABLE MANAGER"),
+    gap(doc, 8)
+    t = tabella(doc, 2, (W / 3, W / 3, W / 3))
+    for i, (lab, righe, incarico) in enumerate((
+        ('PROPONE', ['@@TM@@'], 'IL TRAINING MANAGER'),
+        ('CONFERISCE', ['@@AM@@'], "L'ACCOUNTABLE MANAGER"),
+        ('PER PRESA VISIONE', ["L'ISTRUTTORE", '@@ISTRUTTORE@@'], "L'ISTRUTTORE"),
     )):
-        cella(t.cell(0, i), lab, 8, bold=True, align=WD_ALIGN_PARAGRAPH.CENTER, fill=GRIGIO)
+        h = t.cell(0, i)
+        shade(h._tc.get_or_add_tcPr(), CHIARO)
+        f = h.paragraphs[0].paragraph_format
+        f.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        f.space_before = f.space_after = Pt(2)
+        run(h.paragraphs[0], lab, 8, bold=True, color=BLU)
         c = t.cell(1, i)
         c.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.TOP
-        cella(c, 'Viterbo, ______________', 9)
-        c.paragraphs[0].paragraph_format.space_before = Pt(3)
-        para(c, '', 6)
-        if bianco:
-            para(c, incarico, 10, align=WD_ALIGN_PARAGRAPH.CENTER)
-            para(c, '______________________________', 10, align=WD_ALIGN_PARAGRAPH.CENTER)
-        else:
-            para(c, mk, 10, align=WD_ALIGN_PARAGRAPH.CENTER)
+        p = c.paragraphs[0]
+        p.paragraph_format.space_before = Pt(4)
+        run(p, 'Viterbo, ______________', 9)
+        for k, r in enumerate([incarico] if bianco else righe):
+            para(c, r, 10, align=WD_ALIGN_PARAGRAPH.CENTER, before=4 if k == 0 else 0)
         para(c, '', 10, after=18)
-
-    sezione(doc, "6. PRESA VISIONE DELL'ISTRUTTORE")
-    para(doc, "L'istruttore prende visione delle materie assegnate.", 9.5, after=8)
-    p = para(doc, 'Data ______________', 10)
-    p.paragraph_format.tab_stops.add_tab_stop(Cm(W), WD_TAB_ALIGNMENT.RIGHT)
-    run(p, '\tFirma ________________________________', 10)
     return doc
 
 
