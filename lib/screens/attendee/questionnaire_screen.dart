@@ -3,7 +3,7 @@ import '../../models/course_models.dart';
 import '../../services/questionnaire_service.dart';
 import '../../theme.dart';
 
-/// Compilazione MTOE-F-2-7 (mobile).
+/// Compilazione del questionario di qualità percepita (mobile).
 class QuestionnaireScreen extends StatefulWidget {
   final Course course;
   final int module;

@@ -23,7 +23,7 @@ const _contributo =
 const _comunicazioni =
     "Le comunicazioni di ordine operativo/organizzativo/logistico da parte del direttore del corso sono:";
 
-/// MTOE-F-2-7 "Questionario di qualità percepita" (testo del modulo cartaceo):
+/// "Questionario di qualità percepita" (testo del vecchio modulo cartaceo F-2-7):
 /// voci 1-28 DIDATTICA, 29-35 VALUTAZIONE SOGGETTIVA DELLA SCUOLA.
 const qItems = <QItem>[
   (q: 'Gli obiettivi generali del corso/modulo:', opts: [

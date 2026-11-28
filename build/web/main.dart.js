@@ -65230,7 +65230,7 @@ $0(){return this.a.as=!1},
 $S:0}
 A.bcZ.prototype={
 $1(a){var s=null,r=this.a,q=t.p,p=A.aN(A.af(A.a([B.buo,B.a8,A.cq(s,B.ay,!1,s,!0,B.T,s,A.cv(),r,s,s,s,s,s,2,B.DP,B.W,!0,s,!0,s,!1,s,B.aE,s,s,s,s,s,s,s,s,1,s,s,!1,"\u2022",s,s,s,s,s,!1,s,s,!1,s,!0,s,B.aD,s,s,s,s,s,s,s,s,s,s,s,B.S,!0,B.ap,s,B.aI,s,s,s,s)],q),B.D,B.t,B.af),s,340)
-return A.cr(A.a([A.be(!1,B.bj,s,s,s,s,s,s,new A.bcX(a),s,s),A.cP(!1,B.bwf,s,s,s,s,s,s,new A.bcY(r,a),s,s)],q),B.ac,p,B.buk)},
+return A.cr(A.a([A.be(!1,B.bj,s,s,s,s,s,s,new A.bcX(a),s,s),A.cP(!1,B.bwf,s,s,s,s,s,s,new A.bcY(r,a),s,s)],q),B.ac,p,B.buj)},
 $S:17}
 A.bcX.prototype={
 $0(){A.au(this.a,!1).aC(null)
@@ -68820,7 +68820,7 @@ A.b7y.prototype={
 $1(a){return new A.dP(new A.b7x(this.a,this.b),null)},
 $S:15}
 A.b7x.prototype={
-$2(a,b){var s=null,r=this.b,q=t.p,p=A.ak(A.a([A.aL(A.qL(B.Dq,B.bvv,new A.b7s(a,r,b),A.i7(s,s,s,s,s,s,s,s,s,s,s,s,B.d1,s,s,s,s,s,s,s)),1),B.aW,A.aL(A.qL(B.acv,B.bui,new A.b7t(a,r,b),A.i7(s,s,s,s,s,s,s,s,s,s,s,s,B.d1,s,s,s,s,s,s,s)),1)],q),B.D,B.t,B.x,0,s),o=r.length
+$2(a,b){var s=null,r=this.b,q=t.p,p=A.ak(A.a([A.aL(A.qL(B.Dq,B.bvv,new A.b7s(a,r,b),A.i7(s,s,s,s,s,s,s,s,s,s,s,s,B.d1,s,s,s,s,s,s,s)),1),B.aW,A.aL(A.qL(B.acv,B.buh,new A.b7t(a,r,b),A.i7(s,s,s,s,s,s,s,s,s,s,s,s,B.d1,s,s,s,s,s,s,s)),1)],q),B.D,B.t,B.x,0,s),o=r.length
 p=A.aN(A.af(A.a([B.bvq,B.b1,p,B.b1,A.aL(o===0?B.a5k:A.nM(s,new A.b7u(r,b),o,s,s),1)],q),B.D,B.t,B.x),380,360)
 return A.cr(A.a([A.be(!1,B.bj,s,s,s,s,s,s,new A.b7v(a),s,s),A.cP(!1,B.de,s,s,s,s,s,s,new A.b7w(this.a,a,r),s,s)],q),B.ac,p,B.bu3)},
 $S:18}
@@ -70695,7 +70695,7 @@ $S:730}
 A.aS2.prototype={
 $1(a){var s=null,r=this.a,q=this.b,p=this.c,o=t.p
 r=A.aN(A.af(A.a([r.$3("Propone: Training Manager",q,"IL TRAINING MANAGER\nGrado Nome COGNOME"),B.bnE,r.$3("Conferisce: Accountable Manager (Comandante)",p,"IL COMANDANTE\nGrado Nome COGNOME"),B.b1,B.bwk],o),B.D,B.t,B.af),s,460)
-return A.cr(A.a([A.be(!1,B.eV,s,s,s,s,s,s,new A.aS0(a),s,s),A.cP(!1,B.de,s,s,s,s,s,s,new A.aS1(a,q,p),s,s)],o),s,r,B.bul)},
+return A.cr(A.a([A.be(!1,B.eV,s,s,s,s,s,s,new A.aS0(a),s,s),A.cP(!1,B.de,s,s,s,s,s,s,new A.aS1(a,q,p),s,s)],o),s,r,B.buk)},
 $S:17}
 A.aS0.prototype={
 $0(){A.au(this.a,!1).aC(null)
@@ -75292,7 +75292,7 @@ if(!(j.e!=null||j.f!=null)||k.length!==0)a4.push(new A.fw(m,l,k))}s=A.aE(10)
 r=A.em(B.bg,1)
 q=a1.ga8e()?"Periodo impostato: solo i questionari compilati nel periodo (per aprirne uno nuovo togli il periodo). ":""
 p=t.p
-q=A.a([B.buh,B.bb,A.p(q+"Apri il questionario a fine modulo: i frequentatori ricevono una notifica e lo compilano una sola volta, anonimi o con il nome. Indice = totale/35; IQ = \u03a3 indici / n. \u22641,80 NON ACCETTABILE, 1,81\u20132,50 BUONO, >2,50 OTTIMO.",a2,a2,a2,a2,A.bc(a2,a2,B.a0,a2,a2,a2,a2,a2,a2,a2,a2,11,a2,a2,a2,a2,1.35,!0,a2,a2,a2,a2,a2,a2,a2,a2),a2,a2,a2),B.a8],p)
+q=A.a([B.bum,B.bb,A.p(q+"Apri il questionario a fine modulo: i frequentatori ricevono una notifica e lo compilano una sola volta, anonimi o con il nome. Indice = totale/35; IQ = \u03a3 indici / n. \u22641,80 NON ACCETTABILE, 1,81\u20132,50 BUONO, >2,50 OTTIMO.",a2,a2,a2,a2,A.bc(a2,a2,B.a0,a2,a2,a2,a2,a2,a2,a2,a2,11,a2,a2,a2,a2,1.35,!0,a2,a2,a2,a2,a2,a2,a2,a2),a2,a2,a2),B.a8],p)
 if(a4.length===0)q.push(B.bvL)
 for(o=a4.length,k=a3,n=0;n<a4.length;a4.length===o||(0,A.z)(a4),++n){j={}
 i=a4[n]
@@ -162508,8 +162508,8 @@ B.bvy=new A.U("Nessuna (usa orario BTC standard)",null,B.b3,null,null,null,null,
 B.a8k=new A.bi(null,B.bvy,B.bf,null,t.k9)
 B.bwW=new A.U("Teoria",null,null,null,null,null,null,null,null,null,null)
 B.a8l=new A.bi("teoria",B.bwW,B.bf,null,t.b7)
-B.buj=new A.U("Aggiornamento professionale",null,null,null,null,null,null,null,null,null,null)
-B.uH=new A.bi("professional",B.buj,B.bf,null,t.b7)
+B.bui=new A.U("Aggiornamento professionale",null,null,null,null,null,null,null,null,null,null)
+B.uH=new A.bi("professional",B.bui,B.bf,null,t.b7)
 B.bxq=new A.U("Ore insegnamento",null,null,null,null,null,null,null,null,null,null)
 B.C_=new A.bi("teaching",B.bxq,B.bf,null,t.b7)
 B.bw9=new A.U("\u2014",null,B.b3,null,null,null,null,null,null,null,null)
@@ -162830,8 +162830,8 @@ B.bK=new A.a0P(1,"loose")
 B.CP=new A.a0Q(1,"loose")
 B.bB=new A.ml(4,500)
 B.mA=new A.J(!0,B.aK,null,null,null,null,13,B.bB,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)
-B.bum=new A.U("Seleziona tutti",null,B.mA,null,null,null,B.X,null,null,null,null)
-B.aaS=new A.ef(1,B.bK,B.bum,null)
+B.bul=new A.U("Seleziona tutti",null,B.mA,null,null,null,B.X,null,null,null,null)
+B.aaS=new A.ef(1,B.bK,B.bul,null)
 B.bwu=new A.U("Criteri AMC: titoli e licenze per sottomodulo",null,null,null,null,null,B.X,null,null,null,null)
 B.aaT=new A.ef(1,B.bK,B.bwu,null)
 B.bnF=new A.cB(null,38,null,null)
@@ -170915,10 +170915,10 @@ B.bud=new A.U("Tutti",null,null,null,null,null,null,null,null,null,null)
 B.bue=new A.U("Reimposta password",null,B.S,null,null,null,null,null,null,null,null)
 B.buf=new A.U("Reimposta",null,null,null,null,null,null,null,null,null,null)
 B.bug=new A.U("Espelli frequentatore",null,B.S,null,null,null,null,null,null,null,null)
-B.buh=new A.U("Qualit\xe0 percepita (MTOE-F-2-7 \u2192 KPI MTOE-A-2-1 b)",null,B.a0p,null,null,null,null,null,null,null,null)
-B.bui=new A.U("Periodo",null,B.hz,null,null,null,null,null,null,null,null)
-B.buk=new A.U("Password dimenticata",null,B.rR,null,null,null,null,null,null,null,null)
-B.bul=new A.U("Gruppi firma del conferimento",null,null,null,null,null,null,null,null,null,null)
+B.buh=new A.U("Periodo",null,B.hz,null,null,null,null,null,null,null,null)
+B.buj=new A.U("Password dimenticata",null,B.rR,null,null,null,null,null,null,null,null)
+B.buk=new A.U("Gruppi firma del conferimento",null,null,null,null,null,null,null,null,null,null)
+B.bum=new A.U("Qualit\xe0 percepita (indicatore MTOE-A-2-1 b)",null,B.a0p,null,null,null,null,null,null,null,null)
 B.a0F=new A.U("Visualizza",null,null,null,null,null,null,null,null,null,null)
 B.buo=new A.U("La richiesta arriva agli amministratori, che ti daranno una password temporanea.",null,B.cS,null,null,null,null,null,null,null,null)
 B.bup=new A.U("Password dimenticata?",null,B.h0,null,null,null,null,null,null,null,null)

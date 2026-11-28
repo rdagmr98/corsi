@@ -15,7 +15,7 @@ Color _bandColor(double v) => switch (iqBand(v)) {
       _ => kError,
     };
 
-/// Questionari qualità percepita (MTOE-F-2-7) per modulo: apertura/chiusura,
+/// Questionari qualità percepita per modulo: apertura/chiusura,
 /// IQ MTOE-A-2-1 (b) e analisi delle risposte. Con periodo impostato (semestre)
 /// conta solo i questionari compilati nel periodo e mostra solo quei moduli.
 class QuestionnaireKpiCard extends StatefulWidget {
@@ -103,7 +103,7 @@ class _QuestionnaireKpiCardState extends State<QuestionnaireKpiCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Qualità percepita (MTOE-F-2-7 → KPI MTOE-A-2-1 b)',
+          const Text('Qualità percepita (indicatore MTOE-A-2-1 b)',
               style: TextStyle(
                   color: kText, fontWeight: FontWeight.w600, fontSize: 15)),
           const SizedBox(height: 4),
